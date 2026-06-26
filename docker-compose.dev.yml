@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: honeypot_nginx_dev
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - frontend
+      - backend
+
+  # Frontend (SvelteKit)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: honeypot_frontend_dev
+    command: npm run dev
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+  # Backend (NestJS)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: honeypot_backend_dev
+    command: npm run start:dev
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/honeypot
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=devsecret
+      - NODE_ENV=development
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./cowrie-config/var/log/cowrie:/app/logs:ro
+    depends_on:
+      - postgres
+      - redis
+
+  # Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: honeypot_postgres_dev
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=honeypot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: honeypot_redis_dev
+    ports:
+      - "6379:6379"
+
+  # Honeypot (Cowrie)
+  cowrie:
+    image: cowrie/cowrie:latest
+    container_name: cowrie-honeypot_dev
+    restart: always
+    ports:
+      - "2222:2222"
+      - "2223:2223"
+    volumes:
+      - ./cowrie-config/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
+      - ./cowrie-config/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
+      - ./cowrie-config/var/log/cowrie:/cowrie/cowrie-git/var/log/cowrie
+      - ./cowrie-config/var/lib/cowrie:/cowrie/cowrie-git/var/lib/cowrie
+    environment:
+      - COWRIE_TELNET_ENABLED=yes
+
+volumes:
+  pgdata_dev:
