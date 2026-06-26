@@ -1,0 +1,23 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthController } from './auth.controller';
+import { LogService } from './log.service';
+import { EventsGateway } from './events.gateway';
+import { SeedService } from './seed.service';
+import { User } from './entities/user.entity';
+import { Attack } from './entities/attack.entity';
+
+@Module({
+  imports: [
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      url: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/honeypot',
+      entities: [User, Attack],
+      synchronize: true,
+    }),
+    TypeOrmModule.forFeature([User, Attack])
+  ],
+  controllers: [AuthController],
+  providers: [LogService, EventsGateway, SeedService],
+})
+export class AppModule {}
