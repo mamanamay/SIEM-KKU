@@ -38,7 +38,7 @@
 
 1. **Clone แหล่งเก็บข้อมูลนี้**
    ```bash
-   git clone https://github.com/mamanamaye/Demo_Honeypot.git
+   git clone https://github.com/mamanamay/Demo_Honeypot.git
    cd Demo_Honeypot
    ```
 
