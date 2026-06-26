@@ -9,6 +9,11 @@ import * as readline from 'readline';
 @Injectable()
 export class LogService implements OnModuleInit {
   private logFilePath = '/app/logs/cowrie.json';
+  private ipStats = new Map<string, { count: number, lastTime: number }>();
+  
+  // Real IP Workaround caches (Time-based correlation)
+  private recentConnections: { ip: string, time: number }[] = [];
+  private sessionToIpMap = new Map<string, string>();
 
   constructor(
     private eventsGateway: EventsGateway,
@@ -18,6 +23,14 @@ export class LogService implements OnModuleInit {
 
   onModuleInit() {
     this.watchLogFile();
+  }
+
+  registerIpMap(ip: string) {
+    this.recentConnections.push({ ip, time: Date.now() });
+    // Keep cache small (only very recent connections)
+    if (this.recentConnections.length > 50) {
+      this.recentConnections.shift();
+    }
   }
 
   private watchLogFile() {
@@ -55,12 +68,44 @@ export class LogService implements OnModuleInit {
     try {
       const data = JSON.parse(line);
       const eventid = data.eventid;
-      const src_ip = data.src_ip;
+      let src_ip = data.src_ip;
 
       if (!src_ip || !eventid) return;
 
       let payload: any = null;
       const timestamp = data.timestamp;
+      
+      const session = data.session;
+      
+      // Real IP Workaround (Time-based Correlation)
+      if (eventid === 'cowrie.session.connect') {
+        const cowrieTime = new Date(timestamp).getTime();
+        let bestMatch = null;
+        let minDiff = 3000; // Look within 3 seconds
+        let bestIndex = -1;
+        
+        for (let i = 0; i < this.recentConnections.length; i++) {
+          const diff = Math.abs(this.recentConnections[i].time - cowrieTime);
+          if (diff < minDiff) {
+            minDiff = diff;
+            bestMatch = this.recentConnections[i].ip;
+            bestIndex = i;
+          }
+        }
+
+        if (bestMatch) {
+          this.sessionToIpMap.set(session, bestMatch);
+          src_ip = bestMatch;
+          this.recentConnections.splice(bestIndex, 1);
+        }
+      } else {
+        if (session && this.sessionToIpMap.has(session)) {
+          const realIp = this.sessionToIpMap.get(session);
+          if (realIp) {
+            src_ip = realIp;
+          }
+        }
+      }
       
       // Convert UTC timestamp to Thailand time (Asia/Bangkok)
       const date = new Date(timestamp);
@@ -74,25 +119,58 @@ export class LogService implements OnModuleInit {
       });
 
       if (eventid === 'cowrie.login.failed') {
-        payload = { 
-          time: timeStr, ip: src_ip, type: 'SSH Brute Force', severity: 'high', 
-          detail: `Failed: ${data.username}/${data.password}`,
-          mitigation: 'Block IP (Immediate) | Use SSH Keys (Long-term)',
-          mitreCode: 'T1110', threatScore: 70, clientVersion: data.version || 'Unknown SSH Client'
-        };
+        const now = Date.now();
+        let stat = this.ipStats.get(src_ip) || { count: 0, lastTime: now };
+        
+        // Reset if more than 60 seconds passed since last failed login
+        if (now - stat.lastTime > 60000) {
+          stat.count = 0;
+        }
+        
+        stat.count += 1;
+        stat.lastTime = now;
+        this.ipStats.set(src_ip, stat);
+
+        if (stat.count <= 2) {
+          payload = { 
+            time: timeStr, ip: src_ip, type: 'SSH Login Attempt', severity: 'medium', 
+            detail: `Failed: ${data.username}/${data.password}`,
+            mitigation: 'Monitor for further attempts',
+            mitreCode: 'T1110', threatScore: 40, clientVersion: data.version || 'Unknown SSH Client',
+            sessionId: session
+          };
+        } else if (stat.count <= 10) {
+          payload = { 
+            time: timeStr, ip: src_ip, type: 'SSH Brute Force', severity: 'high', 
+            detail: `Failed: ${data.username}/${data.password} (${stat.count} attempts)`,
+            mitigation: 'Block IP (Immediate) | Use SSH Keys (Long-term)',
+            mitreCode: 'T1110', threatScore: 70, clientVersion: data.version || 'Unknown SSH Client',
+            sessionId: session
+          };
+        } else {
+          payload = { 
+            time: timeStr, ip: src_ip, type: 'Aggressive Brute Force', severity: 'critical', 
+            detail: `Failed: ${data.username}/${data.password} (${stat.count} attempts)`,
+            mitigation: 'Auto-ban IP | Alert SecOps',
+            mitreCode: 'T1110', threatScore: 90, clientVersion: data.version || 'Unknown SSH Client',
+            sessionId: session
+          };
+        }
       } else if (eventid === 'cowrie.login.success') {
         payload = { 
           time: timeStr, ip: src_ip, type: 'System Compromised', severity: 'critical', 
           detail: `Success: ${data.username}/${data.password}`,
           mitigation: 'Kill Session (Immediate) | Change Passwords (Immediate)',
-          mitreCode: 'T1078', threatScore: 100, clientVersion: data.version || 'Unknown SSH Client'
+          mitreCode: 'T1078', threatScore: 100, clientVersion: data.version || 'Unknown SSH Client',
+          sessionId: session
         };
       } else if (eventid === 'cowrie.command.input') {
         payload = { 
           time: timeStr, ip: src_ip, type: 'Command Execution', severity: 'critical', 
           detail: `CMD: ${data.input}`,
           mitigation: 'Review Command for Malware (Immediate) | Rebuild Server (Long-term)',
-          mitreCode: 'T1059', threatScore: 95, clientVersion: 'Interactive Shell'
+          mitreCode: 'T1059', threatScore: 95, clientVersion: 'Interactive Shell',
+          sessionId: session
         };
       }
 
@@ -117,7 +195,8 @@ export class LogService implements OnModuleInit {
           country: payload.country,
           clientVersion: payload.clientVersion,
           mitreCode: payload.mitreCode,
-          threatScore: payload.threatScore
+          threatScore: payload.threatScore,
+          sessionId: payload.sessionId
         }).then(() => {
           this.eventsGateway.broadcastAttack(payload);
         }).catch(err => {

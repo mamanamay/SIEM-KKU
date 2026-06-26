@@ -41,6 +41,16 @@ export function initSocket() {
     eventsStore.update(events => [data, ...events]);
   });
 
+  socket.on('status_updated', (data: { id: number, status: string }) => {
+    eventsStore.update(events => {
+      const index = events.findIndex(e => e.id === data.id);
+      if (index !== -1) {
+        events[index] = { ...events[index], status: data.status };
+      }
+      return events;
+    });
+  });
+
   socket.on('connect_error', (err) => {
     if (err.message === 'Unauthorized') {
       localStorage.removeItem('token');

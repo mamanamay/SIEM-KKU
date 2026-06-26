@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth.controller';
+import { AttacksController } from './attacks.controller';
 import { LogService } from './log.service';
 import { EventsGateway } from './events.gateway';
 import { SeedService } from './seed.service';
@@ -17,7 +18,7 @@ import { Attack } from './entities/attack.entity';
     }),
     TypeOrmModule.forFeature([User, Attack])
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, AttacksController],
   providers: [LogService, EventsGateway, SeedService],
 })
 export class AppModule {}

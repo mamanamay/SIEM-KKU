@@ -46,6 +46,16 @@
     return '#1d9e75';
   }
 
+  function getTypeColor(type: string) {
+    type = type.toLowerCase();
+    if (type.includes('ssh') || type.includes('compromised')) return '#a32d2d';
+    if (type.includes('port')) return '#854f0b';
+    if (type.includes('web')) return '#185fa5';
+    if (type.includes('sql') || type.includes('command')) return '#1d9e75';
+    if (type.includes('ftp')) return '#6f42c1';
+    return '#6c757d';
+  }
+
   function getFlagEmoji(country: string) {
     if (country === 'Russia') return '🇷🇺';
     if (country === 'China') return '🇨🇳';
@@ -125,6 +135,25 @@
               <div class="s-lbl">Countries</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Horizontal Distribution Legend (Added per Request) -->
+      <div class="panel" style="margin-top: 16px;">
+        <div class="panel-header" style="margin-bottom: 1rem;">
+          <div class="panel-title"><i class="ti ti-chart-bar"></i> Attack Distribution by Type (24h)</div>
+        </div>
+        <div class="distribution-legend top-legend">
+          {#each topTypes as item}
+            <div class="legend-item">
+              <span class="legend-color" style="background-color: {getTypeColor(item.type)};"></span>
+              <span class="legend-name">{item.type === 'Aggressive Brute Force' ? 'SSH Brute' : (item.type === 'SSH Brute Force' ? 'SSH Brute' : (item.type === 'SSH Login Attempt' ? 'SSH Login' : item.type))}</span>
+              <span class="legend-count">{item.count.toLocaleString()}</span>
+            </div>
+          {/each}
+          {#if topTypes.length === 0}
+            <div class="empty-state" style="padding: 1rem;">ไม่มีข้อมูลการโจมตี</div>
+          {/if}
         </div>
       </div>
     {/if}
@@ -265,6 +294,14 @@
 .s-box { background: var(--bg-secondary); border-radius: var(--radius-sm); padding: 20px; flex: 1; text-align: center; border: 1px solid var(--border); }
 .s-val { font-size: 32px; font-weight: 700; color: var(--green); margin-bottom: 5px; }
 .s-lbl { font-size: 12px; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; }
+
+/* Distribution Legend */
+.distribution-legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.top-legend { margin-bottom: 15px; border-bottom: 1px dashed var(--border); padding-bottom: 15px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.legend-color { width: 12px; height: 12px; border-radius: 3px; }
+.legend-name { color: var(--text-secondary); font-size: 11.5px; }
+.legend-count { font-weight: 700; color: var(--text-primary); margin-left: 2px; }
 
 /* Country Grid */
 .country-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }

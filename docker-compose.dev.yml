@@ -78,8 +78,7 @@ services:
     container_name: cowrie-honeypot_dev
     restart: always
     ports:
-      - "2222:2222"
-      - "2223:2223"
+      - "2223:2222"
     volumes:
       - ./cowrie-config/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
       - ./cowrie-config/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
@@ -87,6 +86,7 @@ services:
       - ./cowrie-config/var/lib/cowrie:/cowrie/cowrie-git/var/lib/cowrie
     environment:
       - COWRIE_TELNET_ENABLED=yes
+
 
 volumes:
   pgdata_dev:

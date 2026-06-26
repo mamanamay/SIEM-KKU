@@ -35,6 +35,12 @@ export class Attack {
   @Column({ type: 'int', default: 50 })
   threatScore: number;
 
+  @Column({ default: 'Opened' })
+  status: string;
+
+  @Column({ nullable: true })
+  sessionId: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }

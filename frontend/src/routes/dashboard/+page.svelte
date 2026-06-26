@@ -7,6 +7,7 @@
   let attackChart: any;
   let timelineChart: any;
   let chartLoaded = false;
+  let attackStats: any[] = [];
   
   // Real-time events from Store
   $: events = $eventsStore;
@@ -41,6 +42,15 @@
     if (name === 'Brazil') return '#1d9e75';
     if (name === 'Local Network') return '#185fa5';
     return '#1d9e75';
+  }
+
+  function getTypeColor(type: string) {
+    if (type === 'SSH Brute Force' || type === 'Aggressive Brute Force') return '#a32d2d'; // Red
+    if (type === 'SSH Login Attempt') return '#e67e22'; // Orange
+    if (type === 'Command Execution') return '#8e44ad'; // Purple
+    if (type === 'System Compromised') return '#c0392b'; // Dark Red
+    if (type === 'Port Scan') return '#854f0b'; // Brown
+    return '#185fa5'; // Blue default
   }
 
   function navigateTo(path: string) {
@@ -115,14 +125,23 @@
 
   function updateChart() {
     if (attackChart) {
-      let counts = { 'SSH Brute Force':0, 'SQL Inject':0, 'Web Scan':0, 'Command Execution':0, 'Port Scan':0 };
+      let counts: Record<string, number> = {};
       events.forEach(e => {
-        if (counts[e.type] !== undefined) counts[e.type]++;
-        else counts['Port Scan']++;
+        let type = e.type || 'Unknown';
+        counts[type] = (counts[type] || 0) + 1;
       });
-      attackChart.data.datasets[0].data = [
-        counts['SSH Brute Force'], counts['SQL Inject'], counts['Web Scan'], counts['Command Execution'], counts['Port Scan']
-      ];
+      // Sort by count descending and take top 5
+      const types = Object.keys(counts).sort((a,b) => counts[b] - counts[a]).slice(0, 5);
+      
+      attackStats = types.map(t => ({
+        type: t === 'Aggressive Brute Force' ? 'SSH Brute' : (t === 'SSH Brute Force' ? 'SSH Brute' : (t === 'SSH Login Attempt' ? 'SSH Login' : t)),
+        count: counts[t],
+        color: getTypeColor(t)
+      }));
+      
+      attackChart.data.labels = attackStats.map(s => s.type);
+      attackChart.data.datasets[0].data = attackStats.map(s => s.count);
+      attackChart.data.datasets[0].backgroundColor = attackStats.map(s => s.color);
       attackChart.update();
     }
 
@@ -261,14 +280,23 @@
   <div class="grid3-timeline">
     <div class="panel">
       <div class="panel-title"><span><i class="ti ti-clock"></i> Event Timeline (รายชั่วโมง)</span></div>
-      <div style="position:relative;width:100%;height:250px">
+      <div style="position:relative;width:100%;height:350px">
         <canvas id="timelineChart"></canvas>
       </div>
     </div>
 
     <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="คลิกเพื่อไปยังหน้า Analytics">
-      <div class="panel-title"><span><i class="ti ti-chart-bar"></i> Attack Distribution</span></div>
-      <div style="position:relative;width:100%;height:250px">
+      <div class="panel-title"><span><i class="ti ti-chart-bar"></i> Attack Distribution by Type (24h)</span></div>
+      
+      <div class="custom-legend top-legend">
+        {#each attackStats as stat}
+          <div class="leg-item">
+            <span class="leg-box" style="background:{stat.color}"></span> {stat.type} <span class="leg-count">{stat.count.toLocaleString()}</span>
+          </div>
+        {/each}
+      </div>
+
+      <div style="position:relative;width:100%;height:300px;margin-top:15px">
         <canvas id="attackChart"></canvas>
       </div>
     </div>
@@ -373,6 +401,13 @@
 
 .empty-state { text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 12px; }
 .empty-state .ti { font-size: 28px; display: block; margin-bottom: 8px; }
+
+/* Custom Legend */
+.custom-legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.top-legend { margin-bottom: 10px; border-bottom: 1px dashed var(--border); padding-bottom: 12px; }
+.leg-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
+.leg-box { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.leg-count { font-weight: 700; color: var(--text-primary); margin-left: 2px; }
 
 @media (max-width: 900px) {
   .grid3, .grid3-timeline { grid-template-columns: 1fr; }

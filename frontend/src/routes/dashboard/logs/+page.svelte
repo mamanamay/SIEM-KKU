@@ -5,12 +5,14 @@
   
   let searchText = '';
   let activeSev = 'all';
+  let activeStatus = 'all';
   
   $: filteredEvents = events.filter(e => {
     const sevOk = activeSev === 'all' || e.severity === activeSev;
+    const statusOk = activeStatus === 'all' || e.status === activeStatus;
     const q = searchText.toLowerCase();
     const textOk = !q || (e.ip && e.ip.includes(q)) || (e.type && e.type.toLowerCase().includes(q)) || (e.detail && e.detail.toLowerCase().includes(q));
-    return sevOk && textOk;
+    return sevOk && statusOk && textOk;
   });
 
   // Track expanded rows
@@ -43,6 +45,26 @@
     if (country === 'Local Network') return '🏠';
     return '🌍';
   }
+
+  async function updateStatus(id, newStatus) {
+    try {
+      const res = await fetch(`http://localhost:5000/api/attacks/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!res.ok) {
+        console.error('Failed to update status');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  function getSessionEvents(sessionId) {
+    if (!sessionId) return [];
+    return events.filter(e => e.sessionId === sessionId).sort((a, b) => a.id - b.id);
+  }
 </script>
 
 <div class="logs-page">
@@ -55,6 +77,12 @@
           <option value="high">High Only</option>
           <option value="medium">Medium Only</option>
           <option value="low">Low Only</option>
+        </select>
+        <select bind:value={activeStatus} class="select-box">
+          <option value="all">All Statuses</option>
+          <option value="Opened">Opened</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Closed">Closed</option>
         </select>
         <div class="search-box">
           <i class="ti ti-search"></i>
@@ -77,6 +105,7 @@
             <th>Source IP</th>
             <th>Attack Type</th>
             <th>Severity</th>
+            <th>Status</th>
             <th>Threat Score</th>
           </tr>
         </thead>
@@ -95,6 +124,11 @@
             </td>
             <td><span class="type-badge">{event.type}</span></td>
             <td><span class="sev {event.severity}">{event.severity}</span></td>
+            <td>
+              <span class="status-badge {event.status === 'Closed' ? 'closed' : event.status === 'In Progress' ? 'progress' : 'opened'}">
+                {event.status || 'Opened'}
+              </span>
+            </td>
             <td>
               <div class="score-bar">
                 <div class="score-fill {event.threatScore > 80 ? 'critical' : event.threatScore > 50 ? 'high' : 'medium'}" style="width: {event.threatScore || 50}%"></div>
@@ -161,9 +195,43 @@
                         <i class="ti ti-shield-search" style="font-size: 16px;"></i>
                         ตรวจด้วย VirusTotal
                       </a>
+                      {#if $roleStore === 'admin'}
+                      <div class="admin-status-box" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border);">
+                        <div class="dp-title" style="margin-bottom: 8px;"><i class="ti ti-settings"></i> จัดการสถานะ (Admin)</div>
+                        <select 
+                          class="select-box" 
+                          style="width: 100%;" 
+                          value={event.status || 'Opened'}
+                          on:change={(e) => updateStatus(event.id, e.target.value)}
+                        >
+                          <option value="Opened">🚨 Opened (รอตรวจสอบ)</option>
+                          <option value="In Progress">⏳ In Progress (กำลังวิเคราะห์)</option>
+                          <option value="Closed">✅ Closed (บล็อกแล้ว/ปิดงาน)</option>
+                        </select>
+                      </div>
+                      {/if}
                     </div>
                   </div>
                 </div>
+
+                <!-- Kill Chain Timeline -->
+                {#if event.sessionId}
+                  <div class="killchain-panel">
+                    <div class="kc-title"><i class="ti ti-route"></i> Session Kill Chain (Timeline)</div>
+                    <div class="kc-timeline">
+                      {#each getSessionEvents(event.sessionId) as se}
+                        <div class="kc-item {se.id === event.id ? 'active' : ''}">
+                          <div class="kc-time">{se.time || se.timeStr}</div>
+                          <div class="kc-dot {se.severity}"></div>
+                          <div class="kc-content">
+                            <div class="kc-type">{se.type}</div>
+                            <div class="kc-detail">{se.detail}</div>
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
               </div>
             </td>
           </tr>
@@ -306,6 +374,11 @@
 .sev.medium   { background: var(--blue-bg); color: var(--blue); }
 .sev.low      { background: #eaf3de; color: #3b6d11; }
 
+.status-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; }
+.status-badge.opened { background: #ffe9e9; color: #d63031; border: 1px solid #ffcccc; }
+.status-badge.progress { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+.status-badge.closed { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+
 .type-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 11px; background: var(--bg-secondary); color: var(--text-secondary); }
 
 .payload-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: 'Courier New', monospace; font-size: 11px; color: var(--red); word-break: break-all; white-space: pre-wrap; }
@@ -330,6 +403,24 @@
 
 .toast { position: fixed; bottom: 24px; right: 24px; z-index: 2000; background: var(--text-primary); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; transform: translateY(10px); opacity: 0; transition: all .25s; pointer-events: none; }
 .toast.show { transform: translateY(0); opacity: 1; }
+
+/* Kill Chain Timeline */
+.killchain-panel { margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border); }
+.kc-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.kc-timeline { display: flex; flex-direction: column; gap: 0; padding-left: 60px; position: relative; }
+.kc-timeline::before { content: ''; position: absolute; left: 66px; top: 10px; bottom: 10px; width: 2px; background: var(--border); }
+.kc-item { display: flex; gap: 15px; position: relative; padding: 10px 0; opacity: 0.7; transition: opacity 0.2s; }
+.kc-item:hover, .kc-item.active { opacity: 1; }
+.kc-item.active .kc-content { background: var(--bg-secondary); border-radius: 6px; padding: 6px 10px; margin: -6px -10px; }
+.kc-time { position: absolute; left: -60px; top: 12px; font-size: 11px; font-family: 'Courier New', monospace; color: var(--text-muted); }
+.kc-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); margin-top: 13px; z-index: 1; position: relative; border: 2px solid var(--bg-panel); }
+.kc-dot.critical { background: var(--red); }
+.kc-dot.high { background: var(--orange); }
+.kc-dot.medium { background: var(--blue); }
+.kc-dot.low { background: var(--green); }
+.kc-content { display: flex; flex-direction: column; justify-content: center; }
+.kc-type { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.kc-detail { font-size: 11px; font-family: 'Courier New', monospace; color: var(--text-secondary); }
 
 @media (max-width: 1200px) {
   .details-grid { grid-template-columns: 1fr 1fr; }
