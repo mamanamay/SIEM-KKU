@@ -109,17 +109,17 @@
                 <div class="details-grid">
                   <!-- Context Panel -->
                   <div class="detail-panel">
-                    <div class="dp-title"><i class="ti ti-fingerprint"></i> Attacker Context</div>
+                    <div class="dp-title"><i class="ti ti-fingerprint"></i> ข้อมูลผู้โจมตี (Attacker Context)</div>
                     <div class="dp-content">
-                      <div class="kv"><span class="k">Geo Location:</span> <span class="v">{event.country || 'Unknown'}</span></div>
-                      <div class="kv"><span class="k">Client Tool:</span> <span class="v font-mono">{event.clientVersion || 'Unknown'}</span></div>
+                      <div class="kv"><span class="k">ประเทศ:</span> <span class="v">{event.country || 'Unknown'}</span></div>
+                      <div class="kv"><span class="k">เครื่องมือ (Tool):</span> <span class="v font-mono">{event.clientVersion || 'Unknown'}</span></div>
                       <div class="kv"><span class="k">MITRE ATT&CK:</span> <span class="v badge-mitre">{event.mitreCode || 'T0000'}</span></div>
                     </div>
                   </div>
 
                   <!-- Payload Panel -->
                   <div class="detail-panel">
-                    <div class="dp-title"><i class="ti ti-code"></i> Raw Payload / Command</div>
+                    <div class="dp-title"><i class="ti ti-code"></i> คำสั่งที่ถูกใช้ (Raw Payload)</div>
                     <div class="dp-content">
                       <div class="payload-box">
                         {event.detail}
@@ -129,23 +129,38 @@
 
                   <!-- Mitigation Panel -->
                   <div class="detail-panel">
-                    <div class="dp-title"><i class="ti ti-shield-check"></i> Recommended Mitigation</div>
+                    <div class="dp-title"><i class="ti ti-shield-check"></i> วิธีรับมือและความเสี่ยง</div>
                     <div class="dp-content">
-                      {#if event.mitigation}
-                        {@const parts = event.mitigation.split(' | ')}
-                        {#if parts[0]}
-                          <div class="mit-item immediate">
-                            <i class="ti ti-alert-triangle"></i> {parts[0]}
-                          </div>
-                        {/if}
-                        {#if parts[1]}
-                          <div class="mit-item longterm">
-                            <i class="ti ti-shield"></i> {parts[1]}
-                          </div>
-                        {/if}
+                      {#if event.severity === 'critical'}
+                        <div class="mit-item immediate">
+                          <i class="ti ti-alert-triangle"></i> เสี่ยงสูงมาก: อาจทำให้เซิร์ฟเวอร์โดนยึด ควรบล็อก IP นี้ใน Firewall ทันที
+                        </div>
+                      {:else if event.severity === 'high'}
+                        <div class="mit-item immediate" style="background:var(--orange-bg);color:var(--orange);border-color:rgba(133,79,11,0.2)">
+                          <i class="ti ti-alert-circle"></i> เสี่ยงสูง: เป็นการพยายามเจาะระบบ ควรเฝ้าระวังพฤติกรรม
+                        </div>
                       {:else}
-                        <div class="mit-item longterm">No specific mitigation steps provided.</div>
+                        <div class="mit-item longterm" style="background:var(--blue-bg);color:var(--blue);border-color:rgba(24,95,165,0.2)">
+                          <i class="ti ti-info-circle"></i> เสี่ยงต่ำ: เป็นการสแกนหาช่องโหว่ทั่วไป
+                        </div>
                       {/if}
+                      <div class="mit-item longterm">
+                        <i class="ti ti-shield"></i> คำแนะนำ: ตั้งรหัสผ่านให้ซับซ้อนขึ้น และปิดพอร์ตที่ไม่จำเป็น
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- IP Reputation Panel -->
+                  <div class="detail-panel">
+                    <div class="dp-title"><i class="ti ti-world-search"></i> ตรวจสอบไอพี (IP Reputation)</div>
+                    <div class="dp-content">
+                      <p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">
+                        นำ IP <strong class="font-mono">{event.ip}</strong> ไปตรวจสอบประวัติอาชญากรรมไซเบอร์ในฐานข้อมูลสากล เพื่อดูว่าเป็น Botnet หรือแฮกเกอร์ที่เคยโจมตีที่อื่นหรือไม่
+                      </p>
+                      <a href="https://www.virustotal.com/gui/search/{event.ip}" target="_blank" class="btn-vt">
+                        <i class="ti ti-shield-search" style="font-size: 16px;"></i>
+                        ตรวจด้วย VirusTotal
+                      </a>
                     </div>
                   </div>
                 </div>
@@ -250,7 +265,7 @@
 .details-row td { padding: 0; border-bottom: 1px solid var(--border); }
 .details-container { padding: 20px 40px 30px 40px; background: var(--bg-panel); box-shadow: inset 0 3px 6px rgba(0,0,0,0.02); }
 
-.details-grid { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 20px; }
+.details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
 .detail-panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; }
 .dp-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
 .dp-content { display: flex; flex-direction: column; gap: 10px; }
@@ -263,6 +278,14 @@
 .mit-item i { font-size: 16px; margin-top: 1px; }
 .mit-item.immediate { background: var(--red-bg); color: var(--red); border: 1px solid rgba(163,45,45,0.2); }
 .mit-item.longterm { background: var(--green-bg); color: var(--green); border: 1px solid rgba(29,158,117,0.2); }
+
+.btn-vt {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: #1155cb; color: white; border-radius: var(--radius-sm);
+  padding: 8px 12px; font-size: 12px; font-weight: 600; text-decoration: none;
+  transition: all 0.2s; border: 1px solid #0f46a6;
+}
+.btn-vt:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(17,85,203,0.3); }
 
 .ip-block { display: flex; align-items: center; gap: 8px; }
 .flag { font-size: 16px; }
@@ -308,7 +331,10 @@
 .toast { position: fixed; bottom: 24px; right: 24px; z-index: 2000; background: var(--text-primary); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; transform: translateY(10px); opacity: 0; transition: all .25s; pointer-events: none; }
 .toast.show { transform: translateY(0); opacity: 1; }
 
-@media (max-width: 1000px) {
+@media (max-width: 1200px) {
+  .details-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 800px) {
   .details-grid { grid-template-columns: 1fr; }
 }
 </style>
