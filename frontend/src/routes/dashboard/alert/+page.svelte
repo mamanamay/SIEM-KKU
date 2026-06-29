@@ -2,20 +2,40 @@
     import { eventsStore } from '../../../stores/events';
     let selectedRange = 'all';
     
-    $: timeLimit = selectedRange === 'all' ? 0 : Date.now() - (selectedRange === '1h' ? 3600000 : (selectedRange === '6h' ? 21600000 : 86400000));
+    $: getTimeLimit = (range) => {
+        if (range === 'all') return 0;
+        const now = Date.now();
+        const Day = 86400000;
+        switch(range) {
+            case '1h': return now - 3600000;
+            case '6h': return now - 21600000;
+            case '24h': return now - 86400000;
+            case '1m': return now - (30 * Day);
+            case '3m': return now - (90 * Day);
+            case '6m': return now - (180 * Day);
+            case '1y': return now - (365 * Day);
+            default: return 0;
+        }
+    };
+
+    $: timeLimit = getTimeLimit(selectedRange);
     
     $: alerts = $eventsStore.filter(e => {
         if (e.severity !== 'critical' && e.severity !== 'high') return false;
-        if (selectedRange !== 'all' && e.timestamp) return e.timestamp >= timeLimit;
+        if (selectedRange !== 'all') {
+            const eventTime = e.createdAt ? new Date(e.createdAt).getTime() : 0;
+            return eventTime >= timeLimit;
+        }
         return true;
     });
 
-    function formatTime(ms) {
+    function formatDate(ms) {
+        if (ms === 0) return "";
         const d = new Date(ms);
-        return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+        return d.toLocaleDateString('en-GB') + ' ' + d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
     }
 
-    $: displayTime = selectedRange === 'all' ? "ทั้งหมด (All Time)" : formatTime(timeLimit) + " - " + formatTime(Date.now());
+    $: displayTime = selectedRange === 'all' ? "ทั้งหมด (All Time)" : formatDate(timeLimit) + " - " + formatDate(Date.now());
   </script>
   <div class="page-container">
     <div class="page-title"><i class="ti ti-bell-ringing"></i> Alert Log</div>
@@ -25,13 +45,17 @@
         <button class="range-btn {selectedRange === '1h' ? 'active' : ''}" on:click={() => selectedRange = '1h'}>1h</button>
         <button class="range-btn {selectedRange === '6h' ? 'active' : ''}" on:click={() => selectedRange = '6h'}>6h</button>
         <button class="range-btn {selectedRange === '24h' ? 'active' : ''}" on:click={() => selectedRange = '24h'}>24h</button>
+        <button class="range-btn {selectedRange === '1m' ? 'active' : ''}" on:click={() => selectedRange = '1m'}>1m</button>
+        <button class="range-btn {selectedRange === '3m' ? 'active' : ''}" on:click={() => selectedRange = '3m'}>3m</button>
+        <button class="range-btn {selectedRange === '6m' ? 'active' : ''}" on:click={() => selectedRange = '6m'}>6m</button>
+        <button class="range-btn {selectedRange === '1y' ? 'active' : ''}" on:click={() => selectedRange = '1y'}>1y</button>
         <button class="range-btn {selectedRange === 'all' ? 'active' : ''}" on:click={() => selectedRange = 'all'}>ทั้งหมด</button>
       </div>
       <button class="refresh-btn">⟳ Refresh</button>
     </div>
     <div class="panel">
       <table class="data-table">
-        <tr><th>Timestamp</th><th>Source IP</th><th>Alert Rule</th><th>Severity</th><th>Action</th></tr>
+        <tr><th>Date & Time</th><th>Source IP</th><th>Alert Rule</th><th>Severity</th><th>Action</th></tr>
         {#each alerts.slice(0, 15) as alert}
         <tr>
           <td>{alert.time || alert.timeStr}</td>

@@ -26,7 +26,7 @@
   - **Redis 7:** Caching & WebSocket scaling
 - **Honeypot & Sensors:**
   - **Cowrie**: SSH/Telnet honeypot บันทึกพฤติกรรมในรูปแบบ JSON (`cowrie.json`)
-  - **WebTrap**: (จำลองเพิ่มเติม) สคริปต์ Node.js สำหรับดักจับ Web Attacks (SQLi, Path Traversal) ทำงานคู่กับ `proxy.js`
+  - **WebTrap**: (จำลองเพิ่มเติม) สคริปต์ Node.js สำหรับดักจับ Web Attacks (SQLi, Path Traversal) รองรับทั้ง **HTTP (8080)** และ **HTTPS (8443)** ทำงานคู่กับ `proxy.js` เพื่อดักจับ Port Scan
 - **โครงสร้างพื้นฐาน (Infrastructure):** Nginx 1.25
   - **ที่อยู่ (Path):** `nginx/`
   - Reverse Proxy แยก `/api`, `/socket.io` ไปที่ Backend และ `/` ไป Frontend พร้อมทำ HTTPS (Self-signed)
@@ -36,8 +36,8 @@
 1. **การบุกรุก (Intrusion):** แฮกเกอร์เชื่อมต่อเข้ามาที่พอร์ต SSH (2222) หรือยิง SQLi ใส่ WebTrap (8080)
 2. **การบันทึก Log:** Cowrie หรือ WebTrap บันทึกพฤติกรรมลงในไฟล์ Log ท้องถิ่น
 3. **การตรวจจับและวิเคราะห์ (Detection & Enrichment):** `log.service.ts` อ่านบรรทัดใหม่ แปลง JSON เพิ่มข้อมูลจำลองรหัสคณะ (Faculty), รหัส MITRE ATT&CK, และคำนวณ Threat Score
-4. **การกระจายข้อมูล (Broadcast):** NestJS ยิง Event ผ่าน WebSocket ทันที
-5. **การแสดงผล (Visualization):** SvelteKit นำข้อมูลมาประมวลผลและกระจายไปยังตารางของแต่ละหน้า (เช่น Alert Log, MITRE Matrix, Investigate Logs, Faculty Monitor) และอัปเดต UI ทันทีโดยไม่ต้อง Refresh
+4. **การกระจายข้อมูล (Broadcast):** NestJS ยิง Event ผ่าน WebSocket ทันที พร้อมประทับ วันที่และเวลา (Date & Time) อย่างครบถ้วน
+5. **การแสดงผล (Visualization):** SvelteKit นำข้อมูลมาประมวลผลและกระจายไปยังตารางของแต่ละหน้า พร้อมรองรับการกรองเวลาแบบละเอียด (1h, 6h, 24h, 1m, 3m, 6m, 1y) และอัปเดต UI ทันทีโดยไม่ต้อง Refresh (รวมถึงระบบ Deep Linking จากแจ้งเตือน)
 
 ## 🛠 สิ่งที่พัฒนาต่อยอดได้ (Future Enhancements & Ideas)
 

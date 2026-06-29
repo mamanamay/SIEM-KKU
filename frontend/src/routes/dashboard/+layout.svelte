@@ -1,10 +1,41 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
-  import { initSocket, disconnectSocket, roleStore, connectionState } from '../../stores/events';
+  import { initSocket, disconnectSocket, roleStore, connectionState, latestAttackStore } from '../../stores/events';
   
   let currentTime = '';
   let timeInterval: any;
+
+  // Notifications State
+  let notificationsHistory: any[] = [];
+  let unreadCount = 0;
+  let showNotifications = false;
+  let activeToast: any = null;
+  let toastTimeout: any;
+
+  $: if ($latestAttackStore) {
+    // Prevent duplicate triggers if store hasn't actually changed reference (Svelte reactivity quirk)
+    const attack = $latestAttackStore;
+    if (!notificationsHistory.find(n => n.id === attack.id)) {
+      notificationsHistory = [attack, ...notificationsHistory];
+      unreadCount++;
+      
+      activeToast = attack;
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => { activeToast = null; }, 5000);
+    }
+  }
+
+  function clearNotifications() {
+    notificationsHistory = [];
+    unreadCount = 0;
+    showNotifications = false;
+  }
+  
+  function toggleNotifications() {
+    showNotifications = !showNotifications;
+    if (showNotifications) unreadCount = 0;
+  }
 
   onMount(() => {
     initSocket();
@@ -154,6 +185,42 @@
         </h1>
       </div>
       <div class="topbar-right">
+        <!-- Notification Bell -->
+        <div class="notification-wrapper">
+          <button class="btn-icon" on:click={toggleNotifications} title="Notifications">
+            <i class="ti ti-bell"></i>
+            {#if unreadCount > 0}
+              <span class="badge-dot">{unreadCount}</span>
+            {/if}
+          </button>
+          
+          {#if showNotifications}
+            <div class="notification-dropdown">
+              <div class="dropdown-header">
+                <span style="font-weight:600;font-size:12px;">Notifications</span>
+                <button class="btn-clear" on:click={clearNotifications}>Clear All</button>
+              </div>
+              <div class="dropdown-list custom-scrollbar">
+                {#each notificationsHistory as notif}
+                  <a href="/dashboard/logs?ip={notif.ip}" class="dropdown-item" on:click={() => showNotifications = false}>
+                    <div class="notif-icon {notif.severity === 'critical' ? 'b-red' : 'b-orange'}">
+                      <i class="ti ti-alert-triangle"></i>
+                    </div>
+                    <div class="notif-content">
+                      <div class="notif-title">{notif.type || 'Intrusion Detected'}</div>
+                      <div class="notif-desc">From: {notif.ip} ({notif.country || 'Unknown'})</div>
+                      <div class="notif-time">{notif.time || notif.timeStr}</div>
+                    </div>
+                  </a>
+                {/each}
+                {#if notificationsHistory.length === 0}
+                  <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">No new notifications</div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </div>
+
         <div class="role-badge">Role: <strong>{$roleStore}</strong></div>
         <div class="ts-block">
           <div style="color:var(--text-muted);font-size:11px">Server Time</div>
@@ -169,6 +236,21 @@
     <div class="page-container custom-scrollbar">
       <slot />
     </div>
+
+    <!-- Global Toast Notification -->
+    {#if activeToast}
+      <a href="/dashboard/logs?ip={activeToast.ip}" class="toast-notification {activeToast.severity === 'critical' ? 'toast-critical' : 'toast-high'}">
+        <div class="toast-icon">
+          <i class="ti ti-alert-octagon"></i>
+        </div>
+        <div class="toast-content">
+          <div class="toast-title">New Attack Detected!</div>
+          <div class="toast-desc">{activeToast.type || 'Intrusion Attempt'} from <strong>{activeToast.ip}</strong></div>
+        </div>
+        <button class="toast-close" on:click|preventDefault={() => activeToast = null}><i class="ti ti-x"></i></button>
+      </a>
+    {/if}
+
   </main>
 </div>
 
@@ -269,7 +351,42 @@
   flex-shrink: 0;
 }
 .page-title { font-size: 18px; font-weight: 600; color: var(--text-primary); }
-.topbar-right { display: flex; align-items: center; gap: 16px; }
+.topbar-right { display: flex; align-items: center; gap: 15px; }
+.btn-icon { background: none; border: none; font-size: 20px; color: var(--text-secondary); cursor: pointer; position: relative; padding: 4px; display: flex; align-items: center; justify-content: center; transition: 0.2s; border-radius: 6px; }
+.btn-icon:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.badge-dot { position: absolute; top: 0; right: 0; background: var(--red); color: white; font-size: 9px; font-weight: bold; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid var(--bg-panel); }
+
+/* Notification Dropdown */
+.notification-wrapper { position: relative; }
+.notification-dropdown { position: absolute; top: 110%; right: 0; width: 320px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); z-index: 1000; overflow: hidden; animation: slideDown 0.2s ease; }
+.dropdown-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); }
+.btn-clear { background: none; border: none; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+.btn-clear:hover { color: var(--text-primary); text-decoration: underline; }
+.dropdown-list { max-height: 350px; overflow-y: auto; }
+.dropdown-item { display: flex; gap: 12px; padding: 12px 15px; border-bottom: 1px solid var(--border); text-decoration: none; transition: 0.2s; }
+.dropdown-item:hover { background: rgba(0,0,0,0.02); }
+.notif-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.notif-content { display: flex; flex-direction: column; gap: 2px; }
+.notif-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.notif-desc { font-size: 11px; color: var(--text-secondary); }
+.notif-time { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+/* Toast Notification */
+.toast-notification { position: fixed; bottom: 25px; right: 25px; background: var(--bg-panel); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); padding: 15px; display: flex; align-items: center; gap: 12px; z-index: 9999; animation: toastSlide 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); text-decoration: none; border-left: 4px solid var(--accent); min-width: 300px; }
+.toast-critical { border-left-color: var(--red); }
+.toast-high { border-left-color: var(--orange); }
+.toast-icon { font-size: 24px; color: var(--text-primary); }
+.toast-critical .toast-icon { color: var(--red); }
+.toast-high .toast-icon { color: var(--orange); }
+.toast-content { flex-grow: 1; }
+.toast-title { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 3px; }
+.toast-desc { font-size: 11px; color: var(--text-secondary); }
+.toast-close { background: none; border: none; font-size: 14px; color: var(--text-muted); cursor: pointer; padding: 4px; }
+.toast-close:hover { color: var(--text-primary); }
+
+@keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toastSlide { from { opacity: 0; transform: translateX(100%); } to { opacity: 1; transform: translateX(0); } }
+
 .role-badge { background: var(--bg-secondary); padding: 4px 10px; border-radius: 20px; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); }
 .role-badge strong { color: var(--green); }
 .ts-block { text-align: right; }

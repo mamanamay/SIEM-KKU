@@ -5,6 +5,7 @@ export const eventsStore = writable<any[]>([]);
 export const socketStore = writable<Socket | null>(null);
 export const roleStore = writable<string>('guest');
 export const connectionState = writable<boolean>(false);
+export const latestAttackStore = writable<any>(null);
 
 let socket: Socket | null = null;
 
@@ -39,6 +40,7 @@ export function initSocket() {
 
   socket.on('new_attack', (data: any) => {
     eventsStore.update(events => [data, ...events]);
+    latestAttackStore.set(data);
   });
 
   socket.on('status_updated', (data: { id: number, status: string }) => {

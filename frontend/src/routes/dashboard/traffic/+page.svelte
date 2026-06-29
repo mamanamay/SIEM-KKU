@@ -12,7 +12,13 @@
       <span class="filter-label">Quick Range:</span>
       <div class="range-btns">
         <button class="range-btn {selectedRange === '1h' ? 'active' : ''}" on:click={() => selectedRange = '1h'}>1h</button>
+        <button class="range-btn {selectedRange === '6h' ? 'active' : ''}" on:click={() => selectedRange = '6h'}>6h</button>
         <button class="range-btn {selectedRange === '24h' ? 'active' : ''}" on:click={() => selectedRange = '24h'}>24h</button>
+        <button class="range-btn {selectedRange === '1m' ? 'active' : ''}" on:click={() => selectedRange = '1m'}>1m</button>
+        <button class="range-btn {selectedRange === '3m' ? 'active' : ''}" on:click={() => selectedRange = '3m'}>3m</button>
+        <button class="range-btn {selectedRange === '6m' ? 'active' : ''}" on:click={() => selectedRange = '6m'}>6m</button>
+        <button class="range-btn {selectedRange === '1y' ? 'active' : ''}" on:click={() => selectedRange = '1y'}>1y</button>
+        <button class="range-btn {selectedRange === 'all' ? 'active' : ''}" on:click={() => selectedRange = 'all'}>ทั้งหมด</button>
       </div>
     </div>
     <div class="panel">

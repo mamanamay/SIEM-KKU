@@ -141,14 +141,15 @@ export class LogService implements OnModuleInit {
       
       // Convert UTC timestamp to Thailand time (Asia/Bangkok)
       const date = new Date(timestamp);
-      // Format as HH:mm:ss for the UI
-      const timeStr = date.toLocaleTimeString('en-US', { 
+      // Format as DD/MM/YYYY HH:mm:ss for the UI
+      const timeStr = date.toLocaleString('en-GB', { 
         timeZone: 'Asia/Bangkok', 
+        day: '2-digit', month: '2-digit', year: 'numeric',
         hour12: false, 
         hour: '2-digit', 
         minute: '2-digit', 
         second: '2-digit' 
-      });
+      }).replace(',', '');
 
       if (eventid === 'cowrie.login.failed') {
         const now = Date.now();
@@ -269,13 +270,14 @@ export class LogService implements OnModuleInit {
       }
 
       const date = new Date(timestamp);
-      const timeStr = date.toLocaleTimeString('en-US', { 
+      const timeStr = date.toLocaleString('en-GB', { 
         timeZone: 'Asia/Bangkok', 
+        day: '2-digit', month: '2-digit', year: 'numeric',
         hour12: false, 
         hour: '2-digit', 
         minute: '2-digit', 
         second: '2-digit' 
-      });
+      }).replace(',', '');
 
       let country = 'United States';
       if (src_ip.startsWith('185.')) country = 'Russia';

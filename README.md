@@ -15,7 +15,7 @@
 - 🛡️ **Advanced SOC UI:** โครงสร้าง UI เต็มรูปแบบ 17 เมนูย่อย ครอบคลุมตั้งแต่งาน Detection & Analysis ไปจนถึง Compliance Audit
 - 🏢 **Faculty Monitor:** ระบบจำแนกการโจมตีจากภายในองค์กร โดยอิงตามวงแลน (Subnet) ของแต่ละคณะในมหาวิทยาลัย (Mockup)
 - 🔍 **In-depth Analysis:** ตารางแสดงผลที่วิเคราะห์ระดับสูง เช่น รหัส MITRE ATT&CK Framework, ธงชาติ (GeoIP), คะแนนความเสี่ยง Threat Score (0-100), และแนะนำวิธีรับมือ (Mitigation steps) แบบอัตโนมัติ
-- 🕒 **Interactive Time Range:** กรองและดูบันทึกตามช่วงเวลาปัจจุบัน (1h, 6h, 24h, All Time) ได้แบบ Real-time
+- 🕒 **Interactive Time Range:** กรองและดูบันทึกตามช่วงเวลา (1h, 6h, 24h, 1m, 3m, 6m, 1y, All Time) แบบ Real-time พร้อมแสดง วันที่และเวลา (Date & Time) อย่างชัดเจน
 - 🔒 **Role-based Authentication:** รักษาความปลอดภัยในการเข้าถึงแดชบอร์ด โดยแบ่งสิทธิ์การมองเห็นระหว่าง `admin` และ `guest` อย่างชัดเจน
 
 ---
@@ -26,7 +26,7 @@
 - `backend/` - **NestJS 10 (TypeScript)**: เป็น API server, WebSocket gateway, และตัวประมวลผล Log อัตโนมัติ ที่เสริมความฉลาดด้วยตรรกะแบบ Security Operations Center (SOC)
 - `nginx/` - **Nginx 1.25**: Reverse proxy ทำหน้าที่จัดการ Routing และรองรับ SSL (HTTPS)
 - `cowrie-config/` - **Cowrie**: การตั้งค่าและที่เก็บไฟล์ Log สำหรับ SSH/Telnet honeypot
-- `webtrap/` - **WebTrap**: ระบบดักจับการโจมตีทางเว็บไซต์ (SQL Injection, Path Traversal) สำหรับการประเมินภัยคุกคามทางเว็บ (ทำงานคู่กับ Proxy)
+- `webtrap/` - **WebTrap**: ระบบดักจับการโจมตีทางเว็บไซต์ (SQL Injection, Path Traversal) รองรับทั้ง **HTTP (8080)** และ **HTTPS (8443)** (ทำงานคู่กับ Proxy)
 
 ---
 
@@ -80,11 +80,16 @@
    ssh root@localhost -p 2222
    ```
 3. พิมพ์รหัสผ่านอะไรลงไปก็ได้มั่วๆ
-4. ลองตรวจสอบการโจมตีเว็บ (SQLi) โดยส่งคำสั่ง:
+4. ลองตรวจสอบการโจมตีเว็บ (SQLi) โดยส่งคำสั่งผ่าน HTTP หรือ HTTPS:
    ```bash
+   # ผ่าน HTTP
    curl "http://localhost:8080/login?user=admin' OR 1=1--"
+   
+   # ผ่าน HTTPS
+   curl.exe -k "https://localhost:8443/login?username=admin%27%20OR%201=1--"
    ```
-5. ดูที่แดชบอร์ดของคุณ—การแจ้งเตือนการโจมตีและตารางวิเคราะห์จะเด้งขึ้นมาแบบ Real-time ทันที!
+5. ศึกษาคู่มือการทดสอบเพิ่มเติมแบบครบทุกรูปแบบ (Testing Guide) ได้ที่หน้าต่างของ AI 
+6. ดูที่แดชบอร์ดของคุณ—การแจ้งเตือนการโจมตีและตารางวิเคราะห์จะเด้งขึ้นมาแบบ Real-time ทันที!
 
 ---
 

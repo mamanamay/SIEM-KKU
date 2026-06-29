@@ -367,7 +367,7 @@
       <table class="log-table">
         <thead>
           <tr>
-            <th>เวลา</th>
+            <th>วันที่ & เวลา</th>
             <th>Source IP</th>
             <th>ประเภท</th>
             <th>Severity</th>
@@ -377,7 +377,9 @@
           {#each filteredEvents.slice(0, 6) as event}
           <tr>
             <td class="ip-mono">{event.time || event.timeStr}</td>
-            <td class="ip-mono">{event.ip}</td>
+            <td class="ip-mono">
+              <a href="/dashboard/logs?ip={event.ip}" class="ip-link" on:click|stopPropagation title="ดูรายละเอียด IP นี้">{event.ip}</a>
+            </td>
             <td><span class="type-badge">{event.type}</span></td>
             <td><span class="sev {event.severity}">{event.severity}</span></td>
           </tr>
@@ -560,8 +562,8 @@
 .type-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 11px; background: var(--bg-secondary); color: var(--text-secondary); }
 .ip-mono { font-family: 'Courier New', monospace; font-size: 11.5px; color: var(--text-secondary); }
 
-.empty-state { text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 12px; }
-.empty-state .ti { font-size: 28px; display: block; margin-bottom: 8px; }
+.empty-state { text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 13px; }
+.empty-state i { font-size: 24px; margin-bottom: 5px; display: block; }
 
 /* Custom Legend */
 .custom-legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
@@ -657,4 +659,7 @@
   .filter-search { width: 140px; }
   .map-container { height: 250px; }
 }
+
+.ip-link { color: var(--blue); text-decoration: none; font-weight: 500; cursor: pointer; transition: color 0.15s; }
+.ip-link:hover { color: #0f46a6; text-decoration: underline; }
 </style>

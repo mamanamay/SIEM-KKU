@@ -22,7 +22,8 @@ export const faculties = [
   { code: 'Px', name: 'คณะเภสัชศาสตร์' },
   { code: 'SC', name: 'คณะวิทยาศาสตร์' },
   { code: 'TE', name: 'คณะเทคโนโลยี' },
-  { code: 'VET', name: 'คณะสัตวแพทยศาสตร์' }
+  { code: 'VET', name: 'คณะสัตวแพทยศาสตร์' },
+  { code: 'ODT', name: 'ODT-สำนักงานเทคโนโลยีดิจิทัล' }
 ];
 
 // Helper to determine if an IP is "internal" (mock logic for demo)
@@ -32,15 +33,13 @@ export function isInternalIP(ip: string): boolean {
   return ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.16.') || ip === '127.0.0.1' || ip === '::1';
 }
 
-// Simple deterministic hash to map an IP to a faculty (DISABLED AS REQUESTED: "เว้นว่างไว้ก่อน")
+// Simple deterministic hash to map an IP to a faculty
 export function getFacultyForIP(ip: string) {
-  // if (!isInternalIP(ip)) return null;
-  // let hash = 0;
-  // for (let i = 0; i < ip.length; i++) {
-  //   hash = ip.charCodeAt(i) + ((hash << 5) - hash);
-  // }
-  // const index = Math.abs(hash) % faculties.length;
-  // return faculties[index];
+  if (!isInternalIP(ip)) return null;
   
-  return null; // Return null so the Faculty column is left blank for now
+  if (ip.startsWith('10.52.') || ip.startsWith('10.101.')) {
+    return { code: 'ODT', name: 'ODT-สำนักงานเทคโนโลยีดิจิทัล' };
+  }
+  
+  return null; // Return null so the Faculty column is left blank for other IPs
 }

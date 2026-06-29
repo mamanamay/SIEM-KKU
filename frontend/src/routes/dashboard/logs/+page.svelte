@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { page } from '$app/stores';
   import { eventsStore, roleStore } from '../../../stores/events';
   
   $: events = $eventsStore;
   
-  let searchText = '';
+  let searchText = $page.url.searchParams.get('ip') || '';
   let activeSev = 'all';
   let activeStatus = 'all';
   
@@ -101,7 +102,7 @@
         <thead>
           <tr>
             <th style="width: 30px"></th>
-            <th>Time</th>
+            <th>วันที่ & เวลา</th>
             <th>Source IP</th>
             <th>Attack Type</th>
             <th>Severity</th>
@@ -407,12 +408,12 @@
 /* Kill Chain Timeline */
 .killchain-panel { margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border); }
 .kc-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-.kc-timeline { display: flex; flex-direction: column; gap: 0; padding-left: 60px; position: relative; }
-.kc-timeline::before { content: ''; position: absolute; left: 66px; top: 10px; bottom: 10px; width: 2px; background: var(--border); }
+.kc-timeline { display: flex; flex-direction: column; gap: 0; padding-left: 140px; position: relative; }
+.kc-timeline::before { content: ''; position: absolute; left: 146px; top: 10px; bottom: 10px; width: 2px; background: var(--border); }
 .kc-item { display: flex; gap: 15px; position: relative; padding: 10px 0; opacity: 0.7; transition: opacity 0.2s; }
 .kc-item:hover, .kc-item.active { opacity: 1; }
 .kc-item.active .kc-content { background: var(--bg-secondary); border-radius: 6px; padding: 6px 10px; margin: -6px -10px; }
-.kc-time { position: absolute; left: -60px; top: 12px; font-size: 11px; font-family: 'Courier New', monospace; color: var(--text-muted); }
+.kc-time { position: absolute; left: -140px; top: 12px; font-size: 11px; font-family: 'Courier New', monospace; color: var(--text-muted); width: 130px; text-align: right; }
 .kc-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); margin-top: 13px; z-index: 1; position: relative; border: 2px solid var(--bg-panel); }
 .kc-dot.critical { background: var(--red); }
 .kc-dot.high { background: var(--orange); }

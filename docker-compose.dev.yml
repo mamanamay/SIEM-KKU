@@ -97,10 +97,12 @@ services:
     restart: always
     ports:
       - "8081:8080"
+      - "8444:8443"
     volumes:
       - ./webtrap:/app
       - /app/node_modules
       - ./webtrap-logs:/logs
+      - ./nginx/certs:/certs:ro
 
 volumes:
   pgdata_dev:

@@ -85,6 +85,21 @@ app.all('*', (req, res) => {
     `);
 });
 
+const https = require('https');
+
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 WebTrap Honeypot listening on port ${PORT}`);
+    console.log(`🚀 WebTrap Honeypot listening on port ${PORT} (HTTP)`);
 });
+
+try {
+    const options = {
+        key: fs.readFileSync('/certs/key.pem'),
+        cert: fs.readFileSync('/certs/cert.pem')
+    };
+    const HTTPS_PORT = 8443;
+    https.createServer(options, app).listen(HTTPS_PORT, '0.0.0.0', () => {
+        console.log(`🚀 WebTrap Honeypot listening on port ${HTTPS_PORT} (HTTPS)`);
+    });
+} catch (err) {
+    console.error('⚠️ Could not start HTTPS server, certs not found:', err.message);
+}
