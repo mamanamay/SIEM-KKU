@@ -9,6 +9,7 @@ import * as readline from 'readline';
 @Injectable()
 export class LogService implements OnModuleInit {
   private logFilePath = '/app/logs/cowrie.json';
+  private webtrapFilePath = '/app/webtrap-logs/webtrap.json';
   private ipStats = new Map<string, { count: number, lastTime: number }>();
   
   // Real IP Workaround caches (Time-based correlation)
@@ -23,6 +24,7 @@ export class LogService implements OnModuleInit {
 
   onModuleInit() {
     this.watchLogFile();
+    this.watchWebTrapLogFile();
   }
 
   registerIpMap(ip: string) {
@@ -59,6 +61,36 @@ export class LogService implements OnModuleInit {
         });
       } else if (curr.size < lastSize) {
         // File truncated/rotated
+        lastSize = curr.size;
+      }
+    });
+  }
+
+  private watchWebTrapLogFile() {
+    if (!fs.existsSync(this.webtrapFilePath)) {
+      console.warn(`[!] Log file not found at ${this.webtrapFilePath}. WebTrap might not have started yet.`);
+      setTimeout(() => this.watchWebTrapLogFile(), 5000);
+      return;
+    }
+
+    console.log(`[+] Started watching ${this.webtrapFilePath}`);
+    let lastSize = fs.statSync(this.webtrapFilePath).size;
+
+    fs.watchFile(this.webtrapFilePath, { interval: 1000 }, (curr, prev) => {
+      if (curr.size > lastSize) {
+        const stream = fs.createReadStream(this.webtrapFilePath, {
+          encoding: 'utf-8',
+          start: lastSize,
+          end: curr.size
+        });
+        
+        lastSize = curr.size;
+        const rl = readline.createInterface({ input: stream });
+        
+        rl.on('line', (line) => {
+          this.processWebTrapLine(line);
+        });
+      } else if (curr.size < lastSize) {
         lastSize = curr.size;
       }
     });
@@ -197,12 +229,111 @@ export class LogService implements OnModuleInit {
           mitreCode: payload.mitreCode,
           threatScore: payload.threatScore,
           sessionId: payload.sessionId
-        }).then(() => {
-          this.eventsGateway.broadcastAttack(payload);
+        }).then((saved) => {
+          this.eventsGateway.broadcastAttack(saved);
         }).catch(err => {
           console.error('[!] Failed to save attack to DB', err);
         });
       }
+    } catch (e) {
+      // JSON parse error
+    }
+  }
+
+  private processWebTrapLine(line: string) {
+    try {
+      const data = JSON.parse(line);
+      let src_ip = data.src_ip;
+      if (!src_ip) return;
+
+      const timestamp = data.timestamp;
+      const attackTime = new Date(timestamp).getTime();
+
+      // Real IP Workaround for WebTrap (Time-based Correlation)
+      let bestMatch = null;
+      let minDiff = 3000; // Look within 3 seconds
+      let bestIndex = -1;
+      
+      for (let i = 0; i < this.recentConnections.length; i++) {
+        const diff = Math.abs(this.recentConnections[i].time - attackTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          bestMatch = this.recentConnections[i].ip;
+          bestIndex = i;
+        }
+      }
+
+      if (bestMatch) {
+        src_ip = bestMatch;
+        this.recentConnections.splice(bestIndex, 1);
+      }
+
+      const date = new Date(timestamp);
+      const timeStr = date.toLocaleTimeString('en-US', { 
+        timeZone: 'Asia/Bangkok', 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      });
+
+      let country = 'United States';
+      if (src_ip.startsWith('185.')) country = 'Russia';
+      else if (src_ip.startsWith('91.')) country = 'China';
+      else if (src_ip.startsWith('194.')) country = 'Brazil';
+      else if (src_ip.startsWith('172.') || src_ip.startsWith('192.') || src_ip.startsWith('10.') || src_ip === '::1' || src_ip === '127.0.0.1') country = 'Local Network';
+
+      let mitreCode = 'T1190';
+      let threatScore = 50;
+
+      if (data.type === 'SQL Inject') {
+        mitreCode = 'T1190';
+        threatScore = 95;
+      } else if (data.type === 'Path Traversal') {
+        mitreCode = 'T1190';
+        threatScore = 80;
+      } else if (data.type === 'XSS Attempt') {
+        mitreCode = 'T1189';
+        threatScore = 75;
+      } else if (data.type === 'Web Scan') {
+        mitreCode = 'T1595';
+        threatScore = 40;
+      }
+
+      const payload = {
+        time: timeStr,
+        ip: src_ip,
+        type: data.type,
+        severity: data.severity,
+        detail: data.detail,
+        mitigation: 'Block IP (WAF)',
+        country: country,
+        clientVersion: data.user_agent || 'Unknown Browser',
+        mitreCode: mitreCode,
+        threatScore: threatScore,
+        sessionId: 'webtrap-' + Date.now()
+      };
+
+      console.log(`[WebTrap Attack] ${payload.type} from ${payload.ip} (${country})`);
+      
+      this.attackRepository.save({
+        timeStr: payload.time,
+        ip: payload.ip,
+        type: payload.type,
+        severity: payload.severity,
+        detail: payload.detail,
+        mitigation: payload.mitigation,
+        country: payload.country,
+        clientVersion: payload.clientVersion,
+        mitreCode: payload.mitreCode,
+        threatScore: payload.threatScore,
+        sessionId: payload.sessionId
+      }).then((saved) => {
+        this.eventsGateway.broadcastAttack(saved);
+      }).catch(err => {
+        console.error('[!] Failed to save webtrap attack to DB', err);
+      });
+
     } catch (e) {
       // JSON parse error
     }

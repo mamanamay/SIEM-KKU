@@ -28,7 +28,7 @@
       <div class="setting-item">
         <div class="setting-icon"><i class="ti ti-shield"></i></div>
         <div class="setting-info">
-          <div class="setting-name">Cowrie Honeypot</div>
+          <div class="setting-name">SSH Honeypot (Cowrie)</div>
           <div class="setting-desc">Port 2222 listening for SSH Brute Force</div>
         </div>
         <div class="setting-status">

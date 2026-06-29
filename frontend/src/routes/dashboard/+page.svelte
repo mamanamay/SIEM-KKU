@@ -2,10 +2,14 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { eventsStore, roleStore } from '../../stores/events';
+  import { getFacultyForIP } from '../../stores/faculties';
   
-  // Chart State
+  // Chart & Map State
   let attackChart: any;
   let timelineChart: any;
+  let map: any;
+  let L: any;
+  let mapLoaded = false;
   let chartLoaded = false;
   let attackStats: any[] = [];
   
@@ -34,6 +38,24 @@
       .slice(0, 5)
       .map(([country, count]) => ({ country, count }));
   })();
+
+  // Internal Faculty Threat mapping
+  $: topFaculties = (() => {
+    const counts: Record<string, {name: string, count: number}> = {};
+    events.forEach(e => {
+      const fac = getFacultyForIP(e.ip);
+      if (fac) {
+        if (!counts[fac.code]) {
+          counts[fac.code] = { name: fac.name, count: 0 };
+        }
+        counts[fac.code].count++;
+      }
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 5)
+      .map(([code, data]) => ({ code, name: data.name, count: data.count }));
+  })();
   function getCountryColor(name: string) {
     if (name === 'China') return '#a32d2d';
     if (name === 'Russia') return '#854f0b';
@@ -50,7 +72,27 @@
     if (type === 'Command Execution') return '#8e44ad'; // Purple
     if (type === 'System Compromised') return '#c0392b'; // Dark Red
     if (type === 'Port Scan') return '#854f0b'; // Brown
+    if (type === 'SQL Inject' || type === 'Path Traversal' || type === 'XSS' || type === 'Web Scan') return '#1d9e75'; // Web attacks green
     return '#185fa5'; // Blue default
+  }
+
+  function getCoords(country: string) {
+    // Map country name to approximate percentage (x,y) on a standard Robinson/Equirectangular world map
+    const coords: Record<string, {x:number, y:number}> = {
+      'United States': {x: 22, y: 35},
+      'USA': {x: 22, y: 35},
+      'China': {x: 75, y: 35},
+      'Russia': {x: 70, y: 20},
+      'Germany': {x: 52, y: 28},
+      'Brazil': {x: 32, y: 65},
+      'Local Network': {x: 50, y: 50}, // Center for local
+      'Thailand': {x: 77, y: 48},
+      'India': {x: 71, y: 45},
+      'United Kingdom': {x: 48, y: 26},
+      'France': {x: 50, y: 30},
+      'Australia': {x: 85, y: 75}
+    };
+    return coords[country] || {x: 50, y: 50}; // Default center
   }
 
   function navigateTo(path: string) {
@@ -58,6 +100,7 @@
   }
 
   onMount(() => {
+    // Load Chart.js
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
     script.onload = () => {
@@ -67,13 +110,46 @@
     };
     document.head.appendChild(script);
 
+    // Load Leaflet CSS
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+
+    // Load Leaflet JS
+    const lscript = document.createElement('script');
+    lscript.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    lscript.onload = () => {
+      // @ts-ignore
+      L = window.L;
+      mapLoaded = true;
+      initMap();
+    };
+    document.head.appendChild(lscript);
+
     return () => {
       if (attackChart) attackChart.destroy();
       if (timelineChart) timelineChart.destroy();
+      if (map) map.remove();
     };
   });
 
   $: if (chartLoaded && events.length >= 0) { updateChart(); }
+  $: if (mapLoaded && events.length >= 0) { updateMap(); }
+
+  // Map coordinates (approximate lat/lng)
+  function getLatLng(country: string): [number, number] {
+    const coords: Record<string, [number, number]> = {
+      'United States': [38.0, -97.0], 'USA': [38.0, -97.0],
+      'China': [35.8, 104.1], 'Russia': [61.5, 105.3],
+      'Germany': [51.1, 10.4], 'Brazil': [-14.2, -51.9],
+      'Local Network': [13.7, 100.5], // Bangkok as local center
+      'Thailand': [15.8, 100.9], 'India': [20.5, 78.9],
+      'United Kingdom': [55.3, -3.4], 'France': [46.2, 2.2],
+      'Australia': [-25.2, 133.7]
+    };
+    return coords[country] || [13.7, 100.5];
+  }
 
   function initChart() {
     if (document.getElementById('attackChart')) {
@@ -170,6 +246,58 @@
     }
   }
 
+  let markers: any[] = [];
+  function initMap() {
+    if (!document.getElementById('threat-map') || !L) return;
+    map = L.map('threat-map', {
+      center: [20, 0],
+      zoom: 2,
+      zoomControl: false,
+      attributionControl: false
+    });
+    
+    // Enterprise Dark Theme map tiles (CartoDB Dark Matter)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    updateMap();
+  }
+
+  function updateMap() {
+    if (!map || !L) return;
+    // Clear old markers
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+
+    events.slice(0, 50).forEach(e => {
+      let latlng = getLatLng(e.country || 'Local Network');
+      // Add slight random jitter to prevent overlapping
+      let lat = latlng[0] + (Math.random() - 0.5) * 2;
+      let lng = latlng[1] + (Math.random() - 0.5) * 2;
+      
+      let color = getTypeColor(e.type || '');
+      
+      const iconHtml = `
+        <div style="position:relative; width: 12px; height: 12px;">
+          <div style="position:absolute; width: 12px; height: 12px; background: ${color}; border-radius: 50%; z-index: 2;"></div>
+          <div style="position:absolute; top: -6px; left: -6px; width: 24px; height: 24px; border: 2px solid ${color}; border-radius: 50%; animation: radarPulse 2s infinite; opacity: 0;"></div>
+        </div>
+      `;
+
+      const customIcon = L.divIcon({
+        className: 'custom-map-icon',
+        html: iconHtml,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6]
+      });
+
+      let marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
+      marker.bindTooltip(`<b>${e.ip}</b><br>${e.type || 'Unknown'}`, { direction: 'top', offset: [0, -10] });
+      markers.push(marker);
+    });
+  }
+
   function setFilter(sev: string) { activeSev = sev; }
 </script>
 
@@ -214,6 +342,17 @@
         <i class="ti ti-search"></i>
         <input type="text" class="filter-search" bind:value={searchText} placeholder="ค้นหา IP, ประเภท...">
       </div>
+    </div>
+  </div>
+
+  <!-- Threat Map -->
+  <div class="panel map-panel">
+    <div class="panel-title">
+      <span><i class="ti ti-map-pin"></i> Live Threat Map</span>
+      <span class="live-badge"><span class="pulse-dot"></span> LIVE</span>
+    </div>
+    <div class="map-container" id="threat-map">
+      <!-- Leaflet map will render here -->
     </div>
   </div>
 
@@ -271,6 +410,28 @@
         {/each}
         {#if topCountries.length === 0}
           <div class="empty-state" style="padding: 1rem 0;">ไม่มีข้อมูลประเทศจากการโจมตี</div>
+        {/if}
+      </div>
+    </div>
+
+    <!-- Top Internal Faculties -->
+    <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="คลิกเพื่อไปยังหน้า Analytics">
+      <div class="panel-title">
+        <span><i class="ti ti-building"></i> Internal Threats (Faculty)</span>
+      </div>
+      <div class="country-bars">
+        {#each topFaculties as item}
+          {@const maxVal = topFaculties[0]?.count || 1}
+          <div class="c-row">
+            <div class="c-label" style="width: 50px;" title="{item.name}">{item.code}</div>
+            <div class="c-bar-bg">
+              <div class="c-bar-fill" style="width: {Math.max((item.count / maxVal) * 100, 2)}%; background: var(--orange)"></div>
+            </div>
+            <div class="c-val">{item.count.toLocaleString()}</div>
+          </div>
+        {/each}
+        {#if topFaculties.length === 0}
+          <div class="empty-state" style="padding: 1rem 0;">ไม่พบการโจมตีจากภายใน</div>
         {/if}
       </div>
     </div>
@@ -357,7 +518,7 @@
 .search-wrap .ti { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
 
 /* Panels */
-.grid3 { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 10px; }
+.grid3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
 .grid3-timeline { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 10px; }
 .panel {
   background: var(--bg-panel); border: 1px solid var(--border);
@@ -409,9 +570,91 @@
 .leg-box { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 .leg-count { font-weight: 700; color: var(--text-primary); margin-left: 2px; }
 
+/* Threat Map */
+.map-panel {
+  margin-bottom: 10px;
+}
+.map-container {
+  position: relative;
+  width: 100%;
+  height: 400px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.map-bg {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><path fill="%23d1d5db" d="M150,150 Q200,100 250,150 T350,150" opacity="0.3"/><circle cx="220" cy="175" r="5" fill="%239ca3af"/><circle cx="500" cy="250" r="5" fill="%239ca3af"/><circle cx="750" cy="175" r="5" fill="%239ca3af"/><circle cx="700" cy="100" r="5" fill="%239ca3af"/><circle cx="520" cy="140" r="5" fill="%239ca3af"/><circle cx="320" cy="325" r="5" fill="%239ca3af"/><circle cx="850" cy="375" r="5" fill="%239ca3af"/><circle cx="480" cy="130" r="5" fill="%239ca3af"/><circle cx="770" cy="240" r="5" fill="%239ca3af"/><circle cx="710" cy="225" r="5" fill="%239ca3af"/></svg>');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.6;
+}
+:global(body[data-theme='dark']) .map-bg { opacity: 0.2; }
+
+.map-pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+.pin-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  position: relative;
+  z-index: 2;
+}
+.pin-ring {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 24px; height: 24px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid;
+  animation: radarPulse 2s infinite ease-out;
+  opacity: 0;
+}
+.pin-label {
+  position: absolute;
+  top: 12px; left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--text-primary);
+  background: var(--bg-panel);
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.map-pin:hover .pin-label { opacity: 1; }
+
+@keyframes radarPulse {
+  0% { transform: translate(-50%, -50%) scale(0.1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+}
+
+.live-badge {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(29,158,117,0.1); color: var(--green);
+  padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.pulse-dot {
+  width: 6px; height: 6px; background: var(--green); border-radius: 50%;
+  animation: pulseDot 1.5s infinite;
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
 @media (max-width: 900px) {
   .grid3, .grid3-timeline { grid-template-columns: 1fr; }
   .metrics { grid-template-columns: repeat(2,1fr); }
   .filter-search { width: 140px; }
+  .map-container { height: 250px; }
 }
 </style>

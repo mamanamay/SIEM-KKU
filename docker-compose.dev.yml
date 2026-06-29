@@ -48,6 +48,7 @@ services:
       - ./backend:/app
       - /app/node_modules
       - ./cowrie-config/var/log/cowrie:/app/logs:ro
+      - ./webtrap-logs:/app/webtrap-logs:ro
     depends_on:
       - postgres
       - redis
@@ -87,6 +88,19 @@ services:
     environment:
       - COWRIE_TELNET_ENABLED=yes
 
+  # WebTrap (Web Vulnerability Honeypot)
+  webtrap:
+    build:
+      context: ./webtrap
+      dockerfile: Dockerfile
+    container_name: webtrap_honeypot_dev
+    restart: always
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./webtrap:/app
+      - /app/node_modules
+      - ./webtrap-logs:/logs
 
 volumes:
   pgdata_dev:

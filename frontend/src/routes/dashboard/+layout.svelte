@@ -27,6 +27,29 @@
       String(now.getSeconds()).padStart(2, '0');
   }
 
+  function getPageTitle(path: string) {
+    const titles: Record<string, string> = {
+      '/dashboard': 'Overview Dashboard',
+      '/dashboard/alert': 'Alerts & SOAR',
+      '/dashboard/investigate': 'Threat Investigation',
+      '/dashboard/traffic': 'Network Traffic',
+      '/dashboard/mitre': 'MITRE ATT&CK Matrix',
+      '/dashboard/blocked_ip_audit': 'Blocked IP Audit',
+      '/dashboard/ioc': 'Indicators of Compromise (IOC)',
+      '/dashboard/threat': 'Threat Intelligence',
+      '/dashboard/wazuh': 'Endpoint Security (Wazuh)',
+      '/dashboard/ai_monitor': 'AI Threat Monitor',
+      '/dashboard/malware': 'Malware Analysis',
+      '/dashboard/ddos': 'DDoS Protection',
+      '/dashboard/cis': 'CIS Compliance Audit',
+      '/dashboard/pdpa': 'PDPA Audit',
+      '/dashboard/remoteaccess': 'Remote Access Log',
+      '/dashboard/analytics': 'Attacker Analytics',
+      '/dashboard/settings': 'System Settings'
+    };
+    return titles[path] || 'Command Center';
+  }
+
   function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('role');
@@ -46,15 +69,66 @@
       <div class="sidebar-logo">
         <i class="ti ti-radar"></i>
       </div>
-      <div class="sidebar-title">Cowrie<br><span style="color:var(--text-muted);font-weight:400;font-size:11px">Honeypot System</span></div>
+      <div class="sidebar-title">KKUSIEM<br><span style="color:var(--text-muted);font-weight:400;font-size:11px">(demo)</span></div>
     </div>
-    <nav class="sidebar-nav">
+    <nav class="sidebar-nav custom-scrollbar" style="overflow-y: auto;">
+      <div class="nav-group-title">OVERVIEW</div>
       <a href="/dashboard" class="nav-item {$page.url.pathname === '/dashboard' ? 'active' : ''}">
-        <i class="ti ti-dashboard"></i> Overview
+        <i class="ti ti-dashboard"></i> Dashboard
+      </a>
+
+      <div class="nav-group-title mt-2">DETECTION & ANALYSIS</div>
+      <a href="/dashboard/alert" class="nav-item {$page.url.pathname === '/dashboard/alert' ? 'active' : ''}">
+        <i class="ti ti-bell-ringing"></i> Alerts
       </a>
       <a href="/dashboard/logs" class="nav-item {$page.url.pathname === '/dashboard/logs' ? 'active' : ''}">
-        <i class="ti ti-list-search"></i> Threat Logs
+        <i class="ti ti-list-search"></i> Investigate Logs
       </a>
+      <a href="/dashboard/faculty" class="nav-item {$page.url.pathname === '/dashboard/faculty' ? 'active' : ''}">
+        <i class="ti ti-building"></i> Faculty Monitor
+      </a>
+      <a href="/dashboard/traffic" class="nav-item {$page.url.pathname === '/dashboard/traffic' ? 'active' : ''}">
+        <i class="ti ti-activity"></i> Network Traffic
+      </a>
+      <a href="/dashboard/mitre" class="nav-item {$page.url.pathname === '/dashboard/mitre' ? 'active' : ''}">
+        <i class="ti ti-grid-dots"></i> MITRE ATT&CK
+      </a>
+
+      <div class="nav-group-title mt-2">RESPONSE & INTEL</div>
+      <a href="/dashboard/blocked_ip_audit" class="nav-item {$page.url.pathname === '/dashboard/blocked_ip_audit' ? 'active' : ''}">
+        <i class="ti ti-shield-x"></i> Blocked IP Audit
+      </a>
+      <a href="/dashboard/ioc" class="nav-item {$page.url.pathname === '/dashboard/ioc' ? 'active' : ''}">
+        <i class="ti ti-target"></i> Indicators (IOC)
+      </a>
+      <a href="/dashboard/threat" class="nav-item {$page.url.pathname === '/dashboard/threat' ? 'active' : ''}">
+        <i class="ti ti-virus"></i> Threat Intel
+      </a>
+
+      <div class="nav-group-title mt-2">INTEGRATION & COMPLIANCE</div>
+      <a href="/dashboard/wazuh" class="nav-item {$page.url.pathname === '/dashboard/wazuh' ? 'active' : ''}">
+        <i class="ti ti-shield-check"></i> Endpoint (Wazuh)
+      </a>
+      <a href="/dashboard/ai_monitor" class="nav-item {$page.url.pathname === '/dashboard/ai_monitor' ? 'active' : ''}">
+        <i class="ti ti-brain"></i> AI Monitor
+      </a>
+      <a href="/dashboard/malware" class="nav-item {$page.url.pathname === '/dashboard/malware' ? 'active' : ''}">
+        <i class="ti ti-bug"></i> Malware Analysis
+      </a>
+      <a href="/dashboard/ddos" class="nav-item {$page.url.pathname === '/dashboard/ddos' ? 'active' : ''}">
+        <i class="ti ti-shield-half"></i> DDoS Protection
+      </a>
+      <a href="/dashboard/cis" class="nav-item {$page.url.pathname === '/dashboard/cis' ? 'active' : ''}">
+        <i class="ti ti-clipboard-list"></i> CIS Audit
+      </a>
+      <a href="/dashboard/pdpa" class="nav-item {$page.url.pathname === '/dashboard/pdpa' ? 'active' : ''}">
+        <i class="ti ti-file-check"></i> PDPA Audit
+      </a>
+      <a href="/dashboard/remoteaccess" class="nav-item {$page.url.pathname === '/dashboard/remoteaccess' ? 'active' : ''}">
+        <i class="ti ti-devices-pc"></i> Remote Access
+      </a>
+
+      <div class="nav-group-title mt-2">SYSTEM</div>
       <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}">
         <i class="ti ti-chart-pie"></i> Analytics
       </a>
@@ -76,15 +150,7 @@
     <header class="topbar">
       <div class="topbar-left">
         <h1 class="page-title">
-          {#if $page.url.pathname === '/dashboard'}
-            Overview Dashboard
-          {:else if $page.url.pathname === '/dashboard/logs'}
-            Detailed Threat Logs
-          {:else if $page.url.pathname === '/dashboard/analytics'}
-            Attacker Analytics
-          {:else if $page.url.pathname === '/dashboard/settings'}
-            System Settings
-          {/if}
+          {getPageTitle($page.url.pathname)}
         </h1>
       </div>
       <div class="topbar-right">
@@ -185,6 +251,8 @@
 .nav-item i { font-size: 18px; }
 .nav-item:hover { background: var(--bg-secondary); color: var(--text-primary); }
 .nav-item.active { background: var(--green-bg); color: var(--green); }
+.nav-group-title { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; padding: 10px 14px 4px; letter-spacing: 0.5px; }
+.mt-2 { margin-top: 8px; }
 .sidebar-footer { padding: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
 .status-indicator { display: flex; align-items: center; gap: 6px; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
