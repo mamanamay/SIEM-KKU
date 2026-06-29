@@ -1,30 +1,32 @@
-# 🍯 Honeypot Dashboard
+# 🛡️ KKUSIEM (Demo) - Honeypot & SIEM Dashboard
 
-แดชบอร์ดแสดงผลแบบ Real-time ที่มีความทันสมัย สำหรับแสดงข้อมูลการโจมตีทางไซเบอร์ที่ดักจับได้จาก **Cowrie honeypot** ถูกสร้างขึ้นด้วยสถาปัตยกรรมแบบ Full-stack ที่ออกแบบมาเพื่อความรวดเร็ว ความเสถียร และความปลอดภัย
+แดชบอร์ดแสดงผลแบบ Real-time ที่มีความทันสมัย สำหรับแสดงข้อมูลการโจมตีทางไซเบอร์ที่ดักจับได้จาก **Cowrie honeypot** ถูกสร้างขึ้นด้วยสถาปัตยกรรมแบบ Full-stack ที่ออกแบบมาเพื่อความรวดเร็ว ความเสถียร และความปลอดภัย ธีมและโครงสร้าง UI ได้รับแรงบันดาลใจจากระบบ Enterprise Firewall ชั้นนำ (FortiGate Light Theme)
 
 ![Honeypot Concept](https://img.shields.io/badge/Security-Honeypot-red.svg) ![SvelteKit](https://img.shields.io/badge/SvelteKit-2-ff3e00.svg) ![NestJS](https://img.shields.io/badge/NestJS-10-ea2845.svg) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)
 
 ## 📌 ภาพรวม (Overview)
 
-โปรเจกต์นี้จัดทำขึ้นเพื่อเป็น Proof of Concept (PoC) สำหรับระบบตรวจสอบ Honeypot ระดับองค์กร (Enterprise) เมื่อแฮกเกอร์พยายามเจาะเข้ามาทางพอร์ต SSH/Telnet ตัว Cowrie honeypot จะดักจับและบันทึกพฤติกรรมที่เป็นอันตรายเหล่านั้นเอาไว้
+โปรเจกต์นี้จัดทำขึ้นเพื่อเป็น Proof of Concept (PoC) สำหรับระบบตรวจสอบ Honeypot และ SIEM ระดับองค์กร (Enterprise) เมื่อแฮกเกอร์พยายามเจาะเข้ามาทางพอร์ต SSH/Telnet ตัว Cowrie honeypot จะดักจับและบันทึกพฤติกรรมที่เป็นอันตรายเหล่านั้นเอาไว้
 
-แทนที่จะต้องพึ่งพาเครื่องมือจัดการ Log แบบเก่าที่หนักเครื่อง ระบบของเราใช้ Engine ขนาดเล็กที่ประมวลผล Log เหล่านี้ในทันที และแสดงผลบนแดชบอร์ดดีไซน์พรีเมียมแบบ **Real-time**
+แทนที่จะต้องพึ่งพาเครื่องมือจัดการ Log แบบเก่าที่หนักเครื่อง ระบบของเราใช้ Engine ขนาดเล็กที่ประมวลผล Log เหล่านี้ในทันที และแสดงผลบนแดชบอร์ดดีไซน์พรีเมียมแบบ **Real-time** พร้อมจำลองระบบตรวจสอบผู้โจมตีภายใน (Faculty Monitor)
 
 **ฟีเจอร์เด่น (Key Features):**
 - ⚡ **Real-time Monitoring:** ดูการโจมตีสดๆ ผ่าน WebSockets
-- 🛡️ **Advanced SOC UI:** ตารางแสดงผลแบบกดขยายได้ (Expandable Rows) พร้อมการวิเคราะห์ระดับสูง เช่น รหัส MITRE ATT&CK, ธงชาติ (GeoIP), คะแนนความเสี่ยง Threat Score (0-100), และแนะนำวิธีรับมือ (Mitigation steps) แบบอัตโนมัติ
+- 🛡️ **Advanced SOC UI:** โครงสร้าง UI เต็มรูปแบบ 17 เมนูย่อย ครอบคลุมตั้งแต่งาน Detection & Analysis ไปจนถึง Compliance Audit
+- 🏢 **Faculty Monitor:** ระบบจำแนกการโจมตีจากภายในองค์กร โดยอิงตามวงแลน (Subnet) ของแต่ละคณะในมหาวิทยาลัย (Mockup)
+- 🔍 **In-depth Analysis:** ตารางแสดงผลที่วิเคราะห์ระดับสูง เช่น รหัส MITRE ATT&CK Framework, ธงชาติ (GeoIP), คะแนนความเสี่ยง Threat Score (0-100), และแนะนำวิธีรับมือ (Mitigation steps) แบบอัตโนมัติ
+- 🕒 **Interactive Time Range:** กรองและดูบันทึกตามช่วงเวลาปัจจุบัน (1h, 6h, 24h, All Time) ได้แบบ Real-time
 - 🔒 **Role-based Authentication:** รักษาความปลอดภัยในการเข้าถึงแดชบอร์ด โดยแบ่งสิทธิ์การมองเห็นระหว่าง `admin` และ `guest` อย่างชัดเจน
-- 📊 **Persistent Storage:** ข้อมูลการโจมตีทั้งหมดจะถูกเก็บไว้อย่างปลอดภัยในฐานข้อมูล PostgreSQL เพื่อการตรวจสอบย้อนหลัง
-- 🌐 **Secure by Default:** ระบบทำงานอยู่หลัง Nginx reverse proxy ซึ่งเปิดใช้งาน HTTPS ไว้เป็นค่าเริ่มต้น
 
 ---
 
 ## 🏗 โครงสร้างโปรเจกต์ (Project Structure)
 
-- `frontend/` - **SvelteKit 2 (TypeScript)**: ส่วนติดต่อผู้ใช้งาน (UI) มีเลย์เอาต์เมนูด้านข้าง (Sidebar) แบ่งเป็น 4 หน้าหลัก (Overview, Threat Logs, Analytics, Settings) ตกแต่งดีไซน์ด้วย Vanilla CSS พรีเมียมล้วนๆ ไม่พึ่งพาไลบรารีอื่น
+- `frontend/` - **SvelteKit 2 (TypeScript)**: ส่วนติดต่อผู้ใช้งาน (UI) ธีม Light (ขาวขุ่น) หรูหราและใช้งานง่ายด้วย Vanilla CSS ควบคุมการทำงานของหน้าย่อยต่างๆ เช่น Investigate Logs, Alert Log, MITRE ATT&CK, Wazuh Endpoint ฯลฯ
 - `backend/` - **NestJS 10 (TypeScript)**: เป็น API server, WebSocket gateway, และตัวประมวลผล Log อัตโนมัติ ที่เสริมความฉลาดด้วยตรรกะแบบ Security Operations Center (SOC)
 - `nginx/` - **Nginx 1.25**: Reverse proxy ทำหน้าที่จัดการ Routing และรองรับ SSL (HTTPS)
 - `cowrie-config/` - **Cowrie**: การตั้งค่าและที่เก็บไฟล์ Log สำหรับ SSH/Telnet honeypot
+- `webtrap/` - **WebTrap**: ระบบดักจับการโจมตีทางเว็บไซต์ (SQL Injection, Path Traversal) สำหรับการประเมินภัยคุกคามทางเว็บ (ทำงานคู่กับ Proxy)
 
 ---
 
@@ -78,7 +80,11 @@
    ssh root@localhost -p 2222
    ```
 3. พิมพ์รหัสผ่านอะไรลงไปก็ได้มั่วๆ
-4. ดูที่แดชบอร์ดของคุณ—การแจ้งเตือนการโจมตีและตารางวิเคราะห์จะเด้งขึ้นมาแบบ Real-time ทันที!
+4. ลองตรวจสอบการโจมตีเว็บ (SQLi) โดยส่งคำสั่ง:
+   ```bash
+   curl "http://localhost:8080/login?user=admin' OR 1=1--"
+   ```
+5. ดูที่แดชบอร์ดของคุณ—การแจ้งเตือนการโจมตีและตารางวิเคราะห์จะเด้งขึ้นมาแบบ Real-time ทันที!
 
 ---
 
