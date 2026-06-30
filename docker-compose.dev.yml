@@ -49,6 +49,7 @@ services:
       - /app/node_modules
       - ./cowrie-config/var/log/cowrie:/app/logs:ro
       - ./webtrap-logs:/app/webtrap-logs:ro
+      - ./siem-logs:/app/siem-logs        # Access Layer + C&C Outbound Logs (read-write: backend writes blocked_ips.json here)
     depends_on:
       - postgres
       - redis

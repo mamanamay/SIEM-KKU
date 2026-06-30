@@ -4,7 +4,6 @@ import { AuthController } from './auth.controller';
 import { AttacksController } from './attacks.controller';
 import { LogService } from './log.service';
 import { EventsGateway } from './events.gateway';
-import { SeedService } from './seed.service';
 import { User } from './entities/user.entity';
 import { Attack } from './entities/attack.entity';
 
@@ -19,6 +18,7 @@ import { Attack } from './entities/attack.entity';
     TypeOrmModule.forFeature([User, Attack])
   ],
   controllers: [AuthController, AttacksController],
-  providers: [LogService, EventsGateway, SeedService],
+  // SeedService removed — system now uses real logs from proxy.js + honeypots
+  providers: [LogService, EventsGateway],
 })
 export class AppModule {}

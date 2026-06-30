@@ -395,9 +395,9 @@
     </div>
 
     <!-- Top Source Countries -->
-    <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="คลิกเพื่อไปยังหน้า Analytics">
+    <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="คลิกเพื่อไปยังหน้า Analyst Center">
       <div class="panel-title">
-        <span><i class="ti ti-map-pin"></i> Top Source Countries</span>
+        <span><i class="ti ti-world"></i> Top Source Countries <span style="font-size:10px;font-weight:400;color:var(--blue);margin-left:8px">(Analyst)</span></span>
       </div>
       <div class="country-bars">
         {#each topCountries as item}
@@ -417,9 +417,9 @@
     </div>
 
     <!-- Top Internal Faculties -->
-    <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="คลิกเพื่อไปยังหน้า Analytics">
+    <div class="panel clickable" on:click={() => navigateTo('/dashboard/investigate')} title="คลิกเพื่อแกะรอยภัยคุกคาม (Investigate)">
       <div class="panel-title">
-        <span><i class="ti ti-building"></i> Internal Threats (Faculty)</span>
+        <span><i class="ti ti-building"></i> Internal Threats <span style="font-size:10px;font-weight:400;color:var(--orange);margin-left:8px">(คลิกเพื่อวิเคราะห์เชิงลึก)</span></span>
       </div>
       <div class="country-bars">
         {#each topFaculties as item}
@@ -448,8 +448,8 @@
       </div>
     </div>
 
-    <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="คลิกเพื่อไปยังหน้า Analytics">
-      <div class="panel-title"><span><i class="ti ti-chart-bar"></i> Attack Distribution by Type (24h)</span></div>
+    <div class="panel clickable" on:click={() => navigateTo('/dashboard/mitre')} title="คลิกเพื่อวิเคราะห์เทคนิคตาม MITRE ATT&CK">
+      <div class="panel-title"><span><i class="ti ti-grid-dots"></i> Attack Distribution (MITRE Map) <span style="font-size:10px;font-weight:400;color:var(--blue);margin-left:8px">(คลิกดู Matrix)</span></span></div>
       
       <div class="custom-legend top-legend">
         {#each attackStats as stat}

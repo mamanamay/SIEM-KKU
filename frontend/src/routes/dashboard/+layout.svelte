@@ -109,17 +109,17 @@
       </a>
 
       <div class="nav-group-title mt-2">DETECTION & ANALYSIS</div>
-      <a href="/dashboard/alert" class="nav-item {$page.url.pathname === '/dashboard/alert' ? 'active' : ''}">
-        <i class="ti ti-bell-ringing"></i> Alerts
+      <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}">
+        <i class="ti ti-chart-pie"></i> Analyst Center
       </a>
       <a href="/dashboard/logs" class="nav-item {$page.url.pathname === '/dashboard/logs' ? 'active' : ''}">
-        <i class="ti ti-list-search"></i> Investigate Logs
+        <i class="ti ti-list-search"></i> Security Logs
+      </a>
+      <a href="/dashboard/investigate" class="nav-item {$page.url.pathname === '/dashboard/investigate' ? 'active' : ''}">
+        <i class="ti ti-zoom-in"></i> Threat Investigate
       </a>
       <a href="/dashboard/faculty" class="nav-item {$page.url.pathname === '/dashboard/faculty' ? 'active' : ''}">
         <i class="ti ti-building"></i> Faculty Monitor
-      </a>
-      <a href="/dashboard/traffic" class="nav-item {$page.url.pathname === '/dashboard/traffic' ? 'active' : ''}">
-        <i class="ti ti-activity"></i> Network Traffic
       </a>
       <a href="/dashboard/mitre" class="nav-item {$page.url.pathname === '/dashboard/mitre' ? 'active' : ''}">
         <i class="ti ti-grid-dots"></i> MITRE ATT&CK
@@ -132,42 +132,8 @@
       <a href="/dashboard/ioc" class="nav-item {$page.url.pathname === '/dashboard/ioc' ? 'active' : ''}">
         <i class="ti ti-target"></i> Indicators (IOC)
       </a>
-      <a href="/dashboard/threat" class="nav-item {$page.url.pathname === '/dashboard/threat' ? 'active' : ''}">
-        <i class="ti ti-virus"></i> Threat Intel
-      </a>
       <a href="/dashboard/cve" class="nav-item {$page.url.pathname === '/dashboard/cve' ? 'active' : ''}">
         <i class="ti ti-database-search"></i> CVE Database
-      </a>
-
-      <div class="nav-group-title mt-2">INTEGRATION & COMPLIANCE</div>
-      <a href="/dashboard/wazuh" class="nav-item {$page.url.pathname === '/dashboard/wazuh' ? 'active' : ''}">
-        <i class="ti ti-shield-check"></i> Endpoint (Wazuh)
-      </a>
-      <a href="/dashboard/ai_monitor" class="nav-item {$page.url.pathname === '/dashboard/ai_monitor' ? 'active' : ''}">
-        <i class="ti ti-brain"></i> AI Monitor
-      </a>
-      <a href="/dashboard/malware" class="nav-item {$page.url.pathname === '/dashboard/malware' ? 'active' : ''}">
-        <i class="ti ti-bug"></i> Malware Analysis
-      </a>
-      <a href="/dashboard/ddos" class="nav-item {$page.url.pathname === '/dashboard/ddos' ? 'active' : ''}">
-        <i class="ti ti-shield-half"></i> DDoS Protection
-      </a>
-      <a href="/dashboard/cis" class="nav-item {$page.url.pathname === '/dashboard/cis' ? 'active' : ''}">
-        <i class="ti ti-clipboard-list"></i> CIS Audit
-      </a>
-      <a href="/dashboard/pdpa" class="nav-item {$page.url.pathname === '/dashboard/pdpa' ? 'active' : ''}">
-        <i class="ti ti-file-check"></i> PDPA Audit
-      </a>
-      <a href="/dashboard/remoteaccess" class="nav-item {$page.url.pathname === '/dashboard/remoteaccess' ? 'active' : ''}">
-        <i class="ti ti-devices-pc"></i> Remote Access
-      </a>
-
-      <div class="nav-group-title mt-2">SYSTEM</div>
-      <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}">
-        <i class="ti ti-chart-pie"></i> Analytics
-      </a>
-      <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}">
-        <i class="ti ti-settings"></i> Settings
       </a>
     </nav>
     <div class="sidebar-footer">
