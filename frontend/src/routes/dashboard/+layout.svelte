@@ -135,6 +135,9 @@
       <a href="/dashboard/threat" class="nav-item {$page.url.pathname === '/dashboard/threat' ? 'active' : ''}">
         <i class="ti ti-virus"></i> Threat Intel
       </a>
+      <a href="/dashboard/cve" class="nav-item {$page.url.pathname === '/dashboard/cve' ? 'active' : ''}">
+        <i class="ti ti-database-search"></i> CVE Database
+      </a>
 
       <div class="nav-group-title mt-2">INTEGRATION & COMPLIANCE</div>
       <a href="/dashboard/wazuh" class="nav-item {$page.url.pathname === '/dashboard/wazuh' ? 'active' : ''}">
