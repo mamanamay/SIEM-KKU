@@ -19,25 +19,30 @@
 - **Backend:** NestJS 10 + TypeScript + TypeORM
   - **ที่อยู่ (Path):** `backend/`
   - **ตรรกะหลัก (Core Logic):** 
-    - `log.service.ts`: อ่านไฟล์ `cowrie.json` (Tail) อย่างต่อเนื่องและจำลองข้อมูล WebTrap เมื่อมีการโจมตีจะแปลงข้อมูล (Enrichment) เช่น รหัส MITRE, Threat Score, สุ่มจำลอง IP ต้นทางเชื่อมโยงกับคณะต่างๆ (Faculty Mapping) ในมหาวิทยาลัย (เช่น คณะแพทยศาสตร์, วิศวกรรมศาสตร์)
+    - `log.service.ts`: อ่านไฟล์ Log จาก 3 แหล่ง (Access Layer, Server Honeypot, C&C Outbound) ทำการเชื่อมโยงข้อมูล (Time-Correlation) เพื่อหา IP ต้นทางที่แท้จริง แปลงข้อมูล (Enrichment) เช่น รหัส MITRE, Threat Score, สุ่มจำลอง IP ต้นทางเชื่อมโยงกับคณะต่างๆ (Faculty Mapping) ในมหาวิทยาลัย
     - `events.gateway.ts`: กระจายข้อมูลที่ประมวลผลแล้วไปยัง Frontend ผ่าน WebSockets (`socket.io`)
+    - `attacks.controller.ts`: จัดการ API สำหรับการดูข้อมูล และสั่ง Block/Unblock IP โดยบันทึกลงในไฟล์ `blocked_ips.json`
 - **Database & Cache:**
   - **PostgreSQL 16:** ฐานข้อมูลหลัก
   - **Redis 7:** Caching & WebSocket scaling
 - **Honeypot & Sensors:**
+  - **proxy.js**: สคริปต์ Node.js ที่จำลองการทำงานเป็น **Core Switch และ WAF/Firewall** ขวางอยู่หน้า Honeypot คอยรับส่งข้อมูล (Port 2222, 8080, 8443) บันทึก Log การเข้าถึง (`access_layer.log`) ดักจับและบันทึกการพยายามเชื่อมต่อออกภายนอก (`cnc_outbound.log`) และบังคับใช้กฎการ Block IP จาก `blocked_ips.json` แบบ Real-time
   - **Cowrie**: SSH/Telnet honeypot บันทึกพฤติกรรมในรูปแบบ JSON (`cowrie.json`)
-  - **WebTrap**: (จำลองเพิ่มเติม) สคริปต์ Node.js สำหรับดักจับ Web Attacks (SQLi, Path Traversal) รองรับทั้ง **HTTP (8080)** และ **HTTPS (8443)** ทำงานคู่กับ `proxy.js` เพื่อดักจับ Port Scan
+  - **WebTrap**: ระบบดักจับการโจมตีทางเว็บไซต์ (SQLi, Path Traversal) รองรับทั้ง **HTTP (8080)** และ **HTTPS (8443)** ทำงานอยู่หลัง `proxy.js`
 - **โครงสร้างพื้นฐาน (Infrastructure):** Nginx 1.25
   - **ที่อยู่ (Path):** `nginx/`
   - Reverse Proxy แยก `/api`, `/socket.io` ไปที่ Backend และ `/` ไป Frontend พร้อมทำ HTTPS (Self-signed)
 
 ## 🔄 วงจรการทำงาน (Core Workflow - The Attack Lifecycle)
 
-1. **การบุกรุก (Intrusion):** แฮกเกอร์เชื่อมต่อเข้ามาที่พอร์ต SSH (2222) หรือยิง SQLi ใส่ WebTrap (8080)
-2. **การบันทึก Log:** Cowrie หรือ WebTrap บันทึกพฤติกรรมลงในไฟล์ Log ท้องถิ่น
-3. **การตรวจจับและวิเคราะห์ (Detection & Enrichment):** `log.service.ts` อ่านบรรทัดใหม่ แปลง JSON เพิ่มข้อมูลจำลองรหัสคณะ (Faculty), รหัส MITRE ATT&CK, และคำนวณ Threat Score
-4. **การกระจายข้อมูล (Broadcast):** NestJS ยิง Event ผ่าน WebSocket ทันที พร้อมประทับ วันที่และเวลา (Date & Time) อย่างครบถ้วน
-5. **การแสดงผล (Visualization):** SvelteKit นำข้อมูลมาประมวลผลและกระจายไปยังตารางของแต่ละหน้า พร้อมรองรับการกรองเวลาแบบละเอียด (1h, 6h, 24h, 1m, 3m, 6m, 1y) และอัปเดต UI ทันทีโดยไม่ต้อง Refresh (รวมถึงระบบ Deep Linking จากแจ้งเตือน)
+1. **การบุกรุก (Intrusion):** แฮกเกอร์เชื่อมต่อเข้ามาที่พอร์ต SSH (2222) หรือยิง SQLi ใส่ WebTrap (8080) ผ่านทาง `proxy.js`
+2. **การบันทึก Log (3 แหล่ง):** 
+   - `proxy.js` บันทึกการเชื่อมต่อขาเข้าที่ชั้น Network (`access_layer.log`)
+   - Cowrie หรือ WebTrap บันทึกพฤติกรรมการโจมตีที่ชั้น Application (`cowrie.json`, `webtrap.json`)
+   - หากมีการโหลดมัลแวร์ออกไปข้างนอก `proxy.js` จะดักจับและบันทึก (`cnc_outbound.log`)
+3. **การเชื่อมโยงและวิเคราะห์ (Correlation & Enrichment):** `log.service.ts` อ่าน Log ทั้ง 3 แหล่ง นำมาเทียบเวลา (Time-Correlation) เพื่อสร้างสายการโจมตี (Attack Chain) ที่สมบูรณ์ เพิ่มข้อมูลรหัสคณะ (Faculty), รหัส MITRE ATT&CK, และคำนวณ Threat Score
+4. **การกระจายข้อมูล (Broadcast):** NestJS ยิง Event ผ่าน WebSocket ทันที
+5. **การแสดงผลและตอบสนอง (Visualization & Response):** SvelteKit นำข้อมูลมาประมวลผลบนหน้า `/dashboard/investigate` ผู้ใช้สามารถกดปุ่ม "Block IP" ซึ่งจะส่ง API ไปให้ Backend เขียน IP ลงไฟล์ `blocked_ips.json` จากนั้น `proxy.js` จะรับรู้และตัดการเชื่อมต่อ (TCP Drop) จาก IP นั้นในทุกช่องทางทันที
 
 ## 🛠 สิ่งที่พัฒนาต่อยอดได้ (Future Enhancements & Ideas)
 
@@ -45,4 +50,4 @@
   - นำข้อมูลจาก Wazuh Agent (FIM, SCA) มาใส่ในหน้า `/dashboard/wazuh`, `/dashboard/cis`, `/dashboard/pdpa`
   - นำ Syslog จาก FortiGate มาแสดงบน `/dashboard/traffic`, `/dashboard/blocked_ip_audit`
   - นำ AD/VPN Auth logs มาแสดงบน `/dashboard/remoteaccess`
-- **บล็อก IP อัตโนมัติ (Active Response):** พัฒนา Backend ให้สั่งบล็อก IP ที่ Firewall อัตโนมัติเมื่อ Threat Score สูงเกินกำหนด
+- **ระบบอัตโนมัติ (SOAR):** พัฒนา Backend ให้สั่งบล็อก IP อัตโนมัติเมื่อ Threat Score สูงเกินกำหนดโดยไม่ต้องรอให้แอดมินกดปุ่ม

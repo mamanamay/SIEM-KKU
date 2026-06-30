@@ -13,6 +13,8 @@
 **ฟีเจอร์เด่น (Key Features):**
 - ⚡ **Real-time Monitoring:** ดูการโจมตีสดๆ ผ่าน WebSockets
 - 🛡️ **Advanced SOC UI:** โครงสร้าง UI เต็มรูปแบบ 17 เมนูย่อย ครอบคลุมตั้งแต่งาน Detection & Analysis ไปจนถึง Compliance Audit
+- 🔗 **3-Tier Log Correlation:** ระบบ SIEM เชื่อมโยง Log จาก 3 แหล่ง (Access Layer, Server Honeypot, C&C Outbound) เพื่อสร้างสายการโจมตีที่สมบูรณ์
+- 🚫 **Interactive WAF / Firewall:** จำลองระบบ WAF ที่สามารถสั่ง Block IP แบบ Real-time ผ่าน UI และตัดการเชื่อมต่อผู้โจมตีทันที (TCP Drop)
 - 🏢 **Faculty Monitor:** ระบบจำแนกการโจมตีจากภายในองค์กร โดยอิงตามวงแลน (Subnet) ของแต่ละคณะในมหาวิทยาลัย (Mockup)
 - 🔍 **In-depth Analysis:** ตารางแสดงผลที่วิเคราะห์ระดับสูง เช่น รหัส MITRE ATT&CK Framework, ธงชาติ (GeoIP), คะแนนความเสี่ยง Threat Score (0-100), และแนะนำวิธีรับมือ (Mitigation steps) แบบอัตโนมัติ
 - 🕒 **Interactive Time Range:** กรองและดูบันทึกตามช่วงเวลา (1h, 6h, 24h, 1m, 3m, 6m, 1y, All Time) แบบ Real-time พร้อมแสดง วันที่และเวลา (Date & Time) อย่างชัดเจน
@@ -22,11 +24,13 @@
 
 ## 🏗 โครงสร้างโปรเจกต์ (Project Structure)
 
-- `frontend/` - **SvelteKit 2 (TypeScript)**: ส่วนติดต่อผู้ใช้งาน (UI) ธีม Light (ขาวขุ่น) หรูหราและใช้งานง่ายด้วย Vanilla CSS ควบคุมการทำงานของหน้าย่อยต่างๆ เช่น Investigate Logs, Alert Log, MITRE ATT&CK, Wazuh Endpoint ฯลฯ
-- `backend/` - **NestJS 10 (TypeScript)**: เป็น API server, WebSocket gateway, และตัวประมวลผล Log อัตโนมัติ ที่เสริมความฉลาดด้วยตรรกะแบบ Security Operations Center (SOC)
+- `frontend/` - **SvelteKit 2 (TypeScript)**: ส่วนติดต่อผู้ใช้งาน (UI) ธีม Light (ขาวขุ่น) หรูหราและใช้งานง่ายด้วย Vanilla CSS ครอบคลุม 17 หน้าเมนูย่อย
+- `backend/` - **NestJS 10 (TypeScript)**: เป็น API server, WebSocket gateway, และตัวประมวลผล Log อัตโนมัติ ที่เชื่อมโยงข้อมูลจาก 3 แหล่ง (Correlation)
 - `nginx/` - **Nginx 1.25**: Reverse proxy ทำหน้าที่จัดการ Routing และรองรับ SSL (HTTPS)
 - `cowrie-config/` - **Cowrie**: การตั้งค่าและที่เก็บไฟล์ Log สำหรับ SSH/Telnet honeypot
-- `webtrap/` - **WebTrap**: ระบบดักจับการโจมตีทางเว็บไซต์ (SQL Injection, Path Traversal) รองรับทั้ง **HTTP (8080)** และ **HTTPS (8443)** (ทำงานคู่กับ Proxy)
+- `webtrap/` - **WebTrap**: ระบบดักจับการโจมตีทางเว็บไซต์ (SQL Injection, Path Traversal)
+- `proxy.js` - **WAF & Core Switch Simulator**: สคริปต์ขวางการเชื่อมต่อเพื่อบังคับใช้กฎ Block IP และเขียน Log Access / C&C Outbound
+- `siem-logs/` - ที่เก็บ Log ส่วนกลางรวมจากทุก Honeypot และ Proxy
 
 ---
 
@@ -75,19 +79,20 @@
 
 ## 🧪 วิธีทดสอบการโจมตี (How to Test the Honeypot)
 1. ล็อกอินเข้าแดชบอร์ดผ่านเบราว์เซอร์
-2. เปิด Terminal (หรือใช้มือถือผ่านวงแลน) แล้วจำลองการโจมตีด้วยคำสั่ง SSH เข้าไปที่ Honeypot (เปลี่ยน IP ให้ตรงกับเครื่องรัน):
-   ```bash
-   ssh root@localhost -p 2222
+2. เปิด PowerShell (ควรเปิดสิทธิ์ Execution Policy ก่อนด้วยคำสั่ง `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`)
+3. ใช้สคริปต์ที่เตรียมไว้เพื่อจำลองการโจมตีที่สมบูรณ์แบบ:
+   ```powershell
+   # โจมตีเว็บแอป (SQLi, XSS)
+   .\simulate_attack.ps1 -WebAttack
+
+   # โจมตีเจาะรหัสผ่าน SSH
+   .\simulate_attack.ps1 -SshBrute
+
+   # โจมตีแบบครบวงจร (รวมถึงการเชื่อมต่อไปยัง C&C)
+   .\simulate_attack.ps1 -All
    ```
-3. พิมพ์รหัสผ่านอะไรลงไปก็ได้มั่วๆ
-4. ลองตรวจสอบการโจมตีเว็บ (SQLi) โดยส่งคำสั่งผ่าน HTTP หรือ HTTPS:
-   ```bash
-   # ผ่าน HTTP
-   curl "http://localhost:8080/login?user=admin' OR 1=1--"
-   
-   # ผ่าน HTTPS
-   curl.exe -k "https://localhost:8443/login?username=admin%27%20OR%201=1--"
-   ```
+4. ดูที่แดชบอร์ดของคุณ—การแจ้งเตือนและสายการโจมตี (Correlation Chain) จะเด้งขึ้นมาแบบ Real-time!
+5. **ทดสอบ Block IP**: ไปที่หน้า *Threat Investigation* คลิกที่เหตุการณ์แล้วกดปุ่ม **Block IP** จากนั้นลองรันคำสั่งโจมตีซ้ำ ระบบจะตัดการเชื่อมต่อคุณทันที
 5. ศึกษาคู่มือการทดสอบเพิ่มเติมแบบครบทุกรูปแบบ (Testing Guide) ได้ที่หน้าต่างของ AI 
 6. ดูที่แดชบอร์ดของคุณ—การแจ้งเตือนการโจมตีและตารางวิเคราะห์จะเด้งขึ้นมาแบบ Real-time ทันที!
 
