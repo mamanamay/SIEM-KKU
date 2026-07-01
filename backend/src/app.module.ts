@@ -6,19 +6,20 @@ import { LogService } from './log.service';
 import { EventsGateway } from './events.gateway';
 import { User } from './entities/user.entity';
 import { Attack } from './entities/attack.entity';
+import { LoginSession } from './entities/login-session.entity';
+import { SeedService } from './seed.service';
 
 @Module({
   imports: [
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/honeypot',
-      entities: [User, Attack],
+      entities: [User, Attack, LoginSession],
       synchronize: true,
     }),
-    TypeOrmModule.forFeature([User, Attack])
+    TypeOrmModule.forFeature([User, Attack, LoginSession])
   ],
   controllers: [AuthController, AttacksController],
-  // SeedService removed — system now uses real logs from proxy.js + honeypots
-  providers: [LogService, EventsGateway],
+  providers: [LogService, EventsGateway, SeedService],
 })
 export class AppModule {}

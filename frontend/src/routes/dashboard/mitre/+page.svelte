@@ -37,51 +37,45 @@
   $: uniqueSources = new Set(events.filter(e => e.type.includes('Scan') || e.type.includes('SQL') || e.type.includes('Brute') || e.type.includes('Command')).map(e => e.ip)).size;
 </script>
 
-<div class="page-container">
-  <div class="page-header">
-    <div class="page-title"><i class="ti ti-grid-dots"></i> MITRE ATT&CK® Matrix Mapping</div>
-    <div class="page-subtitle">Mapping real-time honeypot alerts to adversary tactics, techniques, and procedures (TTPs).</div>
+<div style="display:flex;flex-direction:column;gap:16px;padding-bottom:2rem;">
+  <div class="ds-card-head" style="margin-bottom: 0;">
+    <div class="ds-card-title"><i class="ti ti-grid-dots"></i> MITRE ATT&CK® Matrix Mapping</div>
+    <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Mapping real-time honeypot alerts to adversary tactics, techniques, and procedures (TTPs).</div>
   </div>
 
   <!-- KPI Summary Cards -->
-  <div class="kpi-row">
-    <div class="kpi-card info">
-      <div class="kpi-icon"><i class="ti ti-target"></i></div>
-      <div class="kpi-data">
-        <div class="kpi-val">{totalMappedEvents}</div>
-        <div class="kpi-label">Mapped Events</div>
+  <div class="ds-kpi-row">
+    <div class="ds-kpi border-blue">
+      <div class="ds-kpi-icon blue"><i class="ti ti-target"></i></div>
+      <div>
+        <div class="ds-kpi-val">{totalMappedEvents}</div>
+        <div class="ds-kpi-lbl">Mapped Events</div>
       </div>
     </div>
-    <div class="kpi-card warn">
-      <div class="kpi-icon"><i class="ti ti-flame"></i></div>
-      <div class="kpi-data">
-        <div class="kpi-val">{mostActiveTactic.name}</div>
-        <div class="kpi-label">Top Tactic ({mostActiveTactic.count} hits)</div>
+    <div class="ds-kpi border-orange">
+      <div class="ds-kpi-icon orange"><i class="ti ti-flame"></i></div>
+      <div>
+        <div class="ds-kpi-val">{mostActiveTactic.name}</div>
+        <div class="ds-kpi-lbl">Top Tactic ({mostActiveTactic.count} hits)</div>
       </div>
     </div>
-    <div class="kpi-card danger">
-      <div class="kpi-icon"><i class="ti ti-skull"></i></div>
-      <div class="kpi-data">
-        <div class="kpi-val">{activeTactics} / 5</div>
-        <div class="kpi-label">Active Threat Vectors</div>
+    <div class="ds-kpi border-red">
+      <div class="ds-kpi-icon red"><i class="ti ti-skull"></i></div>
+      <div>
+        <div class="ds-kpi-val">{activeTactics} / 5</div>
+        <div class="ds-kpi-lbl">Active Threat Vectors</div>
       </div>
     </div>
-    <div class="kpi-card ok">
-      <div class="kpi-icon"><i class="ti ti-users"></i></div>
-      <div class="kpi-data">
-        <div class="kpi-val">{uniqueSources}</div>
-        <div class="kpi-label">Unique Adversary IPs</div>
+    <div class="ds-kpi border-green">
+      <div class="ds-kpi-icon green"><i class="ti ti-users"></i></div>
+      <div>
+        <div class="ds-kpi-val">{uniqueSources}</div>
+        <div class="ds-kpi-lbl">Unique Adversary IPs</div>
       </div>
     </div>
   </div>
 
-  <!-- Information Banner -->
-  <div class="info-banner">
-    <i class="ti ti-info-circle"></i>
-    <div class="banner-text">
-      <strong>How to read this matrix:</strong> Columns represent the tactical goal of the adversary (Tactics). The cards inside represent how they achieve it (Techniques). The system automatically correlates live honeypot traffic and flags the most active techniques. Colored badges indicate payload severity: <span class="badge b-cyan">Recon</span> <span class="badge b-orange">High Risk</span> <span class="badge b-red">Critical</span>.
-    </div>
-  </div>
+
 
   <!-- The Matrix -->
   <div class="mitre-matrix">
@@ -100,8 +94,8 @@
           <p class="t-desc">Probing network boundaries for open ports and vulnerable web services.</p>
           <div class="t-body">
             <div class="badge-group">
-              <span class="badge b-cyan">Web Scan</span>
-              <span class="badge b-orange">Port Scan</span>
+              <span class="ds-badge blue">Web Scan</span>
+              <span class="ds-badge orange">Port Scan</span>
             </div>
             <div class="top-attackers">
               <strong>Top Adversary IPs:</strong>
@@ -134,8 +128,8 @@
           <p class="t-desc">Attempting to exploit vulnerabilities (SQLi, XSS) in external web servers.</p>
           <div class="t-body">
             <div class="badge-group">
-              <span class="badge b-red">SQL Injection</span>
-              <span class="badge b-orange">Path Traversal</span>
+              <span class="ds-badge red">SQL Injection</span>
+              <span class="ds-badge orange">Path Traversal</span>
             </div>
             <div class="top-attackers">
               <strong>Top Adversary IPs:</strong>
@@ -168,8 +162,8 @@
           <p class="t-desc">Systematically guessing passwords to gain valid credentials for SSH access.</p>
           <div class="t-body">
             <div class="badge-group">
-              <span class="badge b-red">SSH Brute Force</span>
-              <span class="badge b-orange">SSH Login Attempt</span>
+              <span class="ds-badge red">SSH Brute Force</span>
+              <span class="ds-badge orange">SSH Login Attempt</span>
             </div>
             <div class="top-attackers">
               <strong>Top Adversary IPs:</strong>
@@ -202,7 +196,7 @@
           <p class="t-desc">Adversary is executing unauthorized shell commands on the honeypot.</p>
           <div class="t-body">
             <div class="badge-group">
-              <span class="badge b-red">Command Execution</span>
+              <span class="ds-badge red">Command Execution</span>
             </div>
             <div class="top-attackers">
               <strong>Top Adversary IPs:</strong>
@@ -235,8 +229,8 @@
           <p class="t-desc">Compromised host establishing outbound connection to known C&C servers.</p>
           <div class="t-body">
             <div class="badge-group">
-              <span class="badge b-red">System Compromised</span>
-              <span class="badge b-red">Outbound C&C</span>
+              <span class="ds-badge red">System Compromised</span>
+              <span class="ds-badge red">Outbound C&C</span>
             </div>
             <div class="top-attackers">
               <strong>Top Adversary IPs:</strong>
@@ -263,38 +257,7 @@
 </div>
 
 <style>
-  .page-container { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
-  .page-header { margin-bottom: 1.5rem; }
-  .page-title { font-size: 1.5rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-  .page-title i { color: var(--accent); }
-  .page-subtitle { font-size: 13px; color: var(--text-secondary); }
-
-  /* KPI Summary Row */
-  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
-  .kpi-card { 
-    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; 
-    padding: 15px; display: flex; align-items: center; gap: 15px; box-shadow: var(--shadow-sm); 
-  }
-  .kpi-icon { width: 45px; height: 45px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
-  .kpi-card.info .kpi-icon { background: rgba(0, 212, 255, 0.15); color: var(--blue); }
-  .kpi-card.warn .kpi-icon { background: rgba(255, 136, 0, 0.15); color: var(--orange); }
-  .kpi-card.danger .kpi-icon { background: rgba(255, 51, 51, 0.15); color: var(--red); }
-  .kpi-card.ok .kpi-icon { background: rgba(46, 204, 113, 0.15); color: var(--green); }
-  
-  .kpi-val { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
-  .kpi-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; }
-
-  /* Info Banner */
-  .info-banner {
-    background: rgba(0, 212, 255, 0.05); border: 1px solid rgba(0, 212, 255, 0.2);
-    border-radius: 8px; padding: 12px 15px; display: flex; align-items: flex-start; gap: 12px;
-    margin-bottom: 20px;
-  }
-  .info-banner i { color: var(--accent); font-size: 20px; margin-top: 2px; }
-  .banner-text { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
-  .banner-text strong { color: var(--text-primary); }
-
-  /* The Matrix */
+  /* The Matrix specific styles */
   .mitre-matrix { 
     display: flex; gap: 15px; 
     overflow-x: auto; padding-bottom: 15px; 
@@ -313,7 +276,7 @@
   }
   .tactic-header h4 { margin: 0 0 5px 0; font-size: 14px; color: var(--text-primary); font-weight: 700; }
   .tactic-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 10px; }
-  .tactic-stats { font-size: 11px; color: var(--accent); font-weight: 600; display: flex; align-items: center; gap: 4px; }
+  .tactic-stats { font-size: 11px; color: var(--green); font-weight: 600; display: flex; align-items: center; gap: 4px; }
 
   .technique-card {
     margin: 12px; padding: 15px; 
@@ -328,7 +291,7 @@
   .technique-card.empty i { font-size: 24px; opacity: 0.5; }
   .technique-card.placeholder { opacity: 0.5; border: 1px dashed var(--border); }
   
-  .technique-card.active { border-left: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .technique-card.active { border-left: 3px solid var(--green); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
   .technique-card.active.warning { border-left-color: var(--orange); }
   .technique-card.active.danger { border-left-color: var(--red); background: rgba(255,51,51,0.02); }
   .technique-card.active.critical { border-left-color: #ff0000; background: rgba(255,0,0,0.05); border: 1px solid rgba(255,0,0,0.2); border-left: 4px solid #ff0000; }
@@ -340,23 +303,15 @@
   .t-body { display: flex; flex-direction: column; gap: 12px; }
   
   .badge-group { display: flex; flex-wrap: wrap; gap: 6px; }
-  .badge { font-size: 10px; padding: 4px 8px; border-radius: 4px; font-weight: 700; letter-spacing: 0.05em; }
-  .b-red { background: rgba(255, 51, 51, 0.15); color: #ff3333; border: 1px solid rgba(255, 51, 51, 0.4); }
-  .b-orange { background: rgba(255, 136, 0, 0.15); color: #ff8800; border: 1px solid rgba(255, 136, 0, 0.4); }
-  .b-cyan { background: rgba(0, 212, 255, 0.15); color: #00d4ff; border: 1px solid rgba(0, 212, 255, 0.4); }
 
   .top-attackers { padding-top: 10px; border-top: 1px dashed var(--border); }
   .top-attackers strong { display: block; font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 6px; }
-  .src-ip { font-family: monospace; font-size: 12px; color: var(--text-primary); display: flex; justify-content: space-between; margin-bottom: 4px; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px; }
-  .hit-count { color: var(--accent); font-weight: 600; }
+  .src-ip { font-family: monospace; font-size: 12px; color: var(--text-primary); display: flex; justify-content: space-between; margin-bottom: 4px; background: var(--bg); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); }
+  .hit-count { color: var(--green); font-weight: 600; }
   
   .text-muted { color: var(--text-muted); font-size: 11px; }
 
-  @media (max-width: 1200px) {
-    .kpi-row { grid-template-columns: repeat(2, 1fr); }
-  }
   @media (max-width: 800px) {
-    .kpi-row { grid-template-columns: 1fr; }
     .mitre-matrix { flex-direction: column; }
     .tactic-column { width: 100%; max-width: none; }
   }

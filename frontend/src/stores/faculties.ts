@@ -1,30 +1,45 @@
-export const faculties = [
-  { code: 'AG', name: 'คณะเกษตรศาสตร์' },
-  { code: 'AMS', name: 'คณะเทคนิคการแพทย์' },
-  { code: 'ARCH', name: 'คณะสถาปัตยกรรมศาสตร์' },
-  { code: 'ART', name: 'คณะศิลปกรรมศาสตร์' },
-  { code: 'COLA', name: 'วิทยาลัยการปกครองท้องถิ่น' },
-  { code: 'CP', name: 'วิทยาลัยการคอมพิวเตอร์' },
-  { code: 'DENT', name: 'คณะทันตแพทยศาสตร์' },
-  { code: 'ECON', name: 'คณะเศรษฐศาสตร์' },
-  { code: 'EDU', name: 'คณะศึกษาศาสตร์' },
-  { code: 'EN', name: 'คณะวิศวกรรมศาสตร์' },
-  { code: 'GS', name: 'บัณฑิตวิทยาลัย' },
-  { code: 'HUSO', name: 'คณะมนุษยศาสตร์และสังคมศาสตร์' },
-  { code: 'IC', name: 'วิทยาลัยนานาชาติ' },
-  { code: 'LAW', name: 'คณะนิติศาสตร์' },
-  { code: 'MBA', name: 'วิทยาลัยบัณฑิตศึกษาการจัดการ' },
-  { code: 'MED', name: 'คณะแพทยศาสตร์' },
-  { code: 'MS/KKBS', name: 'คณะบริหารธุรกิจและการบัญชี' },
-  { code: 'NKC', name: 'คณะสหวิทยาการ' },
-  { code: 'NU', name: 'คณะพยาบาลศาสตร์' },
-  { code: 'PH', name: 'คณะสาธารณสุขศาสตร์' },
-  { code: 'Px', name: 'คณะเภสัชศาสตร์' },
-  { code: 'SC', name: 'คณะวิทยาศาสตร์' },
-  { code: 'TE', name: 'คณะเทคโนโลยี' },
-  { code: 'VET', name: 'คณะสัตวแพทยศาสตร์' },
-  { code: 'ODT', name: 'ODT-สำนักงานเทคโนโลยีดิจิทัล' }
-];
+import ipRecordsRaw from '../lib/data/ip_records.json';
+import { ipToLong } from '../lib/utils/ip';
+
+// Pre-compile subnets on load for fast O(N) mapping
+interface SubnetDef {
+  subnetLong: number;
+  maskLong: number;
+  maskBits: number;
+  faculty: { code: string; name: string } | null;
+  rawCidr: string;
+}
+
+const compiledSubnets: SubnetDef[] = [];
+
+for (const r of ipRecordsRaw) {
+  if (!r.Route || r.Route === '0.0.0.0/0') continue;
+  const parts = r.Route.split('/');
+  const subnet = parts[0];
+  const maskBits = parseInt(parts[1], 10);
+  
+  if (isNaN(maskBits)) continue;
+  
+  let facultyObj = null;
+  if (r['Faculty/Dept'] && r['Faculty/Dept'] !== '—') {
+    let code = String(r['Faculty/Dept']).split('—')[0].trim().toUpperCase();
+    if (code === 'MS/KKBS') code = 'MS/KKBS';
+    facultyObj = { code, name: String(r['Faculty/Dept']) };
+  } else if (r.Route.startsWith('10.52.') || r.Route.startsWith('10.101.')) {
+    // Legacy fallback from original code for demo purposes
+    facultyObj = { code: 'ODT', name: 'ODT-สำนักงานเทคโนโลยีดิจิทัล' };
+  }
+  
+  const maskLong = (0xffffffff << (32 - maskBits)) >>> 0;
+  
+  compiledSubnets.push({
+    subnetLong: ipToLong(subnet),
+    maskLong,
+    maskBits,
+    faculty: facultyObj,
+    rawCidr: r.Route
+  });
+}
 
 // Helper to determine if an IP is "internal" (mock logic for demo)
 // In a real system, this would check if IP matches KKU's subnet e.g. 10.x.x.x or 192.168.x.x
@@ -33,13 +48,22 @@ export function isInternalIP(ip: string): boolean {
   return ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.16.') || ip === '127.0.0.1' || ip === '::1';
 }
 
-// Simple deterministic hash to map an IP to a faculty
+// Advanced CIDR hash to map an IP to a faculty based on Longest Prefix Match
 export function getFacultyForIP(ip: string) {
   if (!isInternalIP(ip)) return null;
   
-  if (ip.startsWith('10.52.') || ip.startsWith('10.101.')) {
-    return { code: 'ODT', name: 'ODT-สำนักงานเทคโนโลยีดิจิทัล' };
+  const ipLong = ipToLong(ip);
+  let bestMatch = null;
+  let maxMask = -1;
+  
+  for (const sub of compiledSubnets) {
+    if ((ipLong & sub.maskLong) === (sub.subnetLong & sub.maskLong)) {
+      if (sub.faculty && sub.maskBits > maxMask) {
+         bestMatch = sub.faculty;
+         maxMask = sub.maskBits;
+      }
+    }
   }
   
-  return null; // Return null so the Faculty column is left blank for other IPs
+  return bestMatch;
 }

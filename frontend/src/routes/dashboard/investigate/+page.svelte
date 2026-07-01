@@ -1,13 +1,81 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { eventsStore } from '../../../stores/events';
+  import { eventsStore, roleStore } from '../../../stores/events';
   import { getFacultyForIP } from '../../../stores/faculties';
+  import { page } from '$app/stores';
 
   $: events = $eventsStore;
+  let searchIp = $page.url.searchParams.get('ip') || '';
+  let searchTime = $page.url.searchParams.get('time') || '';
+  let selectedRange = 'all';
+
+  $: getTimeLimit = (range: string) => {
+    if (range === 'all') return 0;
+    const now = Date.now();
+    const Day = 86400000;
+    switch(range) {
+      case '1h': return now - 3600000;
+      case '6h': return now - 21600000;
+      case '24h': return now - 86400000;
+      case '1m': return now - (30 * Day);
+      case '3m': return now - (90 * Day);
+      case '6m': return now - (180 * Day);
+      case '1y': return now - (365 * Day);
+      default: return 0;
+    }
+  };
+
+  $: timeLimit = getTimeLimit(selectedRange);
+
+  $: filteredEvents = events.filter(e => {
+    const matchIp = e.ip.includes(searchIp);
+    if (!matchIp) return false;
+    
+    if (searchTime) {
+      const rawTime = String(e.createdAt || e.timestamp || e.time);
+      if (rawTime !== String(searchTime)) return false;
+    }
+
+    if (selectedRange !== 'all') {
+      const rawTime = e.createdAt || e.timestamp || e.time;
+      const eventTime = rawTime ? new Date(rawTime).getTime() : 0;
+      if (eventTime < timeLimit) return false;
+    }
+    return true;
+  });
+
   let expandedEvent: any = null;
+  let lastAutoExpandKey = '';
+  
+  // Auto-expand the event if IP is in the URL, but only once per URL
+  // Only auto-expand if it came from Alerts (searchTime is present)
+  $: {
+    const currentKey = searchIp + searchTime;
+    if (searchIp && filteredEvents.length > 0 && lastAutoExpandKey !== currentKey) {
+      if (searchTime) {
+        expandedEvent = filteredEvents[0];
+      }
+      lastAutoExpandKey = currentKey;
+    }
+  }
+
   let blockedIPs = new Set<string>();
   let isActionLoading: Record<string, boolean> = {};
   let portStatus:   Record<string, string> = {};  // ip → 'isolating' | 'isolated' | 'unknown'
+
+  // Pagination
+  let currentPage = 1;
+  const itemsPerPage = 30;
+
+  $: totalPages = Math.ceil(filteredEvents.length / itemsPerPage) || 1;
+  $: {
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+  }
+  $: paginatedEvents = filteredEvents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  function prevPage() { if (currentPage > 1) currentPage--; }
+  function nextPage() { if (currentPage < totalPages) currentPage++; }
 
   onMount(async () => {
     try {
@@ -141,9 +209,9 @@
 
   // ─── Severity badge color ─────────────────────────────────────────────────
   function sevClass(s: string) {
-    if (s === 'critical') return 'b-red';
-    if (s === 'high')     return 'b-orange';
-    return 'b-cyan';
+    if (s === 'critical') return 'red';
+    if (s === 'high')     return 'orange';
+    return 'blue';
   }
 
   // ─── MITRE Tactic name ────────────────────────────────────────────────────
@@ -159,10 +227,10 @@
   }
 </script>
 
-<div class="page-container">
-  <div class="page-header">
-    <div class="page-title"><i class="ti ti-zoom-scan"></i> Threat Investigation</div>
-    <div class="page-subtitle">
+<div style="display:flex;flex-direction:column;gap:16px;padding-bottom:2rem;">
+  <div class="ds-card-head" style="margin-bottom:0;">
+    <div class="ds-card-title"><i class="ti ti-zoom-scan"></i> Threat Investigation</div>
+    <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
       ระบบ SIEM เชื่อมโยง Log จาก 3 แหล่งข้อมูลและแสดงสายโจมตีครบวงจร
       คลิกที่แถวเพื่อดูรายละเอียดและดำเนินการตอบสนองภัยคุกคาม
     </div>
@@ -177,8 +245,26 @@
     </div>
   </div>
 
-  <div class="panel">
-    <table class="data-table">
+  <div class="ds-filters" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;box-shadow:var(--shadow-sm);">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Time Range:</span>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">
+        {#each ['1h','6h','24h','1m','3m','6m','1y','all'] as r}
+          <button on:click={() => selectedRange = r} style="background:{selectedRange === r ? 'var(--green)' : 'var(--bg-secondary)'};color:{selectedRange === r ? '#fff' : 'var(--text-secondary)'};border:1px solid {selectedRange === r ? 'var(--green)' : 'var(--border)'};padding:5px 13px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.18s;">
+            {r === 'all' ? 'ทั้งหมด' : r}
+          </button>
+        {/each}
+      </div>
+    </div>
+    
+    <div style="position:relative;flex:1;min-width:200px;max-width:300px;">
+      <i class="ti ti-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);"></i>
+      <input type="text" bind:value={searchIp} placeholder="ค้นหาด้วย IP Address..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px 8px 36px;border-radius:8px;font-size:13px;outline:none;transition:border-color 0.2s;">
+    </div>
+  </div>
+
+  <div class="ds-card" style="padding:0;overflow:hidden;">
+    <div class="ds-table-wrap"><table class="ds-table">
       <thead>
         <tr>
           <th width="36"></th>
@@ -190,7 +276,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each events.slice(0, 20) as e}
+        {#each paginatedEvents as e}
           {@const hasAccess = !!e.accessLayer}
           {@const hasCnc    = !!e.cncLayer}
           <tr class="{expandedEvent === e ? 'selected-row' : ''} interactive-row" on:click={() => toggleEvent(e)}>
@@ -218,7 +304,7 @@
               </div>
             </td>
             <td>
-              <span class="badge {sevClass(e.severity)}">{(e.severity || 'medium').toUpperCase()}</span>
+              <span class="ds-badge {sevClass(e.severity)}">{(e.severity || 'medium').toUpperCase()}</span>
             </td>
           </tr>
 
@@ -286,11 +372,12 @@
                       <div class="log-field"><label>Client / Tool</label><code>{e.clientVersion || 'Unknown'}</code></div>
                       <div class="log-field"><label>Threat Score</label>
                         <span class="score-bar">
-                          <span class="score-fill" style="width:{e.threatScore || 50}%"></span>
+                          <span class="score-fill-container">
+                            <span class="score-fill" style="width:{e.threatScore || 50}%"></span>
+                          </span>
                           <span class="score-num">{e.threatScore || 50}/100</span>
                         </span>
                       </div>
-                      <div class="verified-badge"><i class="ti ti-check"></i> Live from honeypot log</div>
                     </div>
 
                     <div class="chain-arrow {hasCnc ? '' : 'arrow-dim'}">
@@ -398,19 +485,23 @@
 
                       <div class="action-section">
                         <div class="action-label">WAF / Firewall Action:</div>
-                        <button
-                          class="btn-action {isBlocked ? 'btn-done' : 'red'} {isActionLoading[e.ip] ? 'btn-loading' : ''}"
-                          on:click|stopPropagation={() => toggleBlockIP(e)}
-                          disabled={isActionLoading[e.ip]}
-                        >
-                          {#if isActionLoading[e.ip]}
-                            <i class="ti ti-loader-2 spin"></i> Processing...
-                          {:else if isBlocked}
-                            <i class="ti ti-shield-check"></i> Unblock IP ({e.ip})
-                          {:else}
-                            <i class="ti ti-shield-x"></i> Block IP ({e.ip})
-                          {/if}
-                        </button>
+                        {#if $roleStore === 'admin'}
+                          <button
+                            class="btn-action {isBlocked ? 'btn-done' : 'red'} {isActionLoading[e.ip] ? 'btn-loading' : ''}"
+                            on:click|stopPropagation={() => toggleBlockIP(e)}
+                            disabled={isActionLoading[e.ip]}
+                          >
+                            {#if isActionLoading[e.ip]}
+                              <i class="ti ti-loader-2 spin"></i> Processing...
+                            {:else if isBlocked}
+                              <i class="ti ti-shield-check"></i> Unblock IP ({e.ip})
+                            {:else}
+                              <i class="ti ti-shield-x"></i> Block IP ({e.ip})
+                            {/if}
+                          </button>
+                        {:else}
+                          <div class="action-note warn"><i class="ti ti-lock"></i> Admin Only - Insufficient permissions</div>
+                        {/if}
 
                         <div class="action-label" style="margin-top:10px">
                           Switch Port Action:
@@ -422,22 +513,26 @@
                         </div>
 
                         {#if faculty}
-                          <button
-                            class="btn-action orange {isIsolated ? 'btn-done' : ''} {!portInfo.verified ? 'btn-unverified' : ''} {portStatus[e.ip] === 'isolating' ? 'btn-loading' : ''}"
-                            on:click|stopPropagation={() => isolatePort(e)}
-                            disabled={isIsolated || portStatus[e.ip] === 'isolating'}
-                            title="{portInfo.verified ? `Isolate ${portInfo.port}` : `พอร์ตประมาณการ: ~${portInfo.port} — ยังไม่ยืนยัน`}"
-                          >
-                            {#if portStatus[e.ip] === 'isolating'}
-                              <i class="ti ti-loader-2 spin"></i> Isolating...
-                            {:else if isIsolated}
-                              <i class="ti ti-check"></i> Port Isolated
-                            {:else if portInfo.verified}
-                              <i class="ti ti-plug-x"></i> Isolate {portInfo.port}
-                            {:else}
-                              <i class="ti ti-plug-x"></i> <span style="text-decoration:line-through;opacity:0.6">Isolate ~{portInfo.port}</span> (ไม่แน่ใจ)
-                            {/if}
-                          </button>
+                          {#if $roleStore === 'admin'}
+                            <button
+                              class="btn-action orange {isIsolated ? 'btn-done' : ''} {!portInfo.verified ? 'btn-unverified' : ''} {portStatus[e.ip] === 'isolating' ? 'btn-loading' : ''}"
+                              on:click|stopPropagation={() => isolatePort(e)}
+                              disabled={isIsolated || portStatus[e.ip] === 'isolating'}
+                              title="{portInfo.verified ? `Isolate ${portInfo.port}` : `พอร์ตประมาณการ: ~${portInfo.port} — ยังไม่ยืนยัน`}"
+                            >
+                              {#if portStatus[e.ip] === 'isolating'}
+                                <i class="ti ti-loader-2 spin"></i> Isolating...
+                              {:else if isIsolated}
+                                <i class="ti ti-check"></i> Port Isolated
+                              {:else if portInfo.verified}
+                                <i class="ti ti-plug-x"></i> Isolate {portInfo.port}
+                              {:else}
+                                <i class="ti ti-plug-x"></i> <span style="text-decoration:line-through;opacity:0.6">Isolate ~{portInfo.port}</span> (ไม่แน่ใจ)
+                              {/if}
+                            </button>
+                          {:else}
+                            <div class="action-note warn"><i class="ti ti-lock"></i> Admin Only - Insufficient permissions</div>
+                          {/if}
                           {#if !portInfo.verified && !isIsolated}
                             <div class="port-warning">
                               <i class="ti ti-alert-circle"></i>
@@ -481,27 +576,36 @@
           {/if}
         {/each}
 
-        {#if events.length === 0}
+        {#if filteredEvents.length === 0}
           <tr>
             <td colspan="6" class="empty-state">
               <i class="ti ti-radar"></i>
-              <div>ยังไม่มีเหตุการณ์ — รอรับ Log จาก Honeypot</div>
-              <code>รัน: .\simulate_attack.ps1 -All -SlowMode</code>
+              <div>ยังไม่มีเหตุการณ์</div>
             </td>
           </tr>
         {/if}
       </tbody>
-    </table>
+    </table></div>
+    
+    <!-- Pagination Controls -->
+    {#if totalPages > 1}
+    <div class="ds-pagination">
+      <button class="ds-page-btn" on:click={prevPage} disabled={currentPage === 1}>
+        <i class="ti ti-chevron-left"></i> Previous
+      </button>
+      <div class="ds-pagination-info">Page {currentPage} of {totalPages}</div><div class="ds-pagination-btns"><button class="ds-page-btn" on:click={nextPage} disabled={currentPage === totalPages}>
+        Next <i class="ti ti-chevron-right"></i>
+      </button></div></div>{/if}
   </div>
 </div>
 
 <style>
   /* ─── Page Layout ────────────────────────────────────────────────────────── */
-  .page-container { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
-  .page-header { margin-bottom: 1.5rem; }
-  .page-title { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-  .page-title i { color: var(--accent); }
-  .page-subtitle { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+  
+  
+  
+  
+  
 
   /* ─── Log Sources Bar ────────────────────────────────────────────────────── */
   .log-sources-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
@@ -513,10 +617,10 @@
   .src-sep { color: var(--text-muted); font-weight: 700; font-size: 14px; }
 
   /* ─── Table ──────────────────────────────────────────────────────────────── */
-  .panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 0; overflow: hidden; }
-  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .data-table thead th { padding: 12px 15px; border-bottom: 2px solid var(--border); color: var(--text-secondary); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; text-align: left; }
-  .data-table td { padding: 11px 15px; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: middle; }
+  
+  
+  
+  
 
   .interactive-row { cursor: pointer; transition: background 0.15s; }
   .interactive-row:hover { background: rgba(0,212,255,0.03); }
@@ -588,9 +692,10 @@
   .verified-badge   { font-size: 10px; color: #2ecc71; display: flex; align-items: center; gap: 4px; margin-top: 4px; }
   .unverified-badge { font-size: 10px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; margin-top: 4px; font-style: italic; }
 
-  .score-bar { display: flex; align-items: center; gap: 8px; }
-  .score-fill { height: 6px; background: linear-gradient(90deg, #2ecc71, #ff8800, #ff3333); border-radius: 3px; }
-  .score-num { font-size: 11px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+  .score-bar { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 4px; }
+  .score-fill-container { flex-grow: 1; height: 10px; background: var(--bg-secondary); border-radius: 5px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }
+  .score-fill { height: 100%; background: linear-gradient(90deg, #2ecc71, #f59e0b, #ef4444); border-radius: 5px; transition: width 0.3s ease; display: block; }
+  .score-num { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; width: 50px; text-align: right; }
 
   /* ─── Defense Grid ────────────────────────────────────────────────────────── */
   .defense-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 5px; }
@@ -657,4 +762,15 @@
     .chain-arrow { transform: rotate(90deg); }
     .defense-grid { grid-template-columns: 1fr; }
   }
+  
+  /* Pagination styles */
+  .pagination { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 20px; padding-bottom: 10px; }
+  .page-btn {
+    display: flex; align-items: center; gap: 5px; padding: 6px 12px;
+    background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary);
+    border-radius: 6px; font-size: 12px; cursor: pointer; transition: 0.2s;
+  }
+  .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .page-info { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
 </style>

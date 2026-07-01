@@ -1,109 +1,136 @@
 <script lang="ts">
-  import { roleStore, connectionState } from '../../../stores/events';
+  import { onMount } from 'svelte';
+  import { roleStore } from '../../../stores/events';
+
+  let activeTab = 'login_audit';
+  let sessions: any[] = [];
+  let loading = true;
+  
+  // Pagination
+  let currentPage = 1;
+  const itemsPerPage = 30;
+
+  async function fetchSessions() {
+    try {
+      loading = true;
+      const res = await fetch('/api/auth/sessions');
+      if (res.ok) {
+        sessions = await res.json();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      loading = false;
+    }
+  }
+
+  onMount(() => {
+    if ($roleStore === 'admin') {
+      fetchSessions();
+    }
+  });
+
+  $: totalPages = Math.ceil(sessions.length / itemsPerPage) || 1;
+  $: {
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+  }
+  
+  $: paginatedSessions = sessions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  function prevPage() { if (currentPage > 1) currentPage--; }
+  function nextPage() { if (currentPage < totalPages) currentPage++; }
+
 </script>
 
-<div class="settings-page">
-  <div class="panel">
-    <div class="panel-header">
-      <div class="panel-title"><i class="ti ti-server"></i> System Status</div>
-      <div class="subtitle">Real-time connection and services</div>
-    </div>
-    
-    <div class="settings-list">
-      <div class="setting-item">
-        <div class="setting-icon"><i class="ti ti-plug-connected"></i></div>
-        <div class="setting-info">
-          <div class="setting-name">WebSocket Sync</div>
-          <div class="setting-desc">Status of the real-time event listener to NestJS backend</div>
-        </div>
-        <div class="setting-status">
-          {#if $connectionState}
-            <span class="badge ok">Connected</span>
-          {:else}
-            <span class="badge danger">Disconnected</span>
-          {/if}
-        </div>
-      </div>
-
-      <div class="setting-item">
-        <div class="setting-icon"><i class="ti ti-shield"></i></div>
-        <div class="setting-info">
-          <div class="setting-name">SSH Honeypot (Cowrie)</div>
-          <div class="setting-desc">Port 2222 listening for SSH Brute Force</div>
-        </div>
-        <div class="setting-status">
-          <span class="badge ok">Running</span>
-        </div>
-      </div>
-
-      <div class="setting-item">
-        <div class="setting-icon"><i class="ti ti-database"></i></div>
-        <div class="setting-info">
-          <div class="setting-name">Database (PostgreSQL)</div>
-          <div class="setting-desc">Persistent storage for attack events</div>
-        </div>
-        <div class="setting-status">
-          <span class="badge ok">Online</span>
-        </div>
-      </div>
-    </div>
+<div style="display:flex;flex-direction:column;gap:16px;padding-bottom:2rem;">
+  <div class="ds-card-head">
+    <div class="ds-card-title"><i class="ti ti-settings"></i> System Settings</div>
   </div>
+  
+  {#if $roleStore !== 'admin'}
+    <div class="ds-card ds-empty" style="padding: 4rem;">
+      <i class="ti ti-lock" style="font-size: 3rem; color: var(--red); margin-bottom: 1rem;"></i>
+      <h2 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--red);">Access Denied</h2>
+      <p>You do not have permission to view System Settings.</p>
+    </div>
+  {:else}
+    <div class="ds-filters">
+      <button class="ds-btn {activeTab === 'login_audit' ? 'primary' : ''}" on:click={() => activeTab = 'login_audit'}>
+        <i class="ti ti-history"></i> Login Audit
+      </button>
+      <button class="ds-btn {activeTab === 'general' ? 'primary' : ''}" on:click={() => activeTab = 'general'}>
+        <i class="ti ti-adjustments"></i> General Settings
+      </button>
+    </div>
 
-  <div class="panel mt-4">
-    <div class="panel-header">
-      <div class="panel-title"><i class="ti ti-users"></i> Account & Permissions</div>
-      <div class="subtitle">Manage your current session</div>
-    </div>
-    
-    <div class="account-box">
-      <div class="account-avatar">
-        <i class="ti ti-user-shield"></i>
-      </div>
-      <div class="account-details">
-        <div class="account-role">Current Role: <strong>{$roleStore}</strong></div>
-        <div class="account-perms">
-          {#if $roleStore === 'admin'}
-            You have full access to view, filter, and <strong>Export</strong> all threat logs.
-          {:else}
-            You have read-only access. You cannot export or manage threat logs. Login as <strong>admin</strong> for full access.
-          {/if}
+    {#if activeTab === 'login_audit'}
+      <div class="ds-card" style="padding: 0; overflow: hidden;">
+        <div class="ds-card-head" style="padding: 16px; border-bottom: 1px solid var(--border);">
+          <div class="ds-card-title">User Login Sessions</div>
+          <button class="ds-btn primary" on:click={fetchSessions}>⟳ Refresh</button>
         </div>
+        
+        {#if loading}
+          <div class="ds-empty">Loading audit log...</div>
+        {:else}
+          <div class="ds-table-wrap">
+            <table class="ds-table">
+              <thead>
+                <tr>
+                  <th>Date & Time</th>
+                  <th>Username</th>
+                  <th>Role</th>
+                  <th>IP Address</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each paginatedSessions as s}
+                  <tr>
+                    <td>{new Date(s.timestamp).toLocaleString('en-GB')}</td>
+                    <td class="ds-text-primary" style="font-weight: 600;">{s.username}</td>
+                    <td>
+                      {#if s.role === 'admin'}
+                        <span class="ds-badge blue">Admin</span>
+                      {:else}
+                        <span class="ds-badge orange">Guest</span>
+                      {/if}
+                    </td>
+                    <td class="ds-mono">{s.ipAddress}</td>
+                  </tr>
+                {/each}
+                {#if sessions.length === 0}
+                  <tr><td colspan="4" class="ds-empty">No login sessions recorded yet.</td></tr>
+                {/if}
+              </tbody>
+            </table>
+          </div>
+          
+          <!-- Pagination Controls -->
+          {#if totalPages > 1}
+          <div class="ds-pagination">
+            <div class="ds-pagination-info">Page {currentPage} of {totalPages}</div>
+            <div class="ds-pagination-btns">
+              <button class="ds-page-btn" on:click={prevPage} disabled={currentPage === 1}>
+                <i class="ti ti-chevron-left"></i> Previous
+              </button>
+              <button class="ds-page-btn" on:click={nextPage} disabled={currentPage === totalPages}>
+                Next <i class="ti ti-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+          {/if}
+        {/if}
       </div>
-    </div>
-  </div>
+    {:else}
+      <div class="ds-card ds-empty" style="padding: 4rem;">
+        <i class="ti ti-settings" style="font-size: 3rem; opacity: 0.2; margin-bottom: 1rem;"></i>
+        <p>General settings module is currently under development.</p>
+      </div>
+    {/if}
+  {/if}
 </div>
 
 <style>
-.settings-page { max-width: 800px; margin: 0 auto; }
-.mt-4 { margin-top: 16px; }
-
-.panel {
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 1.5rem;
-  box-shadow: var(--shadow-sm); display: flex; flex-direction: column;
-}
-.panel-header { margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem; }
-.panel-title { font-size: 15px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
-.panel-title i { color: var(--text-secondary); font-size: 18px; }
-.subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 4px; padding-left: 26px; }
-
-.settings-list { display: flex; flex-direction: column; gap: 16px; }
-.setting-item { display: flex; align-items: center; gap: 16px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border); }
-.setting-icon { width: 40px; height: 40px; border-radius: 8px; background: var(--bg-panel); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 20px; color: var(--text-secondary); flex-shrink: 0; }
-.setting-info { flex: 1; }
-.setting-name { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
-.setting-desc { font-size: 11px; color: var(--text-secondary); }
-.setting-status { flex-shrink: 0; }
-
-.badge { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
-.badge.ok { background: var(--green-bg); color: var(--green); border: 1px solid rgba(29,158,117,0.3); }
-.badge.danger { background: var(--red-bg); color: var(--red); border: 1px solid rgba(163,45,45,0.3); }
-
-.account-box { display: flex; gap: 16px; align-items: flex-start; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border); }
-.account-avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--green-bg); color: var(--green); display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
-.account-details { flex: 1; }
-.account-role { font-size: 14px; color: var(--text-primary); margin-bottom: 8px; }
-.account-role strong { text-transform: uppercase; color: var(--green); }
-.account-perms { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
-.account-perms strong { color: var(--text-primary); }
+  /* All specific styles migrated to ds-* global classes */
 </style>

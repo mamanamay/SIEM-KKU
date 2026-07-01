@@ -5,334 +5,606 @@
   
   let activeTab = 'overview';
 
-  // Calculate Top IPs (Real Data)
+  // ─── Data Computations ──────────────────────────────────────────────────────
   $: topIps = (() => {
     const counts: Record<string, number> = {};
     events.forEach(e => counts[e.ip] = (counts[e.ip] || 0) + 1);
+    const total = events.length || 1;
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
-      .map(([ip, count]) => ({ ip, count, percent: Math.round((count / (events.length || 1)) * 100) || 0 }));
+      .map(([ip, count]) => ({ ip, count, percent: Math.round((count / total) * 100) }));
   })();
 
-  // Calculate Top Attack Types (Real Data)
   $: topTypes = (() => {
     const counts: Record<string, number> = {};
     events.forEach(e => counts[e.type] = (counts[e.type] || 0) + 1);
+    const total = events.length || 1;
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
-      .map(([type, count]) => ({ type, count, percent: Math.round((count / (events.length || 1)) * 100) || 0 }));
+      .map(([type, count]) => ({ type, count, percent: Math.round((count / total) * 100) }));
   })();
 
-  // Calculate Top Countries (Real Data)
   $: topCountries = (() => {
     const counts: Record<string, number> = {};
     events.forEach(e => {
       const c = e.country || 'Local Network';
       counts[c] = (counts[c] || 0) + 1;
     });
+    const total = events.length || 1;
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
-      .map(([country, count]) => ({ country, count, percent: Math.round((count / (events.length || 1)) * 100) || 0 }));
+      .map(([country, count]) => ({ country, count, percent: Math.round((count / total) * 100) }));
   })();
 
-  function getCountryColor(name: string) {
-    if (name === 'China') return '#a32d2d';
-    if (name === 'Russia') return '#854f0b';
-    if (name === 'United States' || name === 'USA') return '#854f0b'; 
-    if (name === 'Germany') return '#1d9e75';
-    if (name === 'Brazil') return '#1d9e75';
-    if (name === 'Local Network') return '#185fa5';
-    return '#1d9e75';
+  $: payloadEvents = events.filter(e => e.detail && e.detail.length > 3);
+
+  // ─── Helpers ────────────────────────────────────────────────────────────────
+  const TYPE_COLORS: Record<string, string> = {
+    ssh: '#ef4444', compromised: '#ef4444', brute: '#ef4444',
+    port: '#f97316', scan: '#3b82f6', web: '#3b82f6',
+    sql: '#10b981', command: '#10b981', ftp: '#8b5cf6', recon: '#a855f7'
+  };
+  
+  function getTypeColor(type: string) {
+    const t = type.toLowerCase();
+    for (const [key, color] of Object.entries(TYPE_COLORS)) {
+      if (t.includes(key)) return color;
+    }
+    return '#6b7280';
   }
 
-  function getTypeColor(type: string) {
-    type = type.toLowerCase();
-    if (type.includes('ssh') || type.includes('compromised')) return '#a32d2d';
-    if (type.includes('port')) return '#854f0b';
-    if (type.includes('web')) return '#185fa5';
-    if (type.includes('sql') || type.includes('command')) return '#1d9e75';
-    if (type.includes('ftp')) return '#6f42c1';
-    return '#6c757d';
+  function getTypeBg(type: string) {
+    return getTypeColor(type) + '1a';
+  }
+
+  function getTypeIcon(type: string) {
+    const t = type.toLowerCase();
+    if (t.includes('ssh') || t.includes('brute') || t.includes('login')) return 'ti-lock';
+    if (t.includes('sql') || t.includes('inject')) return 'ti-database';
+    if (t.includes('web') || t.includes('scan')) return 'ti-world-search';
+    if (t.includes('command') || t.includes('compromised')) return 'ti-terminal';
+    if (t.includes('recon')) return 'ti-radar';
+    if (t.includes('port')) return 'ti-plug';
+    return 'ti-shield-exclamation';
+  }
+
+  function getCountryColor(name: string) {
+    if (name === 'China') return '#ef4444';
+    if (name === 'Russia') return '#f97316';
+    if (name === 'United States' || name === 'USA') return '#3b82f6';
+    if (name === 'Germany') return '#f59e0b';
+    if (name === 'Brazil') return '#10b981';
+    if (name === 'Local Network') return '#6366f1';
+    return '#8b5cf6';
   }
 
   function getFlagEmoji(country: string) {
-    if (country === 'Russia') return '🇷🇺';
-    if (country === 'China') return '🇨🇳';
-    if (country === 'Brazil') return '🇧🇷';
-    if (country === 'United States' || country === 'USA') return '🇺🇸';
-    if (country === 'Germany') return '🇩🇪';
-    if (country === 'Local Network') return '🏠';
-    return '🌍';
+    const flags: Record<string, string> = {
+      'Russia': '🇷🇺', 'China': '🇨🇳', 'Brazil': '🇧🇷',
+      'United States': '🇺🇸', 'USA': '🇺🇸', 'Germany': '🇩🇪',
+      'Local Network': '🏠'
+    };
+    return flags[country] || '🌍';
   }
 
-  function setTab(tab: string) { activeTab = tab; }
+  function shortType(type: string) {
+    if (type === 'Aggressive Brute Force' || type === 'SSH Brute Force') return 'SSH Brute';
+    if (type === 'SSH Login Attempt') return 'SSH Login';
+    return type;
+  }
+
+  function rankColor(i: number) {
+    if (i === 0) return '#ef4444';
+    if (i === 1) return '#f97316';
+    if (i === 2) return '#f59e0b';
+    return 'var(--text-muted)';
+  }
 </script>
 
-<div class="analytics-page custom-scrollbar">
-  <!-- Tabs Navigation -->
-  <div class="tabs-nav">
-    <button class="tab-btn {activeTab === 'overview' ? 'active' : ''}" on:click={() => setTab('overview')}>
-      <i class="ti ti-dashboard"></i> Overview
+<div style="display:flex;flex-direction:column;gap:16px;padding-bottom:2rem;">
+
+  <!-- ─── Tab Navigation ──────────────────────────────────────────────────── -->
+  <div class="ds-filters">
+    <button class="ds-btn {activeTab === 'overview' ? 'primary' : ''}" on:click={() => activeTab = 'overview'}>
+      <i class="ti ti-chart-bar"></i> Overview
     </button>
-    <button class="tab-btn {activeTab === 'geographic' ? 'active' : ''}" on:click={() => setTab('geographic')}>
-      <i class="ti ti-map-pin"></i> Geographic Data
+    <button class="ds-btn {activeTab === 'geographic' ? 'primary' : ''}" on:click={() => activeTab = 'geographic'}>
+      <i class="ti ti-map-pin"></i> Geographic
     </button>
-    <button class="tab-btn {activeTab === 'vectors' ? 'active' : ''}" on:click={() => setTab('vectors')}>
+    <button class="ds-btn {activeTab === 'vectors' ? 'primary' : ''}" on:click={() => activeTab = 'vectors'}>
       <i class="ti ti-target"></i> Attack Vectors
     </button>
-    <button class="tab-btn {activeTab === 'payloads' ? 'active' : ''}" on:click={() => setTab('payloads')}>
-      <i class="ti ti-key"></i> Extracted Payloads
+    <button class="ds-btn {activeTab === 'payloads' ? 'primary' : ''}" on:click={() => activeTab = 'payloads'}>
+      <i class="ti ti-file-code"></i> Payloads
+      {#if payloadEvents.length > 0}
+        <span class="tab-badge">{payloadEvents.length}</span>
+      {/if}
     </button>
   </div>
 
-  <div class="tab-content">
-    
-    <!-- OVERVIEW TAB -->
-    {#if activeTab === 'overview'}
-      <div class="grid-2">
-        <div class="panel">
-          <div class="panel-header">
-            <div class="panel-title"><i class="ti ti-device-desktop-analytics"></i> Top Attacker IPs (Real Data)</div>
-            <div class="subtitle">ไอพีที่ทำการโจมตีบ่อยที่สุดจากบันทึกการโจมตีจริง</div>
-          </div>
-          
-          <div class="stat-list">
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- OVERVIEW TAB                                                          -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  {#if activeTab === 'overview'}
+    <!-- Stat Cards Row -->
+    <div class="ds-kpi-row" style="margin-bottom:0;">
+      <div class="ds-kpi"><div class="ds-kpi-icon" style="color:var(--green);background:var(--green-bg)">
+        <i class="ti ti-activity"></i></div><div class="ds-kpi-body">
+          <div class="ds-kpi-val">{events.length.toLocaleString()}</div>
+          <div class="ds-kpi-lbl">Total Events</div>
+        </div>
+      </div>
+      <div class="ds-kpi"><div class="ds-kpi-icon" style="color:var(--blue);background:var(--blue-bg)">
+        <i class="ti ti-device-desktop"></i></div><div class="ds-kpi-body">
+          <div class="ds-kpi-val">{topIps.length}</div>
+          <div class="ds-kpi-lbl">Unique Attacker IPs</div>
+        </div>
+      </div>
+      <div class="ds-kpi"><div class="ds-kpi-icon" style="color:var(--orange);background:var(--orange-bg)">
+        <i class="ti ti-world"></i></div><div class="ds-kpi-body">
+          <div class="ds-kpi-val">{topCountries.length}</div>
+          <div class="ds-kpi-lbl">Source Countries</div>
+        </div>
+      </div>
+      <div class="ds-kpi"><div class="ds-kpi-icon" style="color:var(--red);background:var(--red-bg)">
+        <i class="ti ti-target"></i></div><div class="ds-kpi-body">
+          <div class="ds-kpi-val">{topTypes.length}</div>
+          <div class="ds-kpi-lbl">Attack Vectors</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two-column layout -->
+    <div class="overview-grid">
+      <!-- Top IPs Panel -->
+      <div class="ds-card" style="padding:0;overflow:hidden;">
+        <div class="ds-card-head" style="padding:16px;border-bottom:1px solid var(--border);">
+          <div class="ds-card-title"><i class="ti ti-device-desktop-analytics"></i> Top Attacker IPs</div>
+          <span class="panel-badge">Real Data</span>
+        </div>
+        {#if topIps.length === 0}
+          <div class="empty-state"><i class="ti ti-database-off"></i><br>ไม่มีข้อมูลการโจมตี</div>
+        {:else}
+          <div class="rank-list">
             {#each topIps as item, i}
-            <div class="stat-item">
-              <div class="stat-rank">#{i + 1}</div>
-              <div class="stat-info">
-                <div class="stat-name">{item.ip}</div>
-                <div class="bar-bg">
-                  <div class="bar-fill {i===0?'danger':(i<3?'warn':'info')}" style="width: {item.percent}%"></div>
+              <div class="rank-row">
+                <div class="rank-num" style="color: {rankColor(i)}">
+                  {#if i < 3}<i class="ti ti-medal"></i>{:else}#{i + 1}{/if}
+                </div>
+                <div class="rank-info">
+                  <div class="rank-label">{item.ip}</div>
+                  <div class="rank-bar-wrap">
+                    <div class="rank-bar" style="width:{item.percent}%; background:{i===0?'#ef4444':i<3?'#f97316':'#10b981'}"></div>
+                  </div>
+                </div>
+                <div class="rank-val">
+                  <span class="rv-num">{item.count}</span>
+                  <span class="rv-unit">hits</span>
                 </div>
               </div>
-              <div class="stat-val">{item.count} <span class="text-muted">hits</span></div>
-            </div>
             {/each}
-            {#if topIps.length === 0}
-              <div class="empty-state">ไม่มีข้อมูลการโจมตี</div>
-            {/if}
           </div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-header">
-            <div class="panel-title"><i class="ti ti-shield-alert"></i> Quick Summary</div>
-            <div class="subtitle">ภาพรวมสรุปจากข้อมูลทั้งหมดในระบบ</div>
-          </div>
-          <div class="summary-stats">
-            <div class="s-box">
-              <div class="s-val">{events.length}</div>
-              <div class="s-lbl">Total Events</div>
-            </div>
-            <div class="s-box">
-              <div class="s-val">{topIps.length}</div>
-              <div class="s-lbl">Unique IPs</div>
-            </div>
-            <div class="s-box">
-              <div class="s-val">{topCountries.length}</div>
-              <div class="s-lbl">Countries</div>
-            </div>
-          </div>
-        </div>
+        {/if}
       </div>
 
-      <!-- Horizontal Distribution Legend (Added per Request) -->
-      <div class="panel" style="margin-top: 16px;">
-        <div class="panel-header" style="margin-bottom: 1rem;">
-          <div class="panel-title"><i class="ti ti-chart-bar"></i> Attack Distribution by Type (24h)</div>
+      <!-- Attack Distribution Panel -->
+      <div class="ds-card" style="padding:0;overflow:hidden;">
+        <div class="ds-card-head" style="padding:16px;border-bottom:1px solid var(--border);">
+          <div class="ds-card-title"><i class="ti ti-chart-donut"></i> Attack Distribution</div>
+          <span class="panel-badge">By Type</span>
         </div>
-        <div class="distribution-legend top-legend">
-          {#each topTypes as item}
-            <div class="legend-item">
-              <span class="legend-color" style="background-color: {getTypeColor(item.type)};"></span>
-              <span class="legend-name">{item.type === 'Aggressive Brute Force' ? 'SSH Brute' : (item.type === 'SSH Brute Force' ? 'SSH Brute' : (item.type === 'SSH Login Attempt' ? 'SSH Login' : item.type))}</span>
-              <span class="legend-count">{item.count.toLocaleString()}</span>
-            </div>
-          {/each}
-          {#if topTypes.length === 0}
-            <div class="empty-state" style="padding: 1rem;">ไม่มีข้อมูลการโจมตี</div>
-          {/if}
-        </div>
+        {#if topTypes.length === 0}
+          <div class="empty-state"><i class="ti ti-database-off"></i><br>ไม่มีข้อมูลการโจมตี</div>
+        {:else}
+          <div class="type-chips">
+            {#each topTypes as item}
+              <div class="type-chip" style="border-color:{getTypeColor(item.type)}22; background:{getTypeBg(item.type)}">
+                <i class="ti {getTypeIcon(item.type)}" style="color:{getTypeColor(item.type)}"></i>
+                <span class="tc-name">{shortType(item.type)}</span>
+                <span class="tc-count" style="color:{getTypeColor(item.type)}">{item.count}</span>
+                <span class="tc-pct">{item.percent}%</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
-    {/if}
+    </div>
+  {/if}
 
-    <!-- GEOGRAPHIC TAB -->
-    {#if activeTab === 'geographic'}
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-title"><i class="ti ti-world"></i> Top Source Countries (Real Data)</div>
-          <div class="subtitle">ประเทศต้นทางของการโจมตี (มาจากข้อมูลจริง 100%) - หมายเหตุ: หากโจมตีภายในวง LAN จะขึ้นว่า Local Network</div>
-        </div>
-        
-        <div class="country-grid">
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- GEOGRAPHIC TAB                                                        -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  {#if activeTab === 'geographic'}
+    <div class="ds-card" style="padding:0;overflow:hidden;">
+      <div class="ds-card-head" style="padding:16px;border-bottom:1px solid var(--border);">
+        <div class="ds-card-title"><i class="ti ti-map-pin-filled"></i> Top Source Countries</div>
+        <span class="panel-badge">Real Data</span>
+      </div>
+      <p class="panel-desc">ประเทศต้นทางของการโจมตี — หากโจมตีภายในวง LAN จะแสดงเป็น "Local Network"</p>
+
+      {#if topCountries.length === 0}
+        <div class="empty-state"><i class="ti ti-world-off"></i><br>ไม่มีข้อมูลประเทศ</div>
+      {:else}
+        <div class="geo-list">
           {#each topCountries as item, i}
-          <div class="country-card">
-            <div class="c-flag">{getFlagEmoji(item.country)}</div>
-            <div class="c-details">
-              <div class="c-name">{item.country}</div>
-              <div class="c-percent">{item.percent}% ของทั้งหมด</div>
-              <div class="c-bar">
-                <div class="c-bar-fill" style="width: {item.percent}%; background: {getCountryColor(item.country)}"></div>
+            <div class="geo-row">
+              <div class="geo-rank">{i + 1}</div>
+              <div class="geo-flag">{getFlagEmoji(item.country)}</div>
+              <div class="geo-info">
+                <div class="geo-name">{item.country}</div>
+                <div class="geo-bar-wrap">
+                  <div class="geo-bar" style="width:{item.percent}%; background:{getCountryColor(item.country)}"></div>
+                </div>
+              </div>
+              <div class="geo-right">
+                <span class="geo-hits">{item.count}</span>
+                <span class="geo-pct">{item.percent}%</span>
               </div>
             </div>
-            <div class="c-hits">{item.count} <span class="text-muted">hits</span></div>
-          </div>
           {/each}
-          {#if topCountries.length === 0}
-            <div class="empty-state">ไม่มีข้อมูลประเทศจากการโจมตี</div>
-          {/if}
         </div>
-      </div>
-    {/if}
+      {/if}
+    </div>
+  {/if}
 
-    <!-- VECTORS TAB -->
-    {#if activeTab === 'vectors'}
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-title"><i class="ti ti-crosshair"></i> Attack Vectors (Real Data)</div>
-          <div class="subtitle">ประเภทของการโจมตีที่พบมากที่สุด (มาจากข้อมูลจริง 100%)</div>
-        </div>
-        
-        <div class="stat-list" style="max-width: 800px; margin: 0 auto;">
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- ATTACK VECTORS TAB                                                    -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  {#if activeTab === 'vectors'}
+    <div class="ds-card" style="padding:0;overflow:hidden;">
+      <div class="ds-card-head" style="padding:16px;border-bottom:1px solid var(--border);">
+        <div class="ds-card-title"><i class="ti ti-crosshair"></i> Attack Vectors</div>
+        <span class="panel-badge">Ranked by Frequency</span>
+      </div>
+      <p class="panel-desc">ประเภทการโจมตีที่พบมากที่สุด (จากข้อมูลจริง 100%)</p>
+
+      {#if topTypes.length === 0}
+        <div class="empty-state"><i class="ti ti-shield-off"></i><br>ไม่มีข้อมูลรูปแบบการโจมตี</div>
+      {:else}
+        <div class="vector-list">
           {#each topTypes as item, i}
-          <div class="stat-item" style="padding: 12px 0; border-bottom: 1px solid var(--border);">
-            <div class="stat-rank" style="font-size: 16px;">#{i + 1}</div>
-            <div class="stat-info" style="margin-left: 12px;">
-              <div class="stat-name" style="font-size: 15px;">{item.type}</div>
-              <div class="bar-bg" style="height: 10px;">
-                <div class="bar-fill {i===0?'danger':(i<2?'warn':'info')}" style="width: {item.percent}%"></div>
+            <div class="vector-row">
+              <div class="vector-icon" style="background:{getTypeBg(item.type)}; color:{getTypeColor(item.type)}">
+                <i class="ti {getTypeIcon(item.type)}"></i>
+              </div>
+              <div class="vector-info">
+                <div class="vector-header">
+                  <span class="vector-name">{item.type}</span>
+                  <span class="vector-rank" style="color:{rankColor(i)}"># {i + 1}</span>
+                </div>
+                <div class="vector-bar-wrap">
+                  <div class="vector-bar" style="width:{item.percent}%; background:{getTypeColor(item.type)}"></div>
+                  <span class="vector-pct">{item.percent}%</span>
+                </div>
+              </div>
+              <div class="vector-val">
+                <span class="vv-num">{item.count}</span>
+                <span class="vv-unit">hits</span>
               </div>
             </div>
-            <div class="stat-val" style="font-size: 18px;">{item.count} <span class="text-muted">hits</span></div>
-          </div>
           {/each}
-          {#if topTypes.length === 0}
-            <div class="empty-state">ไม่มีข้อมูลรูปแบบการโจมตี</div>
-          {/if}
         </div>
-      </div>
-    {/if}
+      {/if}
+    </div>
+  {/if}
 
-    <!-- PAYLOADS TAB -->
-    {#if activeTab === 'payloads'}
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-title"><i class="ti ti-file-code"></i> Extracted Credentials & Payloads</div>
-          <div class="subtitle">คำสั่งหรือข้อมูลรหัสผ่านที่แฮกเกอร์พยายามพิมพ์เข้ามาผ่าน Shell / SSH</div>
-        </div>
-        <div class="creds-grid">
-          {#each events.filter(e => e.detail && e.detail.length > 5) as event}
-            <div class="cred-card">
-              <div class="cred-header">
-                <span class="cred-ip">{event.ip}</span>
-                <span class="cred-time">{event.time || event.timeStr}</span>
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- PAYLOADS TAB                                                          -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  {#if activeTab === 'payloads'}
+    <div class="ds-card" style="padding:0;overflow:hidden;">
+      <div class="ds-card-head" style="padding:16px;border-bottom:1px solid var(--border);">
+        <div class="ds-card-title"><i class="ti ti-terminal-2"></i> Extracted Credentials & Payloads</div>
+        <span class="panel-badge">{payloadEvents.length} records</span>
+      </div>
+      <p class="panel-desc">คำสั่งหรือข้อมูลรหัสผ่านที่แฮกเกอร์พยายามพิมพ์เข้ามาผ่าน Shell / SSH</p>
+
+      {#if payloadEvents.length === 0}
+        <div class="empty-state"><i class="ti ti-file-off"></i><br>ยังไม่มีการบันทึก Payload หรือคำสั่งใดๆ</div>
+      {:else}
+        <div class="payload-list">
+          {#each payloadEvents as event}
+            <div class="payload-row">
+              <div class="payload-meta">
+                <span class="p-ip"><i class="ti ti-device-desktop"></i> {event.ip}</span>
+                <span class="p-type" style="background:{getTypeBg(event.type)}; color:{getTypeColor(event.type)}">
+                  {event.type}
+                </span>
+                <span class="p-time"><i class="ti ti-clock"></i> {event.time || event.timeStr || ''}</span>
               </div>
-              <div class="cred-payload">{event.detail}</div>
-              <div class="cred-footer">Type: {event.type}</div>
+              <div class="payload-code">
+                <i class="ti ti-chevron-right payload-prompt"></i>{event.detail}
+              </div>
             </div>
           {/each}
-          {#if events.filter(e => e.detail && e.detail.length > 5).length === 0}
-            <div class="empty-state">ยังไม่มีการบันทึก Payload หรือคำสั่งใดๆ</div>
-          {/if}
         </div>
-      </div>
-    {/if}
+      {/if}
+    </div>
+  {/if}
 
-  </div>
 </div>
 
 <style>
-.analytics-page { max-width: 1400px; margin: 0 auto; padding-bottom: 2rem; }
+/* ─── Page ──────────────────────────────────────────────────────────────────── */
+.analytics-page {
+  padding: 0 0 2rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 
-/* Tabs */
-.tabs-nav {
-  display: flex; gap: 10px; margin-bottom: 20px;
-  background: var(--bg-panel); padding: 8px; border-radius: var(--radius-md);
-  border: 1px solid var(--border); overflow-x: auto;
+/* ─── Tab Bar ───────────────────────────────────────────────────────────────── */
+.tabs-bar {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  overflow-x: auto;
 }
 .tab-btn {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 20px; font-size: 13px; font-weight: 600;
-  border-radius: var(--radius-sm); border: none; cursor: pointer;
-  background: transparent; color: var(--text-secondary); transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.18s;
   white-space: nowrap;
+  position: relative;
 }
-.tab-btn i { font-size: 16px; }
-.tab-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
-.tab-btn.active { background: var(--green-bg); color: var(--green); }
+.tab-btn i { font-size: 15px; }
 
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.tab-btn.active {
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(29,158,117,0.3);
+}
+.tab-badge {
+  background: rgba(255,255,255,0.25);
+  color: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 99px;
+  margin-left: 2px;
+}
+.tab-btn:not(.active) .tab-badge {
+  background: var(--green);
+  color: #fff;
+}
 
+/* ─── Stat Cards ─────────────────────────────────────────────────────────────── */
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.stat-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.18s;
+}
+.stat-card:hover { transform: translateY(-2px); }
+.sc-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.accent-green .sc-icon { background: rgba(16,185,129,0.12); color: #10b981; }
+.accent-blue  .sc-icon { background: rgba(59,130,246,0.12); color: #3b82f6; }
+.accent-orange.sc-icon { background: rgba(249,115,22,0.12); color: #f97316; }
+.accent-red   .sc-icon { background: rgba(239,68,68,0.12);  color: #ef4444; }
+.accent-green { border-left: 3px solid #10b981; }
+.accent-blue  { border-left: 3px solid #3b82f6; }
+.accent-orange { border-left: 3px solid #f97316; }
+.accent-red   { border-left: 3px solid #ef4444; }
+.sc-val { font-size: 26px; font-weight: 800; color: var(--text-primary); line-height: 1; }
+.sc-lbl { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+
+/* ─── Panel ──────────────────────────────────────────────────────────────────── */
+.overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .panel {
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 1.5rem;
-  box-shadow: var(--shadow-sm); display: flex; flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 24px;
+  box-shadow: var(--shadow-sm);
 }
-.panel-header { margin-bottom: 1.5rem; }
-.panel-title { font-size: 15px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
-.panel-title i { color: var(--green); font-size: 20px; }
-.subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 4px; padding-left: 28px; }
-
-/* Stat List (IPs, Vectors) */
-.stat-list { display: flex; flex-direction: column; gap: 16px; }
-.stat-item { display: flex; align-items: center; gap: 12px; }
-.stat-rank { width: 24px; font-size: 12px; font-weight: 700; color: var(--text-muted); text-align: right; }
-.stat-info { flex: 1; }
-.stat-name { font-size: 13px; font-weight: 500; color: var(--text-primary); margin-bottom: 6px; font-family: 'Courier New', monospace; }
-.bar-bg { width: 100%; height: 6px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
-.bar-fill.danger { background: var(--red); }
-.bar-fill.warn { background: var(--orange); }
-.bar-fill.info { background: var(--green); }
-.stat-val { font-size: 14px; font-weight: 600; color: var(--text-primary); min-width: 60px; text-align: right; }
-.text-muted { font-size: 11px; font-weight: 400; color: var(--text-muted); }
-
-/* Summary Stats */
-.summary-stats { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
-.s-box { background: var(--bg-secondary); border-radius: var(--radius-sm); padding: 20px; flex: 1; text-align: center; border: 1px solid var(--border); }
-.s-val { font-size: 32px; font-weight: 700; color: var(--green); margin-bottom: 5px; }
-.s-lbl { font-size: 12px; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; }
-
-/* Distribution Legend */
-.distribution-legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-.top-legend { margin-bottom: 15px; border-bottom: 1px dashed var(--border); padding-bottom: 15px; }
-.legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-.legend-color { width: 12px; height: 12px; border-radius: 3px; }
-.legend-name { color: var(--text-secondary); font-size: 11.5px; }
-.legend-count { font-weight: 700; color: var(--text-primary); margin-left: 2px; }
-
-/* Country Grid */
-.country-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
-.country-card {
-  display: flex; align-items: center; gap: 16px;
-  background: var(--bg-secondary); padding: 16px;
-  border-radius: var(--radius-md); border: 1px solid var(--border);
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
 }
-.c-flag { font-size: 32px; }
-.c-details { flex: 1; }
-.c-name { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
-.c-percent { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
-.c-bar { height: 6px; background: rgba(0,0,0,0.05); border-radius: 3px; overflow: hidden; }
-.c-bar-fill { height: 100%; border-radius: 3px; }
-.c-hits { font-size: 16px; font-weight: 700; text-align: right; }
-
-/* Payloads */
-.creds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
-.cred-card {
-  background: var(--bg-secondary); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 16px; display: flex; flex-direction: column; gap: 12px;
+.panel-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.cred-header { display: flex; justify-content: space-between; align-items: center; }
-.cred-ip { font-size: 12px; color: var(--text-primary); font-weight: 600; font-family: 'Courier New', monospace; }
-.cred-time { font-size: 11px; color: var(--text-muted); }
-.cred-payload { font-family: 'Courier New', monospace; font-size: 12px; color: var(--red); background: rgba(163,45,45,0.05); padding: 10px; border-radius: 6px; border: 1px solid rgba(163,45,45,0.1); word-break: break-all; }
-.cred-footer { font-size: 11px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; }
+.panel-title i { font-size: 18px; color: var(--green); }
+.panel-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: var(--green-bg);
+  color: var(--green);
+  border: 1px solid var(--green);
+}
+.panel-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 18px 0;
+}
 
-.empty-state { text-align: center; color: var(--text-muted); font-size: 13px; padding: 3rem; background: var(--bg-secondary); border-radius: var(--radius-md); }
+/* ─── Rank List (Top IPs / Overview) ────────────────────────────────────────── */
+.rank-list { display: flex; flex-direction: column; gap: 0; margin-top: 10px; padding: 0 16px 16px; }
+.rank-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.rank-row:last-child { border-bottom: none; }
+.rank-num { width: 28px; font-size: 13px; font-weight: 800; text-align: center; flex-shrink: 0; }
+.rank-num i { font-size: 15px; }
+.rank-info { flex: 1; min-width: 0; }
+.rank-label { font-size: 13px; font-weight: 600; color: var(--text-primary); font-family: 'Courier New', monospace; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rank-bar-wrap { height: 6px; background: var(--bg-secondary); border-radius: 99px; overflow: hidden; }
+.rank-bar { height: 100%; border-radius: 99px; transition: width 0.6s ease; }
+.rank-val { text-align: right; flex-shrink: 0; }
+.rv-num { font-size: 15px; font-weight: 700; color: var(--text-primary); display: block; }
+.rv-unit { font-size: 10px; color: var(--text-muted); font-weight: 500; }
 
+/* ─── Type Chips (Attack Distribution) ──────────────────────────────────────── */
+.type-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 0 16px 16px; }
+.type-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid;
+  transition: opacity 0.18s;
+}
+.type-chip i { font-size: 16px; flex-shrink: 0; }
+.tc-name { flex: 1; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.tc-count { font-size: 14px; font-weight: 800; }
+.tc-pct { font-size: 11px; color: var(--text-muted); font-weight: 600; min-width: 36px; text-align: right; }
+
+/* ─── Geographic List ────────────────────────────────────────────────────────── */
+.geo-list { display: flex; flex-direction: column; gap: 0; padding: 0 16px 16px; }
+.geo-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+}
+.geo-row:last-child { border-bottom: none; }
+.geo-rank { width: 24px; font-size: 12px; font-weight: 700; color: var(--text-muted); text-align: center; flex-shrink: 0; }
+.geo-flag { font-size: 24px; width: 32px; text-align: center; flex-shrink: 0; }
+.geo-info { flex: 1; min-width: 0; }
+.geo-name { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.geo-bar-wrap { height: 7px; background: var(--bg-secondary); border-radius: 99px; overflow: hidden; }
+.geo-bar { height: 100%; border-radius: 99px; transition: width 0.6s ease; }
+.geo-right { text-align: right; flex-shrink: 0; }
+.geo-hits { font-size: 16px; font-weight: 800; color: var(--text-primary); display: block; }
+.geo-pct { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+
+/* ─── Vector List ────────────────────────────────────────────────────────────── */
+.vector-list { display: flex; flex-direction: column; gap: 10px; padding: 0 16px 16px; }
+.vector-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  transition: transform 0.15s;
+}
+.vector-row:hover { transform: translateX(4px); }
+.vector-icon {
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.vector-info { flex: 1; min-width: 0; }
+.vector-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.vector-name { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.vector-rank { font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.vector-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.vector-bar-wrap div:first-child { flex: 1; }
+.vector-bar-outer { flex: 1; height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; }
+.vector-bar { height: 8px; border-radius: 99px; transition: width 0.6s ease; }
+.vector-pct { font-size: 11px; font-weight: 700; color: var(--text-muted); flex-shrink: 0; min-width: 32px; text-align: right; }
+.vector-val { text-align: right; flex-shrink: 0; }
+.vv-num { font-size: 18px; font-weight: 800; color: var(--text-primary); display: block; }
+.vv-unit { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+
+/* ─── Payload List ───────────────────────────────────────────────────────────── */
+.payload-list { display: flex; flex-direction: column; gap: 10px; padding: 0 16px 16px; }
+.payload-row {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.payload-row:hover { border-color: var(--red); }
+.payload-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.p-ip { font-size: 12px; font-weight: 700; color: var(--text-primary); font-family: 'Courier New', monospace; display: flex; align-items: center; gap: 5px; }
+.p-ip i { font-size: 12px; }
+.p-type {
+  font-size: 10px; font-weight: 700; padding: 2px 10px;
+  border-radius: 99px; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.p-time { font-size: 11px; color: var(--text-muted); margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.payload-code {
+  padding: 10px 14px;
+  font-family: 'Courier New', monospace;
+  font-size: 12.5px;
+  color: #ef4444;
+  word-break: break-all;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.payload-prompt { font-size: 12px; color: var(--text-muted); flex-shrink: 0; margin-top: 1px; }
+
+/* ─── Empty State ────────────────────────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 3rem 1rem;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  line-height: 2;
+}
+.empty-state i { font-size: 28px; opacity: 0.4; }
+
+/* ─── Responsive ─────────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .grid-2 { grid-template-columns: 1fr; }
+  .stat-cards { grid-template-columns: 1fr 1fr; }
+  .overview-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .stat-cards { grid-template-columns: 1fr; }
 }
 </style>

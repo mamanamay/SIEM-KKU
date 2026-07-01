@@ -23,6 +23,9 @@
       activeToast = attack;
       if (toastTimeout) clearTimeout(toastTimeout);
       toastTimeout = setTimeout(() => { activeToast = null; }, 5000);
+      
+      localStorage.setItem('notifications', JSON.stringify(notificationsHistory.slice(0, 50)));
+      localStorage.setItem('unreadCount', unreadCount.toString());
     }
   }
 
@@ -30,14 +33,29 @@
     notificationsHistory = [];
     unreadCount = 0;
     showNotifications = false;
+    localStorage.removeItem('notifications');
+    localStorage.removeItem('unreadCount');
   }
   
   function toggleNotifications() {
     showNotifications = !showNotifications;
-    if (showNotifications) unreadCount = 0;
+    if (showNotifications) {
+      unreadCount = 0;
+      localStorage.setItem('unreadCount', '0');
+    }
   }
 
   onMount(() => {
+    // Restore persistent notifications
+    const savedNotifs = localStorage.getItem('notifications');
+    const savedUnread = localStorage.getItem('unreadCount');
+    if (savedNotifs) {
+      try { notificationsHistory = JSON.parse(savedNotifs); } catch (e) {}
+    }
+    if (savedUnread) {
+      unreadCount = parseInt(savedUnread) || 0;
+    }
+
     initSocket();
     updateTime();
     timeInterval = setInterval(updateTime, 1000);
@@ -63,19 +81,10 @@
       '/dashboard': 'Overview Dashboard',
       '/dashboard/alert': 'Alerts & SOAR',
       '/dashboard/investigate': 'Threat Investigation',
-      '/dashboard/traffic': 'Network Traffic',
-      '/dashboard/mitre': 'MITRE ATT&CK Matrix',
-      '/dashboard/blocked_ip_audit': 'Blocked IP Audit',
-      '/dashboard/ioc': 'Indicators of Compromise (IOC)',
-      '/dashboard/threat': 'Threat Intelligence',
-      '/dashboard/wazuh': 'Endpoint Security (Wazuh)',
-      '/dashboard/ai_monitor': 'AI Threat Monitor',
-      '/dashboard/malware': 'Malware Analysis',
-      '/dashboard/ddos': 'DDoS Protection',
-      '/dashboard/cis': 'CIS Compliance Audit',
-      '/dashboard/pdpa': 'PDPA Audit',
-      '/dashboard/remoteaccess': 'Remote Access Log',
       '/dashboard/analytics': 'Attacker Analytics',
+      '/dashboard/mitre': 'MITRE ATT&CK Matrix',
+      '/dashboard/cve': 'CVE Database',
+      '/dashboard/blocked_ip_audit': 'Blocked IP Audit',
       '/dashboard/settings': 'System Settings'
     };
     return titles[path] || 'Command Center';
@@ -90,6 +99,9 @@
 
 <svelte:head>
   <title>Honeypot Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
 </svelte:head>
 
@@ -115,26 +127,33 @@
       <a href="/dashboard/logs" class="nav-item {$page.url.pathname === '/dashboard/logs' ? 'active' : ''}">
         <i class="ti ti-list-search"></i> Security Logs
       </a>
+      <a href="/dashboard/alert" class="nav-item {$page.url.pathname === '/dashboard/alert' ? 'active' : ''}">
+        <i class="ti ti-alert-triangle"></i> Alerts & SOAR
+      </a>
       <a href="/dashboard/investigate" class="nav-item {$page.url.pathname === '/dashboard/investigate' ? 'active' : ''}">
         <i class="ti ti-zoom-in"></i> Threat Investigate
-      </a>
-      <a href="/dashboard/faculty" class="nav-item {$page.url.pathname === '/dashboard/faculty' ? 'active' : ''}">
-        <i class="ti ti-building"></i> Faculty Monitor
       </a>
       <a href="/dashboard/mitre" class="nav-item {$page.url.pathname === '/dashboard/mitre' ? 'active' : ''}">
         <i class="ti ti-grid-dots"></i> MITRE ATT&CK
       </a>
 
       <div class="nav-group-title mt-2">RESPONSE & INTEL</div>
+      <a href="/dashboard/faculty" class="nav-item {$page.url.pathname === '/dashboard/faculty' ? 'active' : ''}">
+        <i class="ti ti-building"></i> Faculty IP Mapping
+      </a>
       <a href="/dashboard/blocked_ip_audit" class="nav-item {$page.url.pathname === '/dashboard/blocked_ip_audit' ? 'active' : ''}">
         <i class="ti ti-shield-x"></i> Blocked IP Audit
-      </a>
-      <a href="/dashboard/ioc" class="nav-item {$page.url.pathname === '/dashboard/ioc' ? 'active' : ''}">
-        <i class="ti ti-target"></i> Indicators (IOC)
       </a>
       <a href="/dashboard/cve" class="nav-item {$page.url.pathname === '/dashboard/cve' ? 'active' : ''}">
         <i class="ti ti-database-search"></i> CVE Database
       </a>
+
+      {#if $roleStore === 'admin'}
+      <div class="nav-group-title mt-2">ADMINISTRATION</div>
+      <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}">
+        <i class="ti ti-settings"></i> System Settings
+      </a>
+      {/if}
     </nav>
     <div class="sidebar-footer">
       <div class="status-indicator">
@@ -248,6 +267,8 @@
   --orange-bg: #faeeda;
   --blue: #185fa5;
   --blue-bg: #e6f1fb;
+  --accent: #1d9e75;
+  --accent-bg: #eaf6f1;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -265,14 +286,17 @@
     --red-bg: rgba(163,45,45,0.15);
     --orange-bg: rgba(133,79,11,0.15);
     --blue-bg: rgba(24,95,165,0.15);
+    --accent-bg: rgba(29,158,117,0.15);
   }
 }
 
 :global(body) {
-  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--text-primary);
-  overflow: hidden; /* Prevent body scroll, handled by page-container */
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Layout Structure */
@@ -319,7 +343,7 @@
   display: flex; align-items: center; justify-content: space-between; padding: 0 24px;
   flex-shrink: 0;
 }
-.page-title { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.page-title { font-size: 16px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
 .topbar-right { display: flex; align-items: center; gap: 15px; }
 .btn-icon { background: none; border: none; font-size: 20px; color: var(--text-secondary); cursor: pointer; position: relative; padding: 4px; display: flex; align-items: center; justify-content: center; transition: 0.2s; border-radius: 6px; }
 .btn-icon:hover { background: var(--bg-secondary); color: var(--text-primary); }
@@ -375,4 +399,330 @@
 :global(.custom-scrollbar::-webkit-scrollbar-track) { background: transparent; }
 :global(.custom-scrollbar::-webkit-scrollbar-thumb) { background: var(--border); border-radius: 10px; }
 :global(.custom-scrollbar::-webkit-scrollbar-thumb:hover) { background: var(--text-muted); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   GLOBAL DESIGN SYSTEM — Used across ALL dashboard pages
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Page Layout ────────────────────────────────────────────────────────────── */
+:global(.ds-page) {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 2rem;
+}
+:global(.ds-page-header) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+:global(.ds-page-title) {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+:global(.ds-page-title i) { font-size: 18px; color: var(--green); }
+:global(.ds-page-subtitle) {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ─── Cards / Panels ─────────────────────────────────────────────────────────── */
+:global(.ds-card) {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 24px;
+  box-shadow: var(--shadow-sm);
+}
+:global(.ds-card-head) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+:global(.ds-card-title) {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+:global(.ds-card-title i) { font-size: 16px; color: var(--green); }
+
+/* ─── Stat / KPI Cards ───────────────────────────────────────────────────────── */
+:global(.ds-kpi-row) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+:global(.ds-kpi) {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.18s;
+}
+:global(.ds-kpi:hover) { transform: translateY(-2px); }
+:global(.ds-kpi-icon) {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+:global(.ds-kpi-icon.green)  { background: rgba(29,158,117,0.12); color: #1d9e75; }
+:global(.ds-kpi-icon.blue)   { background: rgba(24,95,165,0.12);  color: #185fa5; }
+:global(.ds-kpi-icon.red)    { background: rgba(163,45,45,0.12);  color: #a32d2d; }
+:global(.ds-kpi-icon.orange) { background: rgba(133,79,11,0.12);  color: #854f0b; }
+:global(.ds-kpi-icon.purple) { background: rgba(139,92,246,0.12); color: #8b5cf6; }
+:global(.ds-kpi-val) { font-size: 24px; font-weight: 800; color: var(--text-primary); line-height: 1.1; }
+:global(.ds-kpi-lbl) { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 3px; }
+:global(.ds-kpi.border-green) { border-left: 3px solid #1d9e75; }
+:global(.ds-kpi.border-blue)  { border-left: 3px solid #185fa5; }
+:global(.ds-kpi.border-red)   { border-left: 3px solid #a32d2d; }
+:global(.ds-kpi.border-orange){ border-left: 3px solid #854f0b; }
+:global(.ds-kpi.border-purple){ border-left: 3px solid #8b5cf6; }
+
+/* ─── Badges ─────────────────────────────────────────────────────────────────── */
+:global(.ds-badge) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+:global(.ds-badge.green)  { background: var(--green-bg);  color: var(--green);  border-color: var(--green); }
+:global(.ds-badge.red)    { background: var(--red-bg);    color: var(--red);    border-color: var(--red); }
+:global(.ds-badge.orange) { background: var(--orange-bg); color: var(--orange); border-color: var(--orange); }
+:global(.ds-badge.blue)   { background: var(--blue-bg);   color: var(--blue);   border-color: var(--blue); }
+:global(.ds-badge.gray)   { background: var(--bg-secondary); color: var(--text-secondary); border-color: var(--border); }
+:global(.ds-badge.purple) { background: rgba(139,92,246,0.1); color: #8b5cf6; border-color: rgba(139,92,246,0.3); }
+
+/* Severity badges */
+:global(.sev-critical) { background: var(--red-bg);    color: var(--red);    border: 1px solid var(--red);    border-radius: 6px; font-size: 10px; font-weight: 700; padding: 2px 7px; text-transform: uppercase; }
+:global(.sev-high)     { background: var(--orange-bg); color: var(--orange); border: 1px solid var(--orange); border-radius: 6px; font-size: 10px; font-weight: 700; padding: 2px 7px; text-transform: uppercase; }
+:global(.sev-medium)   { background: var(--blue-bg);   color: var(--blue);   border: 1px solid var(--blue);   border-radius: 6px; font-size: 10px; font-weight: 700; padding: 2px 7px; text-transform: uppercase; }
+:global(.sev-low)      { background: var(--green-bg);  color: var(--green);  border: 1px solid var(--green);  border-radius: 6px; font-size: 10px; font-weight: 700; padding: 2px 7px; text-transform: uppercase; }
+
+/* ─── Buttons ────────────────────────────────────────────────────────────────── */
+:global(.ds-btn) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.18s;
+  text-decoration: none;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+}
+:global(.ds-btn:hover) { background: var(--bg-secondary); }
+:global(.ds-btn.primary) { background: var(--green); color: #fff; border-color: var(--green); }
+:global(.ds-btn.primary:hover) { filter: brightness(1.1); }
+:global(.ds-btn.danger)  { background: var(--red-bg);  color: var(--red);  border-color: var(--red); }
+:global(.ds-btn.danger:hover)  { background: var(--red); color: #fff; }
+:global(.ds-btn.sm) { padding: 5px 11px; font-size: 11px; border-radius: 6px; }
+:global(.ds-btn i) { font-size: 14px; }
+:global(.ds-btn[disabled]) { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+/* ─── Data Table ─────────────────────────────────────────────────────────────── */
+:global(.ds-table-wrap) {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+:global(.ds-table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+:global(.ds-table thead tr) {
+  background: var(--bg-secondary);
+  border-bottom: 2px solid var(--border);
+}
+:global(.ds-table th) {
+  padding: 11px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+:global(.ds-table td) {
+  padding: 12px 14px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  font-size: 13px;
+}
+:global(.ds-table tbody tr:last-child td) { border-bottom: none; }
+:global(.ds-table tbody tr:hover td) { background: rgba(0,0,0,0.015); }
+
+/* ─── Filter / Search Bar ────────────────────────────────────────────────────── */
+:global(.ds-filters) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+:global(.ds-search) {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+  max-width: 340px;
+}
+:global(.ds-search i) {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 15px;
+  pointer-events: none;
+}
+:global(.ds-search input) {
+  width: 100%;
+  padding: 8px 12px 8px 34px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.18s;
+}
+:global(.ds-search input:focus) { border-color: var(--green); }
+:global(.ds-select) {
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+
+/* ─── Pagination ─────────────────────────────────────────────────────────────── */
+:global(.ds-pagination) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  border-radius: 0 0 12px 12px;
+}
+:global(.ds-pagination-info) {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+:global(.ds-pagination-btns) { display: flex; align-items: center; gap: 6px; }
+:global(.ds-page-btn) {
+  display: flex; align-items: center; gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px; font-weight: 600;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: all 0.15s;
+}
+:global(.ds-page-btn:hover:not([disabled])) { border-color: var(--green); color: var(--green); }
+:global(.ds-page-btn[disabled]) { opacity: 0.4; cursor: not-allowed; }
+:global(.ds-page-info) { font-size: 12px; font-weight: 700; color: var(--text-secondary); padding: 0 8px; }
+
+/* ─── Empty State ────────────────────────────────────────────────────────────── */
+:global(.ds-empty) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+:global(.ds-empty i) { font-size: 36px; opacity: 0.3; }
+
+/* ─── Tabs ───────────────────────────────────────────────────────────────────── */
+:global(.ds-tabs) {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 5px;
+  overflow-x: auto;
+}
+:global(.ds-tab) {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.18s;
+  white-space: nowrap;
+}
+:global(.ds-tab i) { font-size: 14px; }
+:global(.ds-tab:hover) { background: var(--bg-secondary); color: var(--text-primary); }
+:global(.ds-tab.active) { background: var(--green); color: #fff; box-shadow: 0 2px 8px rgba(29,158,117,0.25); }
+
+/* ─── Monospace / Code ───────────────────────────────────────────────────────── */
+:global(.ds-mono) { font-family: 'Courier New', Courier, monospace; font-size: 12.5px; }
+:global(.ds-code) {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  word-break: break-all;
+}
+
+/* ─── Separator ──────────────────────────────────────────────────────────────── */
+:global(.ds-divider) { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+/* ─── Accent borders for rows/cards ─────────────────────────────────────────── */
+:global(.ds-accent-green) { border-left: 3px solid var(--green)  !important; }
+:global(.ds-accent-red)   { border-left: 3px solid var(--red)    !important; }
+:global(.ds-accent-orange){ border-left: 3px solid var(--orange) !important; }
+:global(.ds-accent-blue)  { border-left: 3px solid var(--blue)   !important; }
 </style>
+

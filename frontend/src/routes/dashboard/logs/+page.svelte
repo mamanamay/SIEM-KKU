@@ -16,6 +16,21 @@
     return sevOk && statusOk && textOk;
   });
 
+  // Pagination
+  let currentPage = 1;
+  const itemsPerPage = 30;
+
+  $: totalPages = Math.ceil(filteredEvents.length / itemsPerPage) || 1;
+  $: {
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+  }
+  
+  $: paginatedEvents = filteredEvents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  function prevPage() { if (currentPage > 1) currentPage--; }
+  function nextPage() { if (currentPage < totalPages) currentPage++; }
+
   // Track expanded rows
   let expandedRows = new Set();
   function toggleRow(id) {
@@ -69,39 +84,39 @@
 </script>
 
 <div class="logs-page">
-  <div class="panel">
-    <div class="panel-header">
-      <div class="filter-group">
-        <select bind:value={activeSev} class="select-box">
+  <div class="ds-card">
+    <div class="ds-card-head">
+      <div class="ds-filters">
+        <select bind:value={activeSev} class="ds-select">
           <option value="all">All Severities</option>
           <option value="critical">Critical Only</option>
           <option value="high">High Only</option>
           <option value="medium">Medium Only</option>
           <option value="low">Low Only</option>
         </select>
-        <select bind:value={activeStatus} class="select-box">
+        <select bind:value={activeStatus} class="ds-select">
           <option value="all">All Statuses</option>
           <option value="Opened">Opened</option>
           <option value="In Progress">In Progress</option>
           <option value="Closed">Closed</option>
         </select>
-        <div class="search-box">
+        <div class="ds-search">
           <i class="ti ti-search"></i>
-          <input type="text" bind:value={searchText} placeholder="Search payloads, IPs..." />
+          <input type="text" bind:value={searchText} placeholder="Search IPs, payloads…" />
         </div>
       </div>
       {#if $roleStore === 'admin'}
-      <button class="btn-primary" on:click={() => showExportModal = true}>
+      <button class="ds-btn primary" on:click={() => showExportModal = true}>
         <i class="ti ti-download"></i> Export Logs
       </button>
       {/if}
     </div>
 
-    <div class="table-container">
-      <table class="full-table">
+    <div class="ds-table-wrap">
+      <table class="ds-table">
         <thead>
           <tr>
-            <th style="width: 30px"></th>
+            <th style="width:36px"></th>
             <th>วันที่ & เวลา</th>
             <th>Source IP</th>
             <th>Attack Type</th>
@@ -111,16 +126,16 @@
           </tr>
         </thead>
         <tbody>
-          {#each filteredEvents as event, i}
+          {#each paginatedEvents as event, i}
           <tr class="log-row {expandedRows.has(i) ? 'expanded' : ''}" on:click={() => toggleRow(i)}>
             <td class="expand-icon">
               <i class="ti {expandedRows.has(i) ? 'ti-chevron-down' : 'ti-chevron-right'}"></i>
             </td>
-            <td class="font-mono">{event.time || event.timeStr}</td>
+            <td class="ds-mono">{event.time || event.timeStr}</td>
             <td>
               <div class="ip-block">
                 <span class="flag">{getFlagEmoji(event.country)}</span>
-                <span class="font-mono text-bold">{event.ip}</span>
+                <span class="ds-mono text-bold">{event.ip}</span>
               </div>
             </td>
             <td><span class="type-badge">{event.type}</span></td>
@@ -139,75 +154,59 @@
           </tr>
           {#if expandedRows.has(i)}
           <tr class="details-row">
-            <td colspan="6">
+            <td colspan="7">
               <div class="details-container">
                 <div class="details-grid">
                   <!-- Context Panel -->
                   <div class="detail-panel">
-                    <div class="dp-title"><i class="ti ti-fingerprint"></i> ข้อมูลผู้โจมตี (Attacker Context)</div>
+                    <div class="dp-title"><i class="ti ti-fingerprint"></i> Attacker Context</div>
                     <div class="dp-content">
                       <div class="kv"><span class="k">ประเทศ:</span> <span class="v">{event.country || 'Unknown'}</span></div>
-                      <div class="kv"><span class="k">เครื่องมือ (Tool):</span> <span class="v font-mono">{event.clientVersion || 'Unknown'}</span></div>
-                      <div class="kv"><span class="k">MITRE ATT&CK:</span> <span class="v badge-mitre">{event.mitreCode || 'T0000'}</span></div>
+                      <div class="kv"><span class="k">Tool:</span> <span class="v ds-mono">{event.clientVersion || 'Unknown'}</span></div>
+                      <div class="kv"><span class="k">MITRE:</span> <span class="v badge-mitre">{event.mitreCode || 'T0000'}</span></div>
                     </div>
                   </div>
 
                   <!-- Payload Panel -->
                   <div class="detail-panel">
-                    <div class="dp-title"><i class="ti ti-code"></i> คำสั่งที่ถูกใช้ (Raw Payload)</div>
+                    <div class="dp-title"><i class="ti ti-code"></i> Raw Payload</div>
                     <div class="dp-content">
-                      <div class="payload-box">
-                        {event.detail}
-                      </div>
+                      <div class="payload-box">{event.detail}</div>
                     </div>
                   </div>
 
                   <!-- Mitigation Panel -->
                   <div class="detail-panel">
-                    <div class="dp-title"><i class="ti ti-shield-check"></i> วิธีรับมือและความเสี่ยง</div>
+                    <div class="dp-title"><i class="ti ti-shield-check"></i> วิธีรับมือ</div>
                     <div class="dp-content">
                       {#if event.severity === 'critical'}
-                        <div class="mit-item immediate">
-                          <i class="ti ti-alert-triangle"></i> เสี่ยงสูงมาก: อาจทำให้เซิร์ฟเวอร์โดนยึด ควรบล็อก IP นี้ใน Firewall ทันที
-                        </div>
+                        <div class="mit-item immediate"><i class="ti ti-alert-triangle"></i> เสี่ยงสูงมาก: บล็อก IP ใน Firewall ทันที</div>
                       {:else if event.severity === 'high'}
-                        <div class="mit-item immediate" style="background:var(--orange-bg);color:var(--orange);border-color:rgba(133,79,11,0.2)">
-                          <i class="ti ti-alert-circle"></i> เสี่ยงสูง: เป็นการพยายามเจาะระบบ ควรเฝ้าระวังพฤติกรรม
-                        </div>
+                        <div class="mit-item immediate" style="background:var(--orange-bg);color:var(--orange);border-color:rgba(133,79,11,0.2)"><i class="ti ti-alert-circle"></i> เสี่ยงสูง: เฝ้าระวังพฤติกรรม</div>
                       {:else}
-                        <div class="mit-item longterm" style="background:var(--blue-bg);color:var(--blue);border-color:rgba(24,95,165,0.2)">
-                          <i class="ti ti-info-circle"></i> เสี่ยงต่ำ: เป็นการสแกนหาช่องโหว่ทั่วไป
-                        </div>
+                        <div class="mit-item longterm" style="background:var(--blue-bg);color:var(--blue);border-color:rgba(24,95,165,0.2)"><i class="ti ti-info-circle"></i> เสี่ยงต่ำ: สแกนหาช่องโหว่ทั่วไป</div>
                       {/if}
-                      <div class="mit-item longterm">
-                        <i class="ti ti-shield"></i> คำแนะนำ: ตั้งรหัสผ่านให้ซับซ้อนขึ้น และปิดพอร์ตที่ไม่จำเป็น
-                      </div>
+                      <div class="mit-item longterm"><i class="ti ti-shield"></i> ตั้งรหัสผ่านซับซ้อนขึ้น และปิดพอร์ตที่ไม่จำเป็น</div>
                     </div>
                   </div>
 
                   <!-- IP Reputation Panel -->
                   <div class="detail-panel">
-                    <div class="dp-title"><i class="ti ti-world-search"></i> ตรวจสอบไอพี (IP Reputation)</div>
+                    <div class="dp-title"><i class="ti ti-world-search"></i> IP Reputation</div>
                     <div class="dp-content">
                       <p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">
-                        นำ IP <strong class="font-mono">{event.ip}</strong> ไปตรวจสอบประวัติอาชญากรรมไซเบอร์ในฐานข้อมูลสากล เพื่อดูว่าเป็น Botnet หรือแฮกเกอร์ที่เคยโจมตีที่อื่นหรือไม่
+                        ตรวจสอบ <strong class="ds-mono">{event.ip}</strong> ในฐานข้อมูลสากล
                       </p>
                       <a href="https://www.virustotal.com/gui/search/{event.ip}" target="_blank" class="btn-vt">
-                        <i class="ti ti-shield-search" style="font-size: 16px;"></i>
-                        ตรวจด้วย VirusTotal
+                        <i class="ti ti-shield-search"></i> VirusTotal
                       </a>
                       {#if $roleStore === 'admin'}
-                      <div class="admin-status-box" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border);">
-                        <div class="dp-title" style="margin-bottom: 8px;"><i class="ti ti-settings"></i> จัดการสถานะ (Admin)</div>
-                        <select 
-                          class="select-box" 
-                          style="width: 100%;" 
-                          value={event.status || 'Opened'}
-                          on:change={(e) => updateStatus(event.id, e.target.value)}
-                        >
-                          <option value="Opened">🚨 Opened (รอตรวจสอบ)</option>
-                          <option value="In Progress">⏳ In Progress (กำลังวิเคราะห์)</option>
-                          <option value="Closed">✅ Closed (บล็อกแล้ว/ปิดงาน)</option>
+                      <div class="admin-status-box">
+                        <div class="dp-title" style="margin-bottom:8px;"><i class="ti ti-settings"></i> จัดการสถานะ</div>
+                        <select class="ds-select" style="width:100%;" value={event.status || 'Opened'} on:change={(e) => updateStatus(event.id, e.target.value)}>
+                          <option value="Opened">🚨 Opened</option>
+                          <option value="In Progress">⏳ In Progress</option>
+                          <option value="Closed">✅ Closed</option>
                         </select>
                       </div>
                       {/if}
@@ -241,16 +240,32 @@
         </tbody>
       </table>
       {#if filteredEvents.length === 0}
-      <div class="empty-state">
-        <i class="ti ti-search"></i>
-        <p>No logs found matching your criteria.</p>
+      <div class="ds-empty">
+        <i class="ti ti-database-search"></i>
+        ไม่พบข้อมูล Log ที่ตรงกับเงื่อนไข
       </div>
       {/if}
     </div>
+    
+    <!-- Pagination -->
+    {#if totalPages > 1}
+    <div class="ds-pagination">
+      <span class="ds-pagination-info">แสดง {(currentPage-1)*itemsPerPage+1}–{Math.min(currentPage*itemsPerPage, filteredEvents.length)} จาก {filteredEvents.length} รายการ</span>
+      <div class="ds-pagination-btns">
+        <button class="ds-page-btn" on:click={prevPage} disabled={currentPage === 1}>
+          <i class="ti ti-chevron-left"></i> Previous
+        </button>
+        <span class="ds-page-info">Page {currentPage} / {totalPages}</span>
+        <button class="ds-page-btn" on:click={nextPage} disabled={currentPage === totalPages}>
+          Next <i class="ti ti-chevron-right"></i>
+        </button>
+      </div>
+    </div>
+    {/if}
   </div>
 </div>
 
-<!-- Export Modal (Shared logic) -->
+<!-- Export Modal -->
 {#if showExportModal}
 <div class="modal-backdrop show">
   <div class="modal">
@@ -266,7 +281,7 @@
       <button class="export-opt {selectedExportFormat === 'csv' ? 'selected' : ''}" on:click={() => selectedExportFormat = 'csv'}>
         <div class="export-opt-info">
           <div class="export-opt-name">CSV Format</div>
-          <div class="export-opt-desc">For Excel/SIEM integration</div>
+          <div class="export-opt-desc">For Excel / SIEM integration</div>
         </div>
       </button>
       <button class="export-opt {selectedExportFormat === 'json' ? 'selected' : ''}" on:click={() => selectedExportFormat = 'json'}>
@@ -277,8 +292,8 @@
       </button>
     </div>
     <div class="modal-footer">
-      <button class="btn-secondary" on:click={() => showExportModal = false}>Cancel</button>
-      <button class="btn-primary" on:click={handleExport}><i class="ti ti-download"></i> Download</button>
+      <button class="ds-btn" on:click={() => showExportModal = false}>Cancel</button>
+      <button class="ds-btn primary" on:click={handleExport}><i class="ti ti-download"></i> Download</button>
     </div>
   </div>
 </div>
@@ -290,64 +305,35 @@
   <span>Export Successful</span>
 </div>
 
+
 <style>
-.logs-page { max-width: 1400px; margin: 0 auto; }
-.panel {
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 1.5rem;
-  box-shadow: var(--shadow-sm); display: flex; flex-direction: column;
-}
-.panel-header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 10px;
-}
-.filter-group { display: flex; gap: 10px; }
-.select-box, .search-box input {
-  padding: 8px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; outline: none;
-}
-.select-box:focus, .search-box input:focus { border-color: var(--green); }
-.search-box { position: relative; }
-.search-box input { padding-left: 32px; width: 250px; }
-.search-box i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
+.logs-page { display: flex; flex-direction: column; gap: 0; }
 
-.btn-primary {
-  display: flex; align-items: center; gap: 6px; padding: 8px 16px;
-  background: var(--green); color: white; border: none; border-radius: var(--radius-sm);
-  font-size: 13px; font-weight: 500; cursor: pointer; transition: 0.2s;
-}
-.btn-primary:hover { filter: brightness(1.1); }
-.btn-secondary {
-  padding: 8px 16px; background: var(--bg-secondary); color: var(--text-secondary);
-  border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
-}
-
-.table-container { overflow-x: auto; }
-.full-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.full-table th { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 500; }
-.full-table td { padding: 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-
-/* Expandable Rows */
+/* Expandable Table Rows */
 .log-row { cursor: pointer; transition: background 0.15s; }
 .log-row:hover { background: var(--bg-secondary); }
 .log-row.expanded { background: var(--bg-secondary); border-left: 3px solid var(--green); }
 .expand-icon i { font-size: 14px; color: var(--text-secondary); transition: transform 0.2s; }
-.details-row td { padding: 0; border-bottom: 1px solid var(--border); }
-.details-container { padding: 20px 40px 30px 40px; background: var(--bg-panel); box-shadow: inset 0 3px 6px rgba(0,0,0,0.02); }
+.details-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
+.details-container { padding: 20px 32px 28px; background: var(--bg-panel); box-shadow: inset 0 3px 6px rgba(0,0,0,0.02); }
 
-.details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
-.detail-panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; }
-.dp-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-.dp-content { display: flex; flex-direction: column; gap: 10px; }
-.kv { display: flex; justify-content: space-between; font-size: 12px; }
-.k { color: var(--text-muted); }
-.v { color: var(--text-primary); font-weight: 500; }
-.badge-mitre { background: var(--blue-bg); color: var(--blue); padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+/* Detail Panels Grid */
+.details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.detail-panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; }
+.dp-title { font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.dp-content { display: flex; flex-direction: column; gap: 8px; }
+.kv { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; font-size: 12px; margin-bottom: 4px; }
+.k { color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+.v { color: var(--text-primary); font-weight: 500; text-align: right; word-break: break-all; }
+.badge-mitre { background: var(--blue-bg); color: var(--blue); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
 
+/* Mitigation Items */
 .mit-item { padding: 8px 12px; border-radius: 6px; font-size: 11.5px; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; font-weight: 500; }
 .mit-item i { font-size: 16px; margin-top: 1px; }
 .mit-item.immediate { background: var(--red-bg); color: var(--red); border: 1px solid rgba(163,45,45,0.2); }
 .mit-item.longterm { background: var(--green-bg); color: var(--green); border: 1px solid rgba(29,158,117,0.2); }
 
+/* VirusTotal Button */
 .btn-vt {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   background: #1155cb; color: white; border-radius: var(--radius-sm);
@@ -356,59 +342,40 @@
 }
 .btn-vt:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(17,85,203,0.3); }
 
+/* IP & Flag */
 .ip-block { display: flex; align-items: center; gap: 8px; }
 .flag { font-size: 16px; }
+.text-bold { font-weight: 700; color: var(--text-primary); }
 
+/* Threat Score Bar */
 .score-bar { display: flex; align-items: center; gap: 8px; width: 100px; background: var(--bg-secondary); height: 8px; border-radius: 4px; position: relative; }
 .score-fill { height: 100%; border-radius: 4px; }
 .score-fill.critical { background: var(--red); }
 .score-fill.high { background: var(--orange); }
 .score-fill.medium { background: var(--blue); }
-.score-text { position: absolute; right: -40px; font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.score-text { position: absolute; right: -42px; font-size: 11px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
 
-.font-mono { font-family: 'Courier New', monospace; font-size: 12px; color: var(--text-secondary); }
-.text-bold { font-weight: 600; color: var(--text-primary); }
-
+/* Severity & Status Badges */
 .sev { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .sev.critical { background: var(--red-bg); color: var(--red); }
 .sev.high     { background: var(--orange-bg); color: var(--orange); }
 .sev.medium   { background: var(--blue-bg); color: var(--blue); }
 .sev.low      { background: #eaf3de; color: #3b6d11; }
 
-.status-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; }
-.status-badge.opened { background: #ffe9e9; color: #d63031; border: 1px solid #ffcccc; }
-.status-badge.progress { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
-.status-badge.closed { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.status-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
+.status-badge.opened   { background: var(--red-bg); color: var(--red); }
+.status-badge.progress { background: var(--orange-bg); color: var(--orange); }
+.status-badge.closed   { background: var(--green-bg); color: var(--green); }
 
-.type-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 11px; background: var(--bg-secondary); color: var(--text-secondary); }
-
+.type-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 11px; background: var(--bg-secondary); color: var(--text-secondary); font-weight: 500; }
 .payload-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: 'Courier New', monospace; font-size: 11px; color: var(--red); word-break: break-all; white-space: pre-wrap; }
 
-.empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
-.empty-state i { font-size: 32px; margin-bottom: 10px; }
-
-/* Modals & Toasts (Same as Dashboard) */
-.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity .2s; }
-.modal-backdrop.show { opacity: 1; pointer-events: all; }
-.modal { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; width: 90%; max-width: 400px; box-shadow: var(--shadow-md); }
-.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
-.modal-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-.modal-close { background: none; border: none; font-size: 16px; cursor: pointer; color: var(--text-secondary); }
-.modal-options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 1.5rem; }
-.export-opt { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius-md); border: 1.5px solid var(--border); cursor: pointer; background: transparent; text-align: left; color: var(--text-primary); }
-.export-opt.selected { border-color: var(--green); background: var(--green-bg); }
-.export-opt-name { font-size: 13px; font-weight: 600; }
-.export-opt-desc { font-size: 11px; color: var(--text-secondary); }
-.modal-footer { display: flex; gap: 8px; justify-content: flex-end; }
-.export-filter-note { background: var(--bg-secondary); padding: 10px; font-size: 12px; border-radius: var(--radius-sm); margin-bottom: 1rem; color: var(--text-secondary); }
-
-.toast { position: fixed; bottom: 24px; right: 24px; z-index: 2000; background: var(--text-primary); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; transform: translateY(10px); opacity: 0; transition: all .25s; pointer-events: none; }
-.toast.show { transform: translateY(0); opacity: 1; }
+.admin-status-box { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 
 /* Kill Chain Timeline */
-.killchain-panel { margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border); }
-.kc-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-.kc-timeline { display: flex; flex-direction: column; gap: 0; padding-left: 140px; position: relative; }
+.killchain-panel { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+.kc-title { font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.kc-timeline { display: flex; flex-direction: column; padding-left: 140px; position: relative; }
 .kc-timeline::before { content: ''; position: absolute; left: 146px; top: 10px; bottom: 10px; width: 2px; background: var(--border); }
 .kc-item { display: flex; gap: 15px; position: relative; padding: 10px 0; opacity: 0.7; transition: opacity 0.2s; }
 .kc-item:hover, .kc-item.active { opacity: 1; }
@@ -423,10 +390,25 @@
 .kc-type { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .kc-detail { font-size: 11px; font-family: 'Courier New', monospace; color: var(--text-secondary); }
 
-@media (max-width: 1200px) {
-  .details-grid { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 800px) {
-  .details-grid { grid-template-columns: 1fr; }
-}
+/* Export Modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity .2s; }
+.modal-backdrop.show { opacity: 1; pointer-events: all; }
+.modal { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; width: 90%; max-width: 400px; box-shadow: var(--shadow-md); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.modal-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.modal-close { background: none; border: none; font-size: 16px; cursor: pointer; color: var(--text-secondary); }
+.modal-options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 1.5rem; }
+.export-opt { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius-md); border: 1.5px solid var(--border); cursor: pointer; background: transparent; text-align: left; color: var(--text-primary); transition: 0.2s; }
+.export-opt.selected { border-color: var(--green); background: var(--green-bg); }
+.export-opt-name { font-size: 13px; font-weight: 600; }
+.export-opt-desc { font-size: 11px; color: var(--text-secondary); }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; }
+.export-filter-note { background: var(--bg-secondary); padding: 10px; font-size: 12px; border-radius: var(--radius-sm); margin-bottom: 1rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
+
+.toast { position: fixed; bottom: 24px; right: 24px; z-index: 2000; background: var(--text-primary); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; transform: translateY(10px); opacity: 0; transition: all .25s; pointer-events: none; }
+.toast.show { transform: translateY(0); opacity: 1; }
+
+/* Responsive */
+@media (max-width: 1200px) { .details-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 800px)  { .details-grid { grid-template-columns: 1fr; } }
 </style>

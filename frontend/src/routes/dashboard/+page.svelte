@@ -441,7 +441,7 @@
 
   <!-- Charts Row -->
   <div class="grid3-timeline">
-    <div class="panel">
+    <div class="ds-card" style="padding:0;overflow:hidden;">
       <div class="panel-title"><span><i class="ti ti-clock"></i> Event Timeline (รายชั่วโมง)</span></div>
       <div style="position:relative;width:100%;height:350px">
         <canvas id="timelineChart"></canvas>
