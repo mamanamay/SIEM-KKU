@@ -7,6 +7,14 @@
   $: events = $eventsStore;
   let searchIp = $page.url.searchParams.get('ip') || '';
   let searchTime = $page.url.searchParams.get('time') || '';
+  let lastUrl = $page.url.href;
+
+  $: if ($page.url.href !== lastUrl) {
+    lastUrl = $page.url.href;
+    searchIp = $page.url.searchParams.get('ip') || '';
+    searchTime = $page.url.searchParams.get('time') || '';
+  }
+
   let selectedRange = 'all';
 
   $: getTimeLimit = (range: string) => {
@@ -32,14 +40,14 @@
     if (!matchIp) return false;
     
     if (searchTime) {
-      const rawTime = String(e.createdAt || e.timestamp || e.time);
+      const rawTime = String(e.timeStr || e.createdAt || e.timestamp || e.time);
       if (rawTime !== String(searchTime)) return false;
     }
 
     if (selectedRange !== 'all') {
-      const rawTime = e.createdAt || e.timestamp || e.time;
+      const rawTime = e.createdAt || e.timestamp;
       const eventTime = rawTime ? new Date(rawTime).getTime() : 0;
-      if (eventTime < timeLimit) return false;
+      if (isNaN(eventTime) || eventTime < timeLimit) return false;
     }
     return true;
   });
@@ -250,7 +258,7 @@
       <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Time Range:</span>
       <div style="display:flex;gap:4px;flex-wrap:wrap;">
         {#each ['1h','6h','24h','1m','3m','6m','1y','all'] as r}
-          <button on:click={() => selectedRange = r} style="background:{selectedRange === r ? 'var(--green)' : 'var(--bg-secondary)'};color:{selectedRange === r ? '#fff' : 'var(--text-secondary)'};border:1px solid {selectedRange === r ? 'var(--green)' : 'var(--border)'};padding:5px 13px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.18s;">
+          <button on:click={() => { selectedRange = r; searchTime = ''; }} style="background:{selectedRange === r ? 'var(--green)' : 'var(--bg-secondary)'};color:{selectedRange === r ? '#fff' : 'var(--text-secondary)'};border:1px solid {selectedRange === r ? 'var(--green)' : 'var(--border)'};padding:5px 13px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.18s;">
             {r === 'all' ? 'ทั้งหมด' : r}
           </button>
         {/each}
@@ -259,7 +267,7 @@
     
     <div style="position:relative;flex:1;min-width:200px;max-width:300px;">
       <i class="ti ti-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);"></i>
-      <input type="text" bind:value={searchIp} placeholder="ค้นหาด้วย IP Address..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px 8px 36px;border-radius:8px;font-size:13px;outline:none;transition:border-color 0.2s;">
+      <input type="text" bind:value={searchIp} on:input={() => { searchTime = ''; }} placeholder="ค้นหาด้วย IP Address..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px 8px 36px;border-radius:8px;font-size:13px;outline:none;transition:border-color 0.2s;">
     </div>
   </div>
 
@@ -267,12 +275,12 @@
     <div class="ds-table-wrap"><table class="ds-table">
       <thead>
         <tr>
-          <th width="36"></th>
-          <th>Time</th>
-          <th>Source IP</th>
-          <th>Event Type</th>
-          <th>Log Sources</th>
-          <th>Severity</th>
+          <th style="width: 48px; min-width: 48px; text-align: center;"></th>
+          <th style="width: 170px; min-width: 170px;">Time</th>
+          <th style="width: 250px; min-width: 250px;">Source IP</th>
+          <th style="width: auto;">Event Type</th>
+          <th style="width: 140px; min-width: 140px;">Log Sources</th>
+          <th style="width: 110px; min-width: 110px;">Severity</th>
         </tr>
       </thead>
       <tbody>

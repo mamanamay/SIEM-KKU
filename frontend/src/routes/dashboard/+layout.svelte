@@ -190,12 +190,18 @@
               </div>
               <div class="dropdown-list custom-scrollbar">
                 {#each notificationsHistory as notif}
-                  <a href="/dashboard/logs?ip={notif.ip}" class="dropdown-item" on:click={() => showNotifications = false}>
-                    <div class="notif-icon {notif.severity === 'critical' ? 'b-red' : 'b-orange'}">
-                      <i class="ti ti-alert-triangle"></i>
+                  <a href="/dashboard/investigate?ip={notif.ip}&time={notif.timeStr}" class="dropdown-item {notif.is_blocked_repeat ? 'dropdown-repeat' : ''}" on:click={() => showNotifications = false}>
+                    <div class="notif-icon {notif.is_blocked_repeat ? 'b-red' : (notif.severity === 'critical' ? 'b-red' : 'b-orange')}">
+                      {#if notif.is_blocked_repeat}
+                        <i class="ti ti-shield-x"></i>
+                      {:else}
+                        <i class="ti ti-alert-triangle"></i>
+                      {/if}
                     </div>
                     <div class="notif-content">
-                      <div class="notif-title">{notif.type || 'Intrusion Detected'}</div>
+                      <div class="notif-title" style={notif.is_blocked_repeat ? 'color: var(--red); font-weight: 700;' : ''}>
+                        {notif.is_blocked_repeat ? '🚨 Blocked IP Breach Attempt' : (notif.type || 'Intrusion Detected')}
+                      </div>
                       <div class="notif-desc">From: {notif.ip} ({notif.country || 'Unknown'})</div>
                       <div class="notif-time">{notif.time || notif.timeStr}</div>
                     </div>
@@ -227,12 +233,22 @@
 
     <!-- Global Toast Notification -->
     {#if activeToast}
-      <a href="/dashboard/logs?ip={activeToast.ip}" class="toast-notification {activeToast.severity === 'critical' ? 'toast-critical' : 'toast-high'}">
+      <a href="/dashboard/investigate?ip={activeToast.ip}&time={activeToast.timeStr}" class="toast-notification {activeToast.is_blocked_repeat ? 'toast-repeat' : (activeToast.severity === 'critical' ? 'toast-critical' : 'toast-high')}">
         <div class="toast-icon">
-          <i class="ti ti-alert-octagon"></i>
+          {#if activeToast.is_blocked_repeat}
+            <i class="ti ti-shield-x" style="color: #ef4444;"></i>
+          {:else}
+            <i class="ti ti-alert-octagon"></i>
+          {/if}
         </div>
         <div class="toast-content">
-          <div class="toast-title">New Attack Detected!</div>
+          <div class="toast-title">
+            {#if activeToast.is_blocked_repeat}
+              🚨 BLOCKED IP BREACH ATTEMPT!
+            {:else}
+              New Attack Detected!
+            {/if}
+          </div>
           <div class="toast-desc">{activeToast.type || 'Intrusion Attempt'} from <strong>{activeToast.ip}</strong></div>
         </div>
         <button class="toast-close" on:click|preventDefault={() => activeToast = null}><i class="ti ti-x"></i></button>
@@ -288,6 +304,11 @@
     --blue-bg: rgba(24,95,165,0.15);
     --accent-bg: rgba(29,158,117,0.15);
   }
+}
+
+:global(html) {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 
 :global(body) {
@@ -356,10 +377,12 @@
 .btn-clear { background: none; border: none; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
 .btn-clear:hover { color: var(--text-primary); text-decoration: underline; }
 .dropdown-list { max-height: 350px; overflow-y: auto; }
-.dropdown-item { display: flex; gap: 12px; padding: 12px 15px; border-bottom: 1px solid var(--border); text-decoration: none; transition: 0.2s; }
-.dropdown-item:hover { background: rgba(0,0,0,0.02); }
-.notif-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
-.notif-content { display: flex; flex-direction: column; gap: 2px; }
+.dropdown-item { display: flex; gap: 10px; padding: 12px 15px; border-bottom: 1px solid var(--border); cursor: pointer; text-decoration: none; color: inherit; transition: background 0.15s; }
+.dropdown-item:hover { background: var(--bg-hover); }
+.dropdown-repeat { background: rgba(239,68,68,0.05); }
+.dropdown-repeat:hover { background: rgba(239,68,68,0.1); }
+.notif-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.notif-content { display: flex; flex-grow: 1; flex-direction: column; gap: 2px; }
 .notif-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .notif-desc { font-size: 11px; color: var(--text-secondary); }
 .notif-time { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
@@ -368,6 +391,7 @@
 .toast-notification { position: fixed; bottom: 25px; right: 25px; background: var(--bg-panel); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); padding: 15px; display: flex; align-items: center; gap: 12px; z-index: 9999; animation: toastSlide 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); text-decoration: none; border-left: 4px solid var(--accent); min-width: 300px; }
 .toast-critical { border-left-color: var(--red); }
 .toast-high { border-left-color: var(--orange); }
+.toast-repeat { border-left-color: var(--red); background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-left: 4px solid var(--red); }
 .toast-icon { font-size: 24px; color: var(--text-primary); }
 .toast-critical .toast-icon { color: var(--red); }
 .toast-high .toast-icon { color: var(--orange); }

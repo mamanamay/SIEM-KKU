@@ -64,7 +64,7 @@
 
   async function updateStatus(id, newStatus) {
     try {
-      const res = await fetch(`http://localhost:5000/api/attacks/${id}/status`, {
+      const res = await fetch(`/api/attacks/${id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })

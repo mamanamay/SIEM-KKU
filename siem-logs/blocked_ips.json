@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "ip": "172.19.0.1",
+    "blockedAt": "2026-07-03T08:45:09.559Z",
+    "reason": "SSH Login Attempt — Severity: MEDIUM — Failed: root/ๅ/-/-ภ-ภำ/ (attempt #1)",
+    "attackId": 192,
+    "faculty": null,
+    "switchPort": null,
+    "blockedBy": "SIEM Dashboard (Auto)"
+  }
+]

@@ -378,12 +378,21 @@ export class LogService implements OnModuleInit {
         sessionId:     payload.sessionId,
       });
 
+      // Check if IP is in blocked list
+      let isBlockedRepeat = false;
+      try {
+        const blockedRaw = fs.readFileSync(path.join('/app/siem-logs', 'blocked_ips.json'), 'utf8');
+        const blockedList = JSON.parse(blockedRaw);
+        isBlockedRepeat = blockedList.some((b: any) => b.ip === payload.ip);
+      } catch(e) {}
+
       // Attach correlation data for the frontend
       const enriched = {
         ...saved,
         correlationChain: payload.correlationChain || [],
         accessLayer:      payload.accessLayer      || null,
         cncLayer:         payload.cncLayer         || null,
+        is_blocked_repeat: isBlockedRepeat,
       };
 
       this.eventsGateway.broadcastAttack(enriched);
