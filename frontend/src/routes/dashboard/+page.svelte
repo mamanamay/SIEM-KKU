@@ -222,31 +222,34 @@
     }
 
     if (timelineChart) {
-      let hourlyCounts: Record<string, number> = {};
-      const nowMs = Date.now();
-      const oneDayMs = 24 * 60 * 60 * 1000;
+      let biHourlyCounts: Record<string, number> = {};
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const startOfDayMs = today.getTime();
+      const endOfDayMs = startOfDayMs + 24 * 60 * 60 * 1000;
       
       events.forEach(e => {
         let t = e.time || e.timeStr || e.createdAt || e.timestamp;
         let eventTimeMs = new Date(t).getTime();
-        if (isNaN(eventTimeMs)) eventTimeMs = nowMs; // fallback
+        if (isNaN(eventTimeMs)) eventTimeMs = Date.now(); // fallback
         
-        // Only count events within the last 24 hours
-        if (nowMs - eventTimeMs <= oneDayMs) {
+        // Only count events for TODAY (midnight to midnight)
+        if (eventTimeMs >= startOfDayMs && eventTimeMs < endOfDayMs) {
           let dateObj = new Date(eventTimeMs);
-          let hourStr = dateObj.getHours().toString().padStart(2, '0');
-          hourlyCounts[hourStr] = (hourlyCounts[hourStr] || 0) + 1;
+          let hour = dateObj.getHours();
+          // Group by 2 hours (0, 2, 4, ...)
+          let biHour = Math.floor(hour / 2) * 2;
+          let biHourStr = biHour.toString().padStart(2, '0');
+          biHourlyCounts[biHourStr] = (biHourlyCounts[biHourStr] || 0) + 1;
         }
       });
 
       const labels = [];
       const data = [];
-      const currentHour = new Date().getHours();
-      for(let i=23; i>=0; i--) {
-        let h = (currentHour - i + 24) % 24;
-        let hStr = h.toString().padStart(2, '0');
+      for(let i = 0; i < 24; i += 2) {
+        let hStr = i.toString().padStart(2, '0');
         labels.push(`${hStr}:00`);
-        data.push(hourlyCounts[hStr] || 0);
+        data.push(biHourlyCounts[hStr] || 0);
       }
       
       timelineChart.data.labels = labels;
