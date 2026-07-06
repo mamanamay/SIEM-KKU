@@ -302,83 +302,114 @@
 </script>
 
 <div class="db-content">
-  <!-- Metric Cards -->
+
+  <!-- â•â•â• KPI Metric Cards â•â•â• -->
   <div class="metrics">
-    <div class="metric-card danger">
-      <div class="metric-label"><i class="ti ti-alert-triangle"></i> Critical Alerts</div>
-      <div class="metric-val">{events.filter(e => e.severity === 'critical').length}</div>
-      <div class="metric-sub">จากการโจมตีทั้งหมด</div>
+    <div class="metric-card danger" on:click={() => navigateTo('/dashboard/logs?severity=critical')} title="à¸”à¸¹ Critical Alerts">
+      <div class="metric-icon-wrap danger-icon"><i class="ti ti-alert-octagon"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Critical Alerts</div>
+        <div class="metric-val">{events.filter(e => e.severity === 'critical').length}</div>
+        <div class="metric-sub">à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸„à¸§à¸²à¸¡à¸ªà¸™à¹ƒà¸ˆà¸—à¸±à¸™à¸—à¸µ</div>
+      </div>
+      <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card warn">
-      <div class="metric-label"><i class="ti ti-activity"></i> Total Events</div>
-      <div class="metric-val">{events.length}</div>
-      <div class="metric-sub">บันทึกสดจาก Honeypot</div>
+    <div class="metric-card warn" on:click={() => navigateTo('/dashboard/logs')} title="à¸”à¸¹ All Events">
+      <div class="metric-icon-wrap warn-icon"><i class="ti ti-activity"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Total Events</div>
+        <div class="metric-val">{events.length}</div>
+        <div class="metric-sub">à¸šà¸±à¸™à¸—à¸¶à¸à¸ªà¸”à¸ˆà¸²à¸ Honeypot</div>
+      </div>
+      <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card ok">
-      <div class="metric-label"><i class="ti ti-flag"></i> Unique Sources</div>
-      <div class="metric-val">{new Set(events.map(e => e.ip)).size}</div>
-      <div class="metric-sub">ไอพีที่ไม่ซ้ำกัน</div>
+    <div class="metric-card ok" on:click={() => navigateTo('/dashboard/analytics')} title="à¸”à¸¹ Analytics">
+      <div class="metric-icon-wrap ok-icon"><i class="ti ti-network"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Unique Sources</div>
+        <div class="metric-val">{new Set(events.map(e => e.ip)).size}</div>
+        <div class="metric-sub">IP à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸‹à¹‰à¸³à¸à¸±à¸™</div>
+      </div>
+      <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card info">
-      <div class="metric-label"><i class="ti ti-shield-exclamation"></i> Filtered Results</div>
-      <div class="metric-val">{filteredEvents.length}</div>
-      <div class="metric-sub">{activeSev === 'all' ? 'แสดงทุก severity' : `กรอง: ${activeSev}`}</div>
+    <div class="metric-card info" on:click={() => navigateTo('/dashboard/mitre')} title="à¸”à¸¹ MITRE ATT&CK">
+      <div class="metric-icon-wrap info-icon"><i class="ti ti-shield-lock"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Filtered Results</div>
+        <div class="metric-val">{filteredEvents.length}</div>
+        <div class="metric-sub">{activeSev === 'all' ? 'à¹à¸ªà¸”à¸‡à¸—à¸¸à¸ severity' : `à¸à¸£à¸­à¸‡: ${activeSev}`}</div>
+      </div>
+      <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
   </div>
 
-  <!-- Filter Bar -->
+  <!-- â•â•â• Filter Bar â•â•â• -->
   <div class="filter-bar">
-    <span class="filter-label"><i class="ti ti-filter" style="font-size:13px"></i> Severity Filter</span>
-    <div class="filter-divider"></div>
-    <div class="filter-chips">
-      <button class="chip {activeSev === 'all' ? 'active-all' : ''}" on:click={() => setFilter('all')}>All <span style="opacity:.6">({events.length})</span></button>
-      <button class="chip {activeSev === 'critical' ? 'active-critical' : ''}" on:click={() => setFilter('critical')}>🔴 Critical <span style="opacity:.6">({events.filter(e=>e.severity==='critical').length})</span></button>
-      <button class="chip {activeSev === 'high' ? 'active-high' : ''}" on:click={() => setFilter('high')}>🟠 High <span style="opacity:.6">({events.filter(e=>e.severity==='high').length})</span></button>
-      <button class="chip {activeSev === 'medium' ? 'active-medium' : ''}" on:click={() => setFilter('medium')}>🔵 Medium <span style="opacity:.6">({events.filter(e=>e.severity==='medium').length})</span></button>
-      <button class="chip {activeSev === 'low' ? 'active-low' : ''}" on:click={() => setFilter('low')}>🟢 Low <span style="opacity:.6">({events.filter(e=>e.severity==='low').length})</span></button>
+    <div class="filter-left">
+      <span class="filter-label"><i class="ti ti-adjustments-horizontal"></i> Severity</span>
+      <div class="filter-divider"></div>
+      <div class="filter-chips">
+        <button class="chip {activeSev === 'all' ? 'active-all' : ''}" on:click={() => setFilter('all')}>All <span class="chip-count">{events.length}</span></button>
+        <button class="chip {activeSev === 'critical' ? 'active-critical' : ''}" on:click={() => setFilter('critical')}><span class="chip-dot critical-dot"></span>Critical <span class="chip-count">{events.filter(e=>e.severity==='critical').length}</span></button>
+        <button class="chip {activeSev === 'high' ? 'active-high' : ''}" on:click={() => setFilter('high')}><span class="chip-dot high-dot"></span>High <span class="chip-count">{events.filter(e=>e.severity==='high').length}</span></button>
+        <button class="chip {activeSev === 'medium' ? 'active-medium' : ''}" on:click={() => setFilter('medium')}><span class="chip-dot medium-dot"></span>Medium <span class="chip-count">{events.filter(e=>e.severity==='medium').length}</span></button>
+        <button class="chip {activeSev === 'low' ? 'active-low' : ''}" on:click={() => setFilter('low')}><span class="chip-dot low-dot"></span>Low <span class="chip-count">{events.filter(e=>e.severity==='low').length}</span></button>
+      </div>
     </div>
     <div class="filter-right">
       <div class="search-wrap">
         <i class="ti ti-search"></i>
-        <input type="text" class="filter-search" bind:value={searchText} placeholder="ค้นหา IP, ประเภท...">
+        <input type="text" class="filter-search" bind:value={searchText} placeholder="à¸„à¹‰à¸™à¸«à¸² IP, à¸›à¸£à¸°à¹€à¸ à¸—...">
       </div>
     </div>
   </div>
 
-  <!-- Threat Map -->
+  <!-- â•â•â• Threat Map (Full Width) â•â•â• -->
   <div class="panel map-panel">
-    <div class="panel-title">
-      <span><i class="ti ti-map-pin"></i> Live Threat Map</span>
+    <div class="panel-header">
+      <div class="panel-title-group">
+        <div class="panel-icon green-icon"><i class="ti ti-map-2"></i></div>
+        <div>
+          <div class="panel-title">Live Threat Map</div>
+          <div class="panel-subtitle">à¹à¸œà¸™à¸—à¸µà¹ˆà¹à¸ªà¸”à¸‡à¹à¸«à¸¥à¹ˆà¸‡à¸—à¸µà¹ˆà¸¡à¸²à¸‚à¸­à¸‡à¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µà¹à¸šà¸šà¹€à¸£à¸µà¸¢à¸¥à¹„à¸—à¸¡à¹Œ</div>
+        </div>
+      </div>
       <span class="live-badge"><span class="pulse-dot"></span> LIVE</span>
     </div>
-    <div class="map-container" id="threat-map">
-      <!-- Leaflet map will render here -->
-    </div>
+    <div class="map-container" id="threat-map"></div>
   </div>
 
-  <!-- Main Grid 1 -->
-  <div class="grid3">
-    <!-- Events Table -->
-    <div class="panel clickable" on:click={() => navigateTo('/dashboard/logs')} title="คลิกเพื่อไปยังหน้า Threat Logs">
-      <div class="panel-title">
-        <span><i class="ti ti-list"></i> Recent Attack Events <span style="font-size:10px;font-weight:400;color:var(--blue);margin-left:8px">(คลิกเพื่อดู Threat Logs)</span></span>
+  <!-- â•â•â• Main Content Row â•â•â• -->
+  <div class="main-grid">
+
+    <!-- Left: Recent Events Table -->
+    <div class="panel clickable panel-tall" on:click={() => navigateTo('/dashboard/logs')} title="à¸„à¸¥à¸´à¸à¹€à¸žà¸·à¹ˆà¸­à¹„à¸›à¸¢à¸±à¸‡à¸«à¸™à¹‰à¸² Threat Logs">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <div class="panel-icon blue-icon"><i class="ti ti-list-details"></i></div>
+          <div>
+            <div class="panel-title">Recent Attack Events</div>
+            <div class="panel-subtitle">à¹€à¸«à¸•à¸¸à¸à¸²à¸£à¸“à¹Œà¸¥à¹ˆà¸²à¸ªà¸¸à¸”à¸ˆà¸²à¸ Honeypot</div>
+          </div>
+        </div>
         <span class="badge-count">{filteredEvents.length} events</span>
       </div>
+
       <table class="log-table">
         <thead>
           <tr>
-            <th>วันที่ & เวลา</th>
+            <th>à¸§à¸±à¸™à¸—à¸µà¹ˆ & à¹€à¸§à¸¥à¸²</th>
             <th>Source IP</th>
-            <th>ประเภท</th>
+            <th>à¸›à¸£à¸°à¹€à¸ à¸—</th>
             <th>Severity</th>
           </tr>
         </thead>
         <tbody>
-          {#each filteredEvents.slice(0, 6) as event}
+          {#each filteredEvents.slice(0, 7) as event}
           <tr>
             <td class="ip-mono">{event.time || event.timeStr}</td>
             <td class="ip-mono">
-              <a href="/dashboard/logs?ip={event.ip}" class="ip-link" on:click|stopPropagation title="ดูรายละเอียด IP นี้">{event.ip}</a>
+              <a href="/dashboard/logs?ip={event.ip}" class="ip-link" on:click|stopPropagation title="à¸”à¸¹à¸£à¸²à¸¢à¸¥à¸°à¹€à¸­à¸µà¸¢à¸” IP à¸™à¸µà¹‰">{event.ip}</a>
             </td>
             <td><span class="type-badge">{event.type}</span></td>
             <td><span class="sev {event.severity}">{event.severity}</span></td>
@@ -389,114 +420,399 @@
       {#if filteredEvents.length === 0}
       <div class="empty-state">
         <i class="ti ti-inbox"></i>
-        ไม่พบ event ที่ตรงกับตัวกรองที่เลือก
+        à¹„à¸¡à¹ˆà¸žà¸š event à¸—à¸µà¹ˆà¸•à¸£à¸‡à¸à¸±à¸šà¸•à¸±à¸§à¸à¸£à¸­à¸‡à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸
       </div>
       {/if}
-    </div>
-
-    <!-- Top Source Countries -->
-    <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="คลิกเพื่อไปยังหน้า Analyst Center">
-      <div class="panel-title">
-        <span><i class="ti ti-world"></i> Top Source Countries <span style="font-size:10px;font-weight:400;color:var(--blue);margin-left:8px">(Analyst)</span></span>
-      </div>
-      <div class="country-bars">
-        {#each topCountries as item}
-          {@const maxVal = topCountries[0]?.count || 1}
-          <div class="c-row">
-            <div class="c-label">{item.country === 'United States' ? 'USA' : item.country}</div>
-            <div class="c-bar-bg">
-              <div class="c-bar-fill" style="width: {Math.max((item.count / maxVal) * 100, 2)}%; background: {getCountryColor(item.country)}"></div>
-            </div>
-            <div class="c-val">{item.count.toLocaleString()}</div>
-          </div>
-        {/each}
-        {#if topCountries.length === 0}
-          <div class="empty-state" style="padding: 1rem 0;">ไม่มีข้อมูลประเทศจากการโจมตี</div>
-        {/if}
+      <div class="panel-footer-link">
+        <span>à¸”à¸¹à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”à¹ƒà¸™ Threat Logs</span>
+        <i class="ti ti-arrow-right"></i>
       </div>
     </div>
 
-    <!-- Top Internal Faculties -->
-    <div class="panel clickable" on:click={() => navigateTo('/dashboard/investigate')} title="คลิกเพื่อแกะรอยภัยคุกคาม (Investigate)">
-      <div class="panel-title">
-        <span><i class="ti ti-building"></i> Internal Threats <span style="font-size:10px;font-weight:400;color:var(--orange);margin-left:8px">(คลิกเพื่อวิเคราะห์เชิงลึก)</span></span>
-      </div>
-      <div class="country-bars">
-        {#each topFaculties as item}
-          {@const maxVal = topFaculties[0]?.count || 1}
-          <div class="c-row">
-            <div class="c-label" style="width: 50px;" title="{item.name}">{item.code}</div>
-            <div class="c-bar-bg">
-              <div class="c-bar-fill" style="width: {Math.max((item.count / maxVal) * 100, 2)}%; background: var(--orange)"></div>
+    <!-- Right: Side Panels -->
+    <div class="side-panels">
+
+      <!-- Top Countries -->
+      <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="à¸„à¸¥à¸´à¸à¹€à¸žà¸·à¹ˆà¸­à¹„à¸›à¸¢à¸±à¸‡ Analyst Center">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <div class="panel-icon orange-icon"><i class="ti ti-world"></i></div>
+            <div>
+              <div class="panel-title">Top Source Countries</div>
+              <div class="panel-subtitle">à¸›à¸£à¸°à¹€à¸—à¸¨à¸—à¸µà¹ˆà¹‚à¸ˆà¸¡à¸•à¸µà¸ªà¸¹à¸‡à¸ªà¸¸à¸” â†’ Analyst</div>
             </div>
-            <div class="c-val">{item.count.toLocaleString()}</div>
           </div>
-        {/each}
-        {#if topFaculties.length === 0}
-          <div class="empty-state" style="padding: 1rem 0;">ไม่พบการโจมตีจากภายใน</div>
-        {/if}
+        </div>
+        <div class="country-bars">
+          {#each topCountries as item}
+            {@const maxVal = topCountries[0]?.count || 1}
+            <div class="c-row">
+              <div class="c-flag">{item.country === 'Local Network' ? 'ðŸ”’' : item.country === 'China' ? 'ðŸ‡¨ðŸ‡³' : item.country === 'Russia' ? 'ðŸ‡·ðŸ‡º' : item.country === 'United States' || item.country === 'USA' ? 'ðŸ‡ºðŸ‡¸' : item.country === 'Germany' ? 'ðŸ‡©ðŸ‡ª' : item.country === 'Thailand' ? 'ðŸ‡¹ðŸ‡­' : 'ðŸŒ'}</div>
+              <div class="c-label">{item.country === 'United States' ? 'USA' : item.country}</div>
+              <div class="c-bar-bg">
+                <div class="c-bar-fill" style="width: {Math.max((item.count / maxVal) * 100, 3)}%; background: {getCountryColor(item.country)}"></div>
+              </div>
+              <div class="c-val">{item.count.toLocaleString()}</div>
+            </div>
+          {/each}
+          {#if topCountries.length === 0}
+            <div class="empty-state" style="padding: 1rem 0;">à¹„à¸¡à¹ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸›à¸£à¸°à¹€à¸—à¸¨à¸ˆà¸²à¸à¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µ</div>
+          {/if}
+        </div>
       </div>
+
+      <!-- Internal Threats -->
+      <div class="panel clickable" on:click={() => navigateTo('/dashboard/investigate')} title="à¸„à¸¥à¸´à¸à¹€à¸žà¸·à¹ˆà¸­à¹à¸à¸°à¸£à¸­à¸¢à¸ à¸±à¸¢à¸„à¸¸à¸à¸„à¸²à¸¡à¸ à¸²à¸¢à¹ƒà¸™">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <div class="panel-icon red-icon"><i class="ti ti-building"></i></div>
+            <div>
+              <div class="panel-title">Internal Threats</div>
+              <div class="panel-subtitle">à¸ à¸±à¸¢à¸„à¸¸à¸à¸„à¸²à¸¡à¸ à¸²à¸¢à¹ƒà¸™à¸­à¸‡à¸„à¹Œà¸à¸£ â†’ Investigate</div>
+            </div>
+          </div>
+        </div>
+        <div class="country-bars">
+          {#each topFaculties as item}
+            {@const maxVal = topFaculties[0]?.count || 1}
+            <div class="c-row">
+              <div class="c-code-badge">{item.code}</div>
+              <div class="c-label" style="flex:1;" title="{item.name}">{item.name.length > 16 ? item.name.slice(0,16) + 'â€¦' : item.name}</div>
+              <div class="c-bar-bg" style="width: 80px; flex: none;">
+                <div class="c-bar-fill" style="width: {Math.max((item.count / maxVal) * 100, 3)}%; background: var(--red)"></div>
+              </div>
+              <div class="c-val">{item.count}</div>
+            </div>
+          {/each}
+          {#if topFaculties.length === 0}
+            <div class="empty-state" style="padding: 1rem 0;">à¹„à¸¡à¹ˆà¸žà¸šà¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µà¸ˆà¸²à¸à¸ à¸²à¸¢à¹ƒà¸™</div>
+          {/if}
+        </div>
+      </div>
+
     </div>
   </div>
 
-  <!-- Charts Row -->
-  <div class="grid3-timeline">
-    <div class="ds-card" style="padding:0;overflow:hidden;">
-      <div class="panel-title"><span><i class="ti ti-clock"></i> Event Timeline (รายชั่วโมง)</span></div>
-      <div style="position:relative;width:100%;height:350px">
+  <!-- â•â•â• Charts Row â•â•â• -->
+  <div class="charts-grid">
+    <!-- Timeline Chart -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <div class="panel-icon green-icon"><i class="ti ti-chart-line"></i></div>
+          <div>
+            <div class="panel-title">Event Timeline</div>
+            <div class="panel-subtitle">à¸ˆà¸³à¸™à¸§à¸™à¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µà¸£à¸²à¸¢à¸Šà¸±à¹ˆà¸§à¹‚à¸¡à¸‡</div>
+          </div>
+        </div>
+      </div>
+      <div style="position:relative;width:100%;height:260px">
         <canvas id="timelineChart"></canvas>
       </div>
     </div>
 
-    <div class="panel clickable" on:click={() => navigateTo('/dashboard/mitre')} title="คลิกเพื่อวิเคราะห์เทคนิคตาม MITRE ATT&CK">
-      <div class="panel-title"><span><i class="ti ti-grid-dots"></i> Attack Distribution (MITRE Map) <span style="font-size:10px;font-weight:400;color:var(--blue);margin-left:8px">(คลิกดู Matrix)</span></span></div>
-      
+    <!-- Attack Distribution Chart -->
+    <div class="panel clickable" on:click={() => navigateTo('/dashboard/mitre')} title="à¸„à¸¥à¸´à¸à¸”à¸¹ MITRE ATT&CK Matrix">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <div class="panel-icon purple-icon"><i class="ti ti-chart-bar"></i></div>
+          <div>
+            <div class="panel-title">Attack Distribution</div>
+            <div class="panel-subtitle">à¸ªà¸±à¸”à¸ªà¹ˆà¸§à¸™à¸›à¸£à¸°à¹€à¸ à¸—à¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µ â†’ MITRE Map</div>
+          </div>
+        </div>
+      </div>
       <div class="custom-legend top-legend">
         {#each attackStats as stat}
           <div class="leg-item">
-            <span class="leg-box" style="background:{stat.color}"></span> {stat.type} <span class="leg-count">{stat.count.toLocaleString()}</span>
+            <span class="leg-box" style="background:{stat.color}"></span>
+            {stat.type}
+            <span class="leg-count">{stat.count.toLocaleString()}</span>
           </div>
         {/each}
       </div>
-
-      <div style="position:relative;width:100%;height:300px;margin-top:15px">
+      <div style="position:relative;width:100%;height:220px;margin-top:10px">
         <canvas id="attackChart"></canvas>
       </div>
     </div>
   </div>
+
 </div>
 
 <style>
-.db-content { max-width: 1400px; margin: 0 auto; padding-bottom: 2rem; }
-
-/* Metrics */
-.metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 1.25rem; }
-.metric-card {
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: .875rem 1rem;
-  box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   DASHBOARD PAGE STYLES
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+.db-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding-bottom: 2.5rem;
 }
-.metric-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 0 2px 2px 0; }
-.metric-card.danger::before { background: var(--red); }
-.metric-card.warn::before   { background: var(--orange); }
-.metric-card.ok::before     { background: var(--green); }
-.metric-card.info::before   { background: var(--blue); }
-.metric-label { font-size: 11.5px; color: var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
-.metric-val { font-size: 28px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+
+/* â”€â”€ KPI Metric Cards â”€â”€ */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 1.25rem;
+}
+.metric-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.125rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.metric-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.metric-card.danger:hover { border-color: var(--red); }
+.metric-card.warn:hover   { border-color: var(--orange); }
+.metric-card.ok:hover     { border-color: var(--green); }
+.metric-card.info:hover   { border-color: var(--blue); }
+.metric-card::after {
+  content: '';
+  position: absolute; inset: 0;
+  opacity: 0; transition: opacity 0.2s;
+}
+
+.metric-icon-wrap {
+  width: 44px; height: 44px;
+  border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.danger-icon { background: var(--red-bg);    color: var(--red); }
+.warn-icon   { background: var(--orange-bg); color: var(--orange); }
+.ok-icon     { background: var(--green-bg);  color: var(--green); }
+.info-icon   { background: var(--blue-bg);   color: var(--blue); }
+
+.metric-body { flex: 1; min-width: 0; }
+.metric-label { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); margin-bottom: 3px; letter-spacing: 0.2px; }
+.metric-val   { font-size: 30px; font-weight: 700; line-height: 1.1; letter-spacing: -1.5px; color: var(--text-primary); }
+.metric-sub   { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
 .metric-card.danger .metric-val { color: var(--red); }
 .metric-card.warn   .metric-val { color: var(--orange); }
 .metric-card.ok     .metric-val { color: var(--green); }
 .metric-card.info   .metric-val { color: var(--blue); }
-.metric-sub { font-size: 11px; color: var(--text-muted); margin-top: 5px; }
 
-/* Filter Bar */
+.metric-arrow { color: var(--text-muted); font-size: 16px; flex-shrink: 0; }
+
+/* â”€â”€ Filter Bar â”€â”€ */
 .filter-bar {
-  display: flex; align-items: center; gap: 10px;
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: .625rem 1rem;
-  margin-bottom: 1.25rem; flex-wrap: wrap; box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: .625rem 1rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-sm);
 }
-.filter-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.filter-left { display: flex; align-items: center; gap: 10px; flex: 1; flex-wrap: wrap; }
+.filter-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.filter-divider { width: 1px; height: 20px; background: var(--border); }
+.filter-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all .15s;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  user-select: none;
+}
+.chip:hover { border-color: var(--border); color: var(--text-primary); }
+.chip.active-all      { background: var(--text-primary); color: var(--bg); }
+.chip.active-critical { background: var(--red-bg);    color: var(--red);    border-color: rgba(163,45,45,0.25); }
+.chip.active-high     { background: var(--orange-bg); color: var(--orange); border-color: rgba(133,79,11,0.25); }
+.chip.active-medium   { background: var(--blue-bg);   color: var(--blue);   border-color: rgba(24,95,165,0.25); }
+.chip.active-low      { background: #eaf3de;           color: #3b6d11;       border-color: rgba(59,109,17,0.25); }
+
+.chip-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.critical-dot { background: var(--red); }
+.high-dot     { background: var(--orange); }
+.medium-dot   { background: var(--blue); }
+.low-dot      { background: #3b6d11; }
+.chip-count { font-size: 10.5px; opacity: 0.65; font-weight: 400; }
+
+.filter-right { margin-left: auto; }
+.search-wrap { position: relative; }
+.search-wrap .ti { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+.filter-search {
+  font-size: 12px; padding: 6px 10px 6px 30px;
+  border: 1px solid var(--border); border-radius: 20px;
+  background: var(--bg-secondary); color: var(--text-primary);
+  outline: none; width: 190px; transition: border-color .15s, box-shadow 0.15s;
+}
+.filter-search:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(29,158,117,0.1); }
+
+/* â”€â”€ Panel Base â”€â”€ */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.125rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column;
+}
+.panel.clickable { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s; }
+.panel.clickable:hover { border-color: var(--green); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+.panel-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 1rem;
+  gap: 8px;
+}
+.panel-title-group { display: flex; align-items: center; gap: 10px; }
+.panel-icon {
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.green-icon  { background: var(--green-bg);  color: var(--green); }
+.blue-icon   { background: var(--blue-bg);   color: var(--blue); }
+.orange-icon { background: var(--orange-bg); color: var(--orange); }
+.red-icon    { background: var(--red-bg);    color: var(--red); }
+.purple-icon { background: rgba(108,56,179,0.12); color: #6c38b3; }
+
+.panel-title    { font-size: 13.5px; font-weight: 700; color: var(--text-primary); line-height: 1.3; }
+.panel-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.badge-count { font-size: 11px; font-weight: 500; background: var(--bg-secondary); color: var(--text-secondary); padding: 3px 9px; border-radius: 12px; white-space: nowrap; flex-shrink: 0; }
+
+.panel-footer-link {
+  display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+  margin-top: auto; padding-top: 10px;
+  font-size: 11.5px; color: var(--green); font-weight: 500;
+  opacity: 0.75; transition: opacity 0.15s;
+}
+.panel.clickable:hover .panel-footer-link { opacity: 1; }
+
+/* â”€â”€ Threat Map â”€â”€ */
+.map-panel { margin-bottom: 12px; }
+.map-container {
+  width: 100%; height: 380px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* â”€â”€ Main Grid (events + side panels) â”€â”€ */
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 12px;
+  margin-bottom: 12px;
+  align-items: start;
+}
+.panel-tall { min-height: 360px; }
+.side-panels { display: flex; flex-direction: column; gap: 12px; }
+
+/* â”€â”€ Charts Grid â”€â”€ */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* â”€â”€ Country Bars â”€â”€ */
+.country-bars { display: flex; flex-direction: column; gap: 10px; }
+.c-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.c-flag { font-size: 16px; line-height: 1; width: 22px; text-align: center; flex-shrink: 0; }
+.c-label { width: 70px; color: var(--text-primary); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-bar-bg { flex: 1; background: var(--bg-secondary); height: 6px; border-radius: 3px; overflow: hidden; }
+.c-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+.c-val { width: 36px; text-align: right; font-family: 'Courier New', monospace; font-size: 11px; color: var(--text-secondary); }
+.c-code-badge {
+  font-size: 10px; font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--red-bg); color: var(--red);
+  white-space: nowrap; flex-shrink: 0;
+}
+
+/* â”€â”€ Log Table â”€â”€ */
+.log-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 4px; }
+.log-table th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; padding: 0 8px 8px 0; border-bottom: 1px solid var(--border); }
+.log-table td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: middle; }
+.log-table tr:last-child td { border-bottom: none; }
+.log-table tbody tr { transition: background .1s; }
+.log-table tbody tr:hover { background: var(--bg-secondary); border-radius: 6px; }
+
+.sev { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.2px; }
+.sev.critical { background: var(--red-bg);    color: var(--red); }
+.sev.high     { background: var(--orange-bg); color: var(--orange); }
+.sev.medium   { background: var(--blue-bg);   color: var(--blue); }
+.sev.low      { background: #eaf3de;           color: #3b6d11; }
+
+.type-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 11px; background: var(--bg-secondary); color: var(--text-secondary); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ip-mono { font-family: 'Courier New', monospace; font-size: 11.5px; color: var(--text-secondary); }
+.ip-link { color: var(--blue); text-decoration: none; font-weight: 500; cursor: pointer; transition: color 0.15s; }
+.ip-link:hover { color: #0f46a6; text-decoration: underline; }
+
+.empty-state { text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); font-size: 13px; }
+.empty-state i { font-size: 28px; margin-bottom: 8px; display: block; opacity: 0.5; }
+
+/* â”€â”€ Chart Legend â”€â”€ */
+.custom-legend { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.top-legend { border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 2px; }
+.leg-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
+.leg-box { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+.leg-count { font-weight: 700; color: var(--text-primary); }
+
+/* â”€â”€ Live Badge â”€â”€ */
+.live-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(29,158,117,0.12); color: var(--green);
+  padding: 4px 10px; border-radius: 12px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.pulse-dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulseDot 1.5s infinite; flex-shrink: 0; }
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* â”€â”€ Map pins â”€â”€ */
+@keyframes radarPulse {
+  0%   { transform: translate(-50%, -50%) scale(0.1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(2);   opacity: 0; }
+}
+
+/* â”€â”€ Responsive â”€â”€ */
+@media (max-width: 1100px) {
+  .main-grid { grid-template-columns: 1fr; }
+  .side-panels { flex-direction: row; }
+  .side-panels .panel { flex: 1; }
+}
+@media (max-width: 900px) {
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .charts-grid { grid-template-columns: 1fr; }
+  .side-panels { flex-direction: column; }
+  .filter-search { width: 140px; }
+  .map-container { height: 250px; }
+}
+@media (max-width: 600px) {
+  .metrics { grid-template-columns: 1fr 1fr; }
+  .metric-val { font-size: 24px; }
+}
+</style>
+
+
 .filter-divider { width: 1px; height: 20px; background: var(--border); }
 .filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {
