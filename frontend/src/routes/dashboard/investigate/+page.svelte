@@ -14,6 +14,9 @@
     lastUrl = $page.url.href;
     searchIp = $page.url.searchParams.get('ip') || '';
     searchTime = $page.url.searchParams.get('time') || '';
+    if (searchIp || searchTime) {
+      selectedRange = 'all';
+    }
   }
 
   function resetAlertMode() {
@@ -53,7 +56,7 @@
     
     if (searchTime) {
       const rawTime = String(e.timeStr || e.createdAt || e.timestamp || e.time);
-      if (rawTime !== String(searchTime)) return false;
+      if (!rawTime.includes(searchTime)) return false;
     }
 
     if (selectedRange !== 'all') {
