@@ -26,23 +26,20 @@
   - **PostgreSQL 16:** ฐานข้อมูลหลัก
   - **Redis 7:** Caching & WebSocket scaling
 - **Honeypot & Sensors:**
-  - **proxy.js**: สคริปต์ Node.js ที่จำลองการทำงานเป็น **Core Switch และ WAF/Firewall** ขวางอยู่หน้า Honeypot คอยรับส่งข้อมูล (Port 2222, 8080, 8443) บันทึก Log การเข้าถึง (`access_layer.log`) ดักจับและบันทึกการพยายามเชื่อมต่อออกภายนอก (`cnc_outbound.log`) และบังคับใช้กฎการ Block IP จาก `blocked_ips.json` แบบ Real-time
   - **Cowrie**: SSH/Telnet honeypot บันทึกพฤติกรรมในรูปแบบ JSON (`cowrie.json`)
-  - **WebTrap**: ระบบดักจับการโจมตีทางเว็บไซต์ (SQLi, Path Traversal) รองรับทั้ง **HTTP (8080)** และ **HTTPS (8443)** ทำงานอยู่หลัง `proxy.js`
+  - **WebTrap**: ระบบดักจับการโจมตีทางเว็บไซต์ (SQLi, Path Traversal) รองรับทั้ง **HTTP** และ **HTTPS** ทำงานในคอนเทนเนอร์แยกต่างหาก
 - **โครงสร้างพื้นฐาน (Infrastructure):** Nginx 1.25
   - **ที่อยู่ (Path):** `nginx/`
   - Reverse Proxy แยก `/api`, `/socket.io` ไปที่ Backend และ `/` ไป Frontend พร้อมทำ HTTPS (Self-signed)
 
 ## 🔄 วงจรการทำงาน (Core Workflow - The Attack Lifecycle)
 
-1. **การบุกรุก (Intrusion):** แฮกเกอร์เชื่อมต่อเข้ามาที่พอร์ต SSH (2222) หรือยิง SQLi ใส่ WebTrap (8080) ผ่านทาง `proxy.js`
-2. **การบันทึก Log (3 แหล่ง):** 
-   - `proxy.js` บันทึกการเชื่อมต่อขาเข้าที่ชั้น Network (`access_layer.log`)
-   - Cowrie หรือ WebTrap บันทึกพฤติกรรมการโจมตีที่ชั้น Application (`cowrie.json`, `webtrap.json`)
-   - หากมีการโหลดมัลแวร์ออกไปข้างนอก `proxy.js` จะดักจับและบันทึก (`cnc_outbound.log`)
-3. **การเชื่อมโยงและวิเคราะห์ (Correlation & Enrichment):** `log.service.ts` อ่าน Log ทั้ง 3 แหล่ง นำมาเทียบเวลา (Time-Correlation) เพื่อสร้างสายการโจมตี (Attack Chain) ที่สมบูรณ์ เพิ่มข้อมูลรหัสคณะ (Faculty), รหัส MITRE ATT&CK, และคำนวณ Threat Score
+1. **การบุกรุก (Intrusion):** แฮกเกอร์เชื่อมต่อเข้ามาที่พอร์ต SSH/Telnet หรือยิง SQLi ใส่ WebTrap ผ่านพอร์ตที่เปิดไว้ (ตั้งค่าได้ใน `.env`)
+2. **การบันทึก Log:** 
+   - Cowrie หรือ WebTrap บันทึกพฤติกรรมการโจมตีที่ชั้น Application (`cowrie.json`, Log ภายใน WebTrap)
+3. **การเชื่อมโยงและวิเคราะห์ (Correlation & Enrichment):** `log.service.ts` อ่าน Log นำมาเทียบเวลา (Time-Correlation) เพื่อสร้างสายการโจมตี (Attack Chain) ที่สมบูรณ์ เพิ่มข้อมูลรหัสคณะ (Faculty), รหัส MITRE ATT&CK, และคำนวณ Threat Score
 4. **การกระจายข้อมูล (Broadcast):** NestJS ยิง Event ผ่าน WebSocket ทันที
-5. **การแสดงผลและตอบสนอง (Visualization & Response):** SvelteKit นำข้อมูลมาประมวลผลบนหน้า `/dashboard/investigate` ผู้ใช้สามารถกดปุ่ม "Block IP" ซึ่งจะส่ง API ไปให้ Backend เขียน IP ลงไฟล์ `blocked_ips.json` จากนั้น `proxy.js` จะรับรู้และตัดการเชื่อมต่อ (TCP Drop) จาก IP นั้นในทุกช่องทางทันที
+5. **การแสดงผลและตอบสนอง (Visualization & Response):** SvelteKit นำข้อมูลมาประมวลผลบนหน้า `/dashboard/investigate` และหน้าอื่นๆ แบบ Real-time ผู้ใช้สามารถวิเคราะห์ผ่านกราฟ สถิติ และตารางข้อมูลได้
 
 ## 🛠 สิ่งที่พัฒนาต่อยอดได้ (Future Enhancements & Ideas)
 
@@ -50,4 +47,7 @@
   - นำข้อมูลจาก Wazuh Agent (FIM, SCA) มาใส่ในหน้า `/dashboard/wazuh`, `/dashboard/cis`, `/dashboard/pdpa`
   - นำ Syslog จาก FortiGate มาแสดงบน `/dashboard/traffic`, `/dashboard/blocked_ip_audit`
   - นำ AD/VPN Auth logs มาแสดงบน `/dashboard/remoteaccess`
-- **ระบบอัตโนมัติ (SOAR):** พัฒนา Backend ให้สั่งบล็อก IP อัตโนมัติเมื่อ Threat Score สูงเกินกำหนดโดยไม่ต้องรอให้แอดมินกดปุ่ม
+- **ระบบอัตโนมัติ (SOAR):** พัฒนา Backend ให้สั่งบล็อก IP อัตโนมัติเมื่อ Threat Score สูงเกินกำหนดโดยส่งค่าผ่าน API ไปยัง Firewall (เช่น FortiGate)
+
+## 📦 การนำขึ้นเซิร์ฟเวอร์ (Deployment)
+ระบบถูกจัดระเบียบใหม่ให้รวมศูนย์การตั้งค่า Port ไว้ที่ไฟล์ `.env` ที่เดียว โดยใช้สคริปต์ `deploy.sh` (Linux) หรือ `deploy.ps1` (Windows) ในการรวบรวมไฟล์โปรเจกต์ ยกเว้นไฟล์ขยะหรือ Log เดิม และนำขึ้น Server อัตโนมัติ

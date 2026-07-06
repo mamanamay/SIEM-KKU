@@ -29,8 +29,7 @@
 - `nginx/` - **Nginx 1.25**: Reverse proxy ทำหน้าที่จัดการ Routing และรองรับ SSL (HTTPS)
 - `cowrie-config/` - **Cowrie**: การตั้งค่าและที่เก็บไฟล์ Log สำหรับ SSH/Telnet honeypot
 - `webtrap/` - **WebTrap**: ระบบดักจับการโจมตีทางเว็บไซต์ (SQL Injection, Path Traversal)
-- `proxy.js` - **WAF & Core Switch Simulator**: สคริปต์ขวางการเชื่อมต่อเพื่อบังคับใช้กฎ Block IP และเขียน Log Access / C&C Outbound
-- `siem-logs/` - ที่เก็บ Log ส่วนกลางรวมจากทุก Honeypot และ Proxy
+- `siem-logs/` - ที่เก็บ Log ส่วนกลางรวมจากระบบดักจับต่างๆ (รวมทั้ง Access Layer ถ้ามีในอนาคต)
 
 ---
 
@@ -48,16 +47,23 @@
    cd Demo_Honeypot
    ```
 
-2. **สร้าง SSL Certificates (จำเป็นสำหรับ HTTPS)**
+2. **ตั้งค่า Environment Variables**
+   ระบบใช้ไฟล์ `.env` สำหรับกำหนด Port และตั้งค่าอื่นๆ ทำการก๊อปปี้ไฟล์ต้นแบบ:
+   ```bash
+   cp .env.example .env
+   ```
+   *(เข้าไปแก้ไขไฟล์ `.env` ได้ตามต้องการ หากนำขึ้น Server จริงให้เปลี่ยน `JWT_SECRET`)*
+
+3. **สร้าง SSL Certificates (จำเป็นสำหรับ HTTPS)**
    ใช้ Docker รันคำสั่งนี้เพื่อสร้าง self-signed certificate:
    ```bash
    docker run --rm -v "${PWD}/nginx/certs:/certs" nginx:1.25-alpine sh -c "apk add --no-cache openssl && openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /certs/key.pem -out /certs/cert.pem -subj '/C=TH/ST=Bangkok/L=Bangkok/O=Honeypot/OU=IT/CN=localhost'"
    ```
 
-3. **สตาร์ทระบบ**
+4. **สตาร์ทระบบ**
    ใช้ Docker Compose เพื่อรันระบบทั้งหมด (Database, Backend, Frontend, Nginx, และ Honeypot):
    ```bash
-   docker-compose -f docker-compose.dev.yml up -d --build
+   docker-compose up -d --build
    ```
 
 4. **เข้าสู่แดชบอร์ด**
@@ -79,22 +85,25 @@
 
 ## 🧪 วิธีทดสอบการโจมตี (How to Test the Honeypot)
 1. ล็อกอินเข้าแดชบอร์ดผ่านเบราว์เซอร์
-2. เปิด PowerShell (ควรเปิดสิทธิ์ Execution Policy ก่อนด้วยคำสั่ง `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`)
-3. ใช้สคริปต์ที่เตรียมไว้เพื่อจำลองการโจมตีที่สมบูรณ์แบบ:
-   ```powershell
-   # โจมตีเว็บแอป (SQLi, XSS)
-   .\simulate_attack.ps1 -WebAttack
-
-   # โจมตีเจาะรหัสผ่าน SSH
-   .\simulate_attack.ps1 -SshBrute
-
-   # โจมตีแบบครบวงจร (รวมถึงการเชื่อมต่อไปยัง C&C)
-   .\simulate_attack.ps1 -All
+2. เปิด Terminal หรือ PowerShell 
+3. ลองพยายามเชื่อมต่อเข้ากับ Honeypot เพื่อจำลองว่าคุณคือแฮกเกอร์:
+   ```bash
+   # โจมตี SSH Honeypot
+   ssh root@localhost -p 2222
+   
+   # ลองยิงคำสั่ง SQL Injection ใส่ WebTrap (เปลี่ยน Port ตาม .env ของคุณ)
+   curl "http://localhost:8081/login?user=admin' OR '1'='1"
    ```
-4. ดูที่แดชบอร์ดของคุณ—การแจ้งเตือนและสายการโจมตี (Correlation Chain) จะเด้งขึ้นมาแบบ Real-time!
-5. **ทดสอบ Block IP**: ไปที่หน้า *Threat Investigation* คลิกที่เหตุการณ์แล้วกดปุ่ม **Block IP** จากนั้นลองรันคำสั่งโจมตีซ้ำ ระบบจะตัดการเชื่อมต่อคุณทันที
-5. ศึกษาคู่มือการทดสอบเพิ่มเติมแบบครบทุกรูปแบบ (Testing Guide) ได้ที่หน้าต่างของ AI 
-6. ดูที่แดชบอร์ดของคุณ—การแจ้งเตือนการโจมตีและตารางวิเคราะห์จะเด้งขึ้นมาแบบ Real-time ทันที!
+4. ดูที่แดชบอร์ดของคุณ—การแจ้งเตือนการโจมตีและตารางวิเคราะห์จะเด้งขึ้นมาแบบ Real-time ทันที!
+
+---
+
+## 📦 การนำระบบขึ้นเซิร์ฟเวอร์จริง (Deployment)
+หากต้องการนำระบบไปติดตั้งบน Server ของคุณ โปรเจกต์นี้มีสคริปต์อัตโนมัติมาให้:
+- **สำหรับ Windows (PowerShell):** รัน `.\deploy.ps1`
+- **สำหรับ Linux / Mac:** รัน `bash deploy.sh`
+
+ระบบจะแพ็คไฟล์ที่จำเป็น (ตัดไฟล์ขยะและ Log ออก) โยนขึ้น Server ผ่าน SSH และสั่งรัน Docker ขึ้นมาให้โดยอัตโนมัติ
 
 ---
 
