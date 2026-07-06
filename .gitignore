@@ -6,27 +6,43 @@ coverage/
 build/
 .svelte-kit/
 
-# Dev-only scripts (ใช้ในขั้นตอนพัฒนา ไม่ต้องติดไปกับ repo)
+# ── Dev-only scripts (ใช้ระหว่างพัฒนา ไม่ต้องติดขึ้น server) ──
 check_divs.js
 fix_divs.js
+fix_text_2.js
 update_analytics.js
 update_ds.js
 test_db.js
 extract.py
 trim_css.js
 cleanup_css.ps1
+proxy.js
+start_proxy.ps1
+simulate_attack.ps1
+init-git.sh
 
-# Log files ที่ไม่ต้องเก็บใน repo
+# ── Temporary / scratch files ──────────────────────────────────
+temp_faculties.txt
+ip_records.json
+deploy.tar
+*.tar
+*.zip
+
+# ── Log files (สร้างขึ้นตอน runtime ไม่ต้อง commit) ────────────
 cowrie-config/var/log/cowrie/cowrie.json.*
+cowrie-config/var/log/cowrie/*.log
 siem-logs/access_layer.log
 siem-logs/cnc_outbound.log
 webtrap-logs/webtrap.json
 
-# Root-level duplicate (ไฟล์ที่แท้จริงอยู่ใน frontend/src/lib/data/)
-ip_records.json
-temp_faculties.txt
-
-# SSL Certificates (generate on server with generate-ssl.sh - never commit)
+# ── SSL Certificates (generate บน server ด้วย generate-ssl.sh) ─
 nginx/certs/*.pem
 nginx/certs/*.crt
 nginx/certs/*.key
+
+# ── IDE & OS ────────────────────────────────────────────────────
+.vscode/
+.idea/
+Thumbs.db
+*.swp
+*.swo
