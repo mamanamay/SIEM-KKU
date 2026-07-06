@@ -31,18 +31,12 @@ $excludePatterns = @(
 
 Write-Host "[1/4] Packing project files (excluding junk and node_modules)..." -ForegroundColor Yellow
 
-# Build list of items to include (everything NOT in excludePatterns)
-$includeItems = Get-ChildItem -Name | Where-Object {
-    $item = $_
-    $skip = $false
-    foreach ($ex in $excludePatterns) {
-        if ($item -like "$ex*" -or $item -eq $ex) { $skip = $true; break }
-    }
-    -not $skip
+# Create tar command with proper --exclude flags so nested directories are ignored
+$tarArgs = "-czf deploy.tar.gz "
+foreach ($ex in $excludePatterns) {
+    $tarArgs += "--exclude='$ex' "
 }
-
-# Create tar using WSL or Git Bash tar
-$tarArgs = "-czf deploy.tar.gz " + ($includeItems -join " ")
+$tarArgs += "."
 try {
     Invoke-Expression "tar $tarArgs"
     Write-Host "  [OK] Packed -> deploy.tar.gz" -ForegroundColor Green
