@@ -310,7 +310,7 @@
       <div class="metric-body">
         <div class="metric-label">Critical Alerts</div>
         <div class="metric-val">{events.filter(e => e.severity === 'critical').length}</div>
-        <div class="metric-sub">à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸„à¸§à¸²à¸¡à¸ªà¸™à¹ƒà¸ˆà¸—à¸±à¸™à¸—à¸µ</div>
+        <div class="metric-sub">ต้องการความสนใจทันที</div>
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
@@ -319,7 +319,7 @@
       <div class="metric-body">
         <div class="metric-label">Total Events</div>
         <div class="metric-val">{events.length}</div>
-        <div class="metric-sub">à¸šà¸±à¸™à¸—à¸¶à¸à¸ªà¸”à¸ˆà¸²à¸ Honeypot</div>
+        <div class="metric-sub">บันทึกสดจาก Honeypot</div>
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
@@ -328,7 +328,7 @@
       <div class="metric-body">
         <div class="metric-label">Unique Sources</div>
         <div class="metric-val">{new Set(events.map(e => e.ip)).size}</div>
-        <div class="metric-sub">IP à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸‹à¹‰à¸³à¸à¸±à¸™</div>
+        <div class="metric-sub">IP ที่ไม่ซ้ำกัน</div>
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
@@ -337,13 +337,13 @@
       <div class="metric-body">
         <div class="metric-label">Filtered Results</div>
         <div class="metric-val">{filteredEvents.length}</div>
-        <div class="metric-sub">{activeSev === 'all' ? 'à¹à¸ªà¸”à¸‡à¸—à¸¸à¸ severity' : `à¸à¸£à¸­à¸‡: ${activeSev}`}</div>
+        <div class="metric-sub">{activeSev === 'all' ? 'แสดงทุก severity' : `กรอง: ${activeSev}`}</div>
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
   </div>
 
-  <!-- â•â•â• Filter Bar â•â•â• -->
+  <!-- --- Filter Bar --- -->
   <div class="filter-bar">
     <div class="filter-left">
       <span class="filter-label"><i class="ti ti-adjustments-horizontal"></i> Severity</span>
@@ -364,14 +364,14 @@
     </div>
   </div>
 
-  <!-- â•â•â• Threat Map (Full Width) â•â•â• -->
+  <!-- --- Threat Map (Full Width) --- -->
   <div class="panel map-panel">
     <div class="panel-header">
       <div class="panel-title-group">
         <div class="panel-icon green-icon"><i class="ti ti-map-2"></i></div>
         <div>
           <div class="panel-title">Live Threat Map</div>
-          <div class="panel-subtitle">à¹à¸œà¸™à¸—à¸µà¹ˆà¹à¸ªà¸”à¸‡à¹à¸«à¸¥à¹ˆà¸‡à¸—à¸µà¹ˆà¸¡à¸²à¸‚à¸­à¸‡à¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µà¹à¸šà¸šà¹€à¸£à¸µà¸¢à¸¥à¹„à¸—à¸¡à¹Œ</div>
+          <div class="panel-subtitle">แผนที่แสดงแหล่งที่มาของการโจมตีแบบเรียลไทม์</div>
         </div>
       </div>
       <span class="live-badge"><span class="pulse-dot"></span> LIVE</span>
@@ -379,17 +379,17 @@
     <div class="map-container" id="threat-map"></div>
   </div>
 
-  <!-- â•â•â• Main Content Row â•â•â• -->
+  <!-- --- Main Content Row --- -->
   <div class="main-grid">
 
     <!-- Left: Recent Events Table -->
-    <div class="panel clickable panel-tall" on:click={() => navigateTo('/dashboard/logs')} title="à¸„à¸¥à¸´à¸à¹€à¸žà¸·à¹ˆà¸­à¹„à¸›à¸¢à¸±à¸‡à¸«à¸™à¹‰à¸² Threat Logs">
+    <div class="panel clickable panel-tall" on:click={() => navigateTo('/dashboard/logs')} title="คลิกเพื่อไปยังหน้า Threat Logs">
       <div class="panel-header">
         <div class="panel-title-group">
           <div class="panel-icon blue-icon"><i class="ti ti-list-details"></i></div>
           <div>
             <div class="panel-title">Recent Attack Events</div>
-            <div class="panel-subtitle">à¹€à¸«à¸•à¸¸à¸à¸²à¸£à¸“à¹Œà¸¥à¹ˆà¸²à¸ªà¸¸à¸”à¸ˆà¸²à¸ Honeypot</div>
+            <div class="panel-subtitle">เหตุการณ์ล่าสุดจาก Honeypot</div>
           </div>
         </div>
         <span class="badge-count">{filteredEvents.length} events</span>
@@ -420,7 +420,7 @@
       {#if filteredEvents.length === 0}
       <div class="empty-state">
         <i class="ti ti-inbox"></i>
-        à¹„à¸¡à¹ˆà¸žà¸š event à¸—à¸µà¹ˆà¸•à¸£à¸‡à¸à¸±à¸šà¸•à¸±à¸§à¸à¸£à¸­à¸‡à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸
+        ไม่พบ event ที่ตรงกับตัวกรองที่เลือก 
       </div>
       {/if}
       <div class="panel-footer-link">
@@ -433,7 +433,7 @@
     <div class="side-panels">
 
       <!-- Top Countries -->
-      <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="à¸„à¸¥à¸´à¸à¹€à¸žà¸·à¹ˆà¸­à¹„à¸›à¸¢à¸±à¸‡ Analyst Center">
+      <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="คลิกเพื่อไปยัง Analyst Center">
         <div class="panel-header">
           <div class="panel-title-group">
             <div class="panel-icon orange-icon"><i class="ti ti-world"></i></div>
@@ -447,7 +447,7 @@
           {#each topCountries as item}
             {@const maxVal = topCountries[0]?.count || 1}
             <div class="c-row">
-              <div class="c-flag">{item.country === 'Local Network' ? 'ðŸ”’' : item.country === 'China' ? 'ðŸ‡¨ðŸ‡³' : item.country === 'Russia' ? 'ðŸ‡·ðŸ‡º' : item.country === 'United States' || item.country === 'USA' ? 'ðŸ‡ºðŸ‡¸' : item.country === 'Germany' ? 'ðŸ‡©ðŸ‡ª' : item.country === 'Thailand' ? 'ðŸ‡¹ðŸ‡­' : 'ðŸŒ'}</div>
+              <div class="c-flag">{item.country === 'Local Network' ? '🔒' : item.country === 'China' ? '🇨🇳' : item.country === 'Russia' ? '🇷🇺' : item.country === 'United States' || item.country === 'USA' ? '🇺🇸' : item.country === 'Germany' ? '🇩🇪' : item.country === 'Thailand' ? '🇹🇭' : '🌍'}</div>
               <div class="c-label">{item.country === 'United States' ? 'USA' : item.country}</div>
               <div class="c-bar-bg">
                 <div class="c-bar-fill" style="width: {Math.max((item.count / maxVal) * 100, 3)}%; background: {getCountryColor(item.country)}"></div>
@@ -456,19 +456,19 @@
             </div>
           {/each}
           {#if topCountries.length === 0}
-            <div class="empty-state" style="padding: 1rem 0;">à¹„à¸¡à¹ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸›à¸£à¸°à¹€à¸—à¸¨à¸ˆà¸²à¸à¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µ</div>
+            <div class="empty-state" style="padding: 1rem 0;">ไม่มีข้อมูลประเทศจากการโจมตี</div>
           {/if}
         </div>
       </div>
 
       <!-- Internal Threats -->
-      <div class="panel clickable" on:click={() => navigateTo('/dashboard/investigate')} title="à¸„à¸¥à¸´à¸à¹€à¸žà¸·à¹ˆà¸­à¹à¸à¸°à¸£à¸­à¸¢à¸ à¸±à¸¢à¸„à¸¸à¸à¸„à¸²à¸¡à¸ à¸²à¸¢à¹ƒà¸™">
+      <div class="panel clickable" on:click={() => navigateTo('/dashboard/investigate')} title="คลิกเพื่อแกะรอยภัยคุกคามภายใน">
         <div class="panel-header">
           <div class="panel-title-group">
             <div class="panel-icon red-icon"><i class="ti ti-building"></i></div>
             <div>
               <div class="panel-title">Internal Threats</div>
-              <div class="panel-subtitle">à¸ à¸±à¸¢à¸„à¸¸à¸à¸„à¸²à¸¡à¸ à¸²à¸¢à¹ƒà¸™à¸­à¸‡à¸„à¹Œà¸à¸£ → Investigate</div>
+              <div class="panel-subtitle">ภัยคุกคามภายในองค์กร → Investigate</div>
             </div>
           </div>
         </div>
@@ -477,7 +477,7 @@
             {@const maxVal = topFaculties[0]?.count || 1}
             <div class="c-row">
               <div class="c-code-badge">{item.code}</div>
-              <div class="c-label" style="flex:1;" title="{item.name}">{item.name.length > 16 ? item.name.slice(0,16) + 'â€¦' : item.name}</div>
+              <div class="c-label" style="flex:1;" title="{item.name}">{item.name.length > 16 ? item.name.slice(0,16) + '…' : item.name}</div>
               <div class="c-bar-bg" style="width: 80px; flex: none;">
                 <div class="c-bar-fill" style="width: {Math.max((item.count / maxVal) * 100, 3)}%; background: var(--red)"></div>
               </div>
@@ -485,7 +485,7 @@
             </div>
           {/each}
           {#if topFaculties.length === 0}
-            <div class="empty-state" style="padding: 1rem 0;">à¹„à¸¡à¹ˆà¸žà¸šà¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µà¸ˆà¸²à¸à¸ à¸²à¸¢à¹ƒà¸™</div>
+            <div class="empty-state" style="padding: 1rem 0;">ไม่พบการโจมตีจากภายใน</div>
           {/if}
         </div>
       </div>
@@ -493,7 +493,7 @@
     </div>
   </div>
 
-  <!-- â•â•â• Charts Row â•â•â• -->
+  <!-- --- Charts Row --- -->
   <div class="charts-grid">
     <!-- Timeline Chart -->
     <div class="panel">
@@ -502,7 +502,7 @@
           <div class="panel-icon green-icon"><i class="ti ti-chart-line"></i></div>
           <div>
             <div class="panel-title">Event Timeline</div>
-            <div class="panel-subtitle">à¸ˆà¸³à¸™à¸§à¸™à¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µà¸£à¸²à¸¢à¸Šà¸±à¹ˆà¸§à¹‚à¸¡à¸‡</div>
+            <div class="panel-subtitle">จำนวนการโจมตีรายชั่วโมง</div>
           </div>
         </div>
       </div>
@@ -512,13 +512,13 @@
     </div>
 
     <!-- Attack Distribution Chart -->
-    <div class="panel clickable" on:click={() => navigateTo('/dashboard/mitre')} title="à¸„à¸¥à¸´à¸ดู MITRE ATT&CK Matrix">
+    <div class="panel clickable" on:click={() => navigateTo('/dashboard/mitre')} title="คลิกดู MITRE ATT&CK Matrix">
       <div class="panel-header">
         <div class="panel-title-group">
           <div class="panel-icon purple-icon"><i class="ti ti-chart-bar"></i></div>
           <div>
             <div class="panel-title">Attack Distribution</div>
-            <div class="panel-subtitle">à¸ªà¸±à¸”à¸ªà¹ˆà¸§à¸™ประเภทà¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µ → MITRE Map</div>
+            <div class="panel-subtitle">สัดส่วนประเภทการโจมตี → MITRE Map</div>
           </div>
         </div>
       </div>
