@@ -112,7 +112,7 @@
       <div class="sidebar-logo">
         <i class="ti ti-radar"></i>
       </div>
-      <div class="sidebar-title">KKUSIEM<br><span style="color:var(--text-muted);font-weight:400;font-size:11px">(demo)</span></div>
+      <div class="sidebar-title">KKUSIEM</div>
     </div>
     <nav class="sidebar-nav custom-scrollbar" style="overflow-y: auto;">
       <div class="nav-group-title">OVERVIEW</div>

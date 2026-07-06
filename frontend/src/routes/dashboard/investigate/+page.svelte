@@ -55,8 +55,12 @@
     if (!matchIp) return false;
     
     if (searchTime) {
-      const rawTime = String(e.timeStr || e.createdAt || e.timestamp || e.time);
-      if (!rawTime.includes(searchTime)) return false;
+      const timeStr = String(e.timeStr || '');
+      const createdAt = String(e.createdAt || '');
+      const timestamp = String(e.timestamp || '');
+      const time = String(e.time || '');
+      const match = [timeStr, createdAt, timestamp, time].some(t => t && (t.includes(searchTime) || searchTime.includes(t)));
+      if (!match) return false;
     }
 
     if (selectedRange !== 'all') {
