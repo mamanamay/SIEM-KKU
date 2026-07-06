@@ -3,6 +3,7 @@
   import { eventsStore, roleStore } from '../../../stores/events';
   import { getFacultyForIP } from '../../../stores/faculties';
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
 
   $: events = $eventsStore;
   let searchIp = $page.url.searchParams.get('ip') || '';
@@ -13,6 +14,17 @@
     lastUrl = $page.url.href;
     searchIp = $page.url.searchParams.get('ip') || '';
     searchTime = $page.url.searchParams.get('time') || '';
+  }
+
+  function resetAlertMode() {
+    searchTime = '';
+    if ($page.url.searchParams.has('ip') || $page.url.searchParams.has('time')) {
+      const newUrl = new URL($page.url);
+      newUrl.searchParams.delete('ip');
+      newUrl.searchParams.delete('time');
+      lastUrl = newUrl.href;
+      goto(newUrl.href, { replaceState: true, keepFocus: true, noScroll: true });
+    }
   }
 
   let selectedRange = 'all';
@@ -258,7 +270,7 @@
       <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Time Range:</span>
       <div style="display:flex;gap:4px;flex-wrap:wrap;">
         {#each ['1h','6h','24h','1m','3m','6m','1y','all'] as r}
-          <button on:click={() => { selectedRange = r; searchTime = ''; }} style="background:{selectedRange === r ? 'var(--green)' : 'var(--bg-secondary)'};color:{selectedRange === r ? '#fff' : 'var(--text-secondary)'};border:1px solid {selectedRange === r ? 'var(--green)' : 'var(--border)'};padding:5px 13px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.18s;">
+          <button on:click={() => { selectedRange = r; if (searchTime) searchIp = ''; resetAlertMode(); }} style="background:{selectedRange === r ? 'var(--green)' : 'var(--bg-secondary)'};color:{selectedRange === r ? '#fff' : 'var(--text-secondary)'};border:1px solid {selectedRange === r ? 'var(--green)' : 'var(--border)'};padding:5px 13px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.18s;">
             {r === 'all' ? 'ทั้งหมด' : r}
           </button>
         {/each}
@@ -267,7 +279,7 @@
     
     <div style="position:relative;flex:1;min-width:200px;max-width:300px;">
       <i class="ti ti-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);"></i>
-      <input type="text" bind:value={searchIp} on:input={() => { searchTime = ''; }} placeholder="ค้นหาด้วย IP Address..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px 8px 36px;border-radius:8px;font-size:13px;outline:none;transition:border-color 0.2s;">
+      <input type="text" bind:value={searchIp} on:input={() => { resetAlertMode(); }} placeholder="ค้นหาด้วย IP Address..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px 8px 36px;border-radius:8px;font-size:13px;outline:none;transition:border-color 0.2s;">
     </div>
   </div>
 

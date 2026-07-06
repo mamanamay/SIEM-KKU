@@ -305,7 +305,7 @@
 
   <!-- â•â•â• KPI Metric Cards â•â•â• -->
   <div class="metrics">
-    <div class="metric-card danger" on:click={() => navigateTo('/dashboard/logs?severity=critical')} title="à¸”à¸¹ Critical Alerts">
+    <div class="metric-card danger" on:click={() => navigateTo('/dashboard/logs?severity=critical')} title="ดู Critical Alerts">
       <div class="metric-icon-wrap danger-icon"><i class="ti ti-alert-octagon"></i></div>
       <div class="metric-body">
         <div class="metric-label">Critical Alerts</div>
@@ -314,7 +314,7 @@
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card warn" on:click={() => navigateTo('/dashboard/logs')} title="à¸”à¸¹ All Events">
+    <div class="metric-card warn" on:click={() => navigateTo('/dashboard/logs')} title="ดู All Events">
       <div class="metric-icon-wrap warn-icon"><i class="ti ti-activity"></i></div>
       <div class="metric-body">
         <div class="metric-label">Total Events</div>
@@ -323,7 +323,7 @@
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card ok" on:click={() => navigateTo('/dashboard/analytics')} title="à¸”à¸¹ Analytics">
+    <div class="metric-card ok" on:click={() => navigateTo('/dashboard/analytics')} title="ดู Analytics">
       <div class="metric-icon-wrap ok-icon"><i class="ti ti-network"></i></div>
       <div class="metric-body">
         <div class="metric-label">Unique Sources</div>
@@ -332,7 +332,7 @@
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card info" on:click={() => navigateTo('/dashboard/mitre')} title="à¸”à¸¹ MITRE ATT&CK">
+    <div class="metric-card info" on:click={() => navigateTo('/dashboard/mitre')} title="ดู MITRE ATT&CK">
       <div class="metric-icon-wrap info-icon"><i class="ti ti-shield-lock"></i></div>
       <div class="metric-body">
         <div class="metric-label">Filtered Results</div>
@@ -359,7 +359,7 @@
     <div class="filter-right">
       <div class="search-wrap">
         <i class="ti ti-search"></i>
-        <input type="text" class="filter-search" bind:value={searchText} placeholder="à¸„à¹‰à¸™à¸«à¸² IP, à¸›à¸£à¸°à¹€à¸ à¸—...">
+        <input type="text" class="filter-search" bind:value={searchText} placeholder="ค้นหา IP, ประเภท...">
       </div>
     </div>
   </div>
@@ -398,9 +398,9 @@
       <table class="log-table">
         <thead>
           <tr>
-            <th>à¸§à¸±à¸™à¸—à¸µà¹ˆ & à¹€à¸§à¸¥à¸²</th>
+            <th>วันที่ & เวลา</th>
             <th>Source IP</th>
-            <th>à¸›à¸£à¸°à¹€à¸ à¸—</th>
+            <th>ประเภท</th>
             <th>Severity</th>
           </tr>
         </thead>
@@ -409,7 +409,7 @@
           <tr>
             <td class="ip-mono">{event.time || event.timeStr}</td>
             <td class="ip-mono">
-              <a href="/dashboard/logs?ip={event.ip}" class="ip-link" on:click|stopPropagation title="à¸”à¸¹à¸£à¸²à¸¢à¸¥à¸°à¹€à¸­à¸µà¸¢à¸” IP à¸™à¸µà¹‰">{event.ip}</a>
+              <a href="/dashboard/logs?ip={event.ip}" class="ip-link" on:click|stopPropagation title="ดูรายละเอียด IP นี้">{event.ip}</a>
             </td>
             <td><span class="type-badge">{event.type}</span></td>
             <td><span class="sev {event.severity}">{event.severity}</span></td>
@@ -424,7 +424,7 @@
       </div>
       {/if}
       <div class="panel-footer-link">
-        <span>à¸”à¸¹à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”à¹ƒà¸™ Threat Logs</span>
+        <span>ดูทั้งหมดใน Threat Logs</span>
         <i class="ti ti-arrow-right"></i>
       </div>
     </div>
@@ -439,7 +439,7 @@
             <div class="panel-icon orange-icon"><i class="ti ti-world"></i></div>
             <div>
               <div class="panel-title">Top Source Countries</div>
-              <div class="panel-subtitle">à¸›à¸£à¸°à¹€à¸—à¸¨à¸—à¸µà¹ˆà¹‚à¸ˆà¸¡à¸•à¸µà¸ªà¸¹à¸‡à¸ªà¸¸à¸” â†’ Analyst</div>
+              <div class="panel-subtitle">ประเทศที่โจมตีสูงสุด -> Analyst</div>
             </div>
           </div>
         </div>
@@ -468,7 +468,7 @@
             <div class="panel-icon red-icon"><i class="ti ti-building"></i></div>
             <div>
               <div class="panel-title">Internal Threats</div>
-              <div class="panel-subtitle">à¸ à¸±à¸¢à¸„à¸¸à¸à¸„à¸²à¸¡à¸ à¸²à¸¢à¹ƒà¸™à¸­à¸‡à¸„à¹Œà¸à¸£ â†’ Investigate</div>
+              <div class="panel-subtitle">à¸ à¸±à¸¢à¸„à¸¸à¸à¸„à¸²à¸¡à¸ à¸²à¸¢à¹ƒà¸™à¸­à¸‡à¸„à¹Œà¸à¸£ → Investigate</div>
             </div>
           </div>
         </div>
@@ -512,13 +512,13 @@
     </div>
 
     <!-- Attack Distribution Chart -->
-    <div class="panel clickable" on:click={() => navigateTo('/dashboard/mitre')} title="à¸„à¸¥à¸´à¸à¸”à¸¹ MITRE ATT&CK Matrix">
+    <div class="panel clickable" on:click={() => navigateTo('/dashboard/mitre')} title="à¸„à¸¥à¸´à¸ดู MITRE ATT&CK Matrix">
       <div class="panel-header">
         <div class="panel-title-group">
           <div class="panel-icon purple-icon"><i class="ti ti-chart-bar"></i></div>
           <div>
             <div class="panel-title">Attack Distribution</div>
-            <div class="panel-subtitle">à¸ªà¸±à¸”à¸ªà¹ˆà¸§à¸™à¸›à¸£à¸°à¹€à¸ à¸—à¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µ â†’ MITRE Map</div>
+            <div class="panel-subtitle">à¸ªà¸±à¸”à¸ªà¹ˆà¸§à¸™ประเภทà¸à¸²à¸£à¹‚à¸ˆà¸¡à¸•à¸µ → MITRE Map</div>
           </div>
         </div>
       </div>
@@ -810,172 +810,4 @@
   .metrics { grid-template-columns: 1fr 1fr; }
   .metric-val { font-size: 24px; }
 }
-</style>
-
-
-.filter-divider { width: 1px; height: 20px; background: var(--border); }
-.filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.chip {
-  font-size: 11.5px; font-weight: 500; padding: 4px 12px; border-radius: 20px;
-  border: 1px solid transparent; cursor: pointer; transition: all .15s; 
-  background: var(--bg-secondary); color: var(--text-secondary); user-select: none;
-}
-.chip:hover { border-color: var(--border); }
-.chip.active-all    { background: var(--text-primary); color: var(--bg); }
-.chip.active-critical { background: var(--red-bg); color: var(--red); border-color: rgba(163,45,45,0.3); }
-.chip.active-high   { background: var(--orange-bg); color: var(--orange); border-color: rgba(133,79,11,0.3); }
-.chip.active-medium { background: var(--blue-bg); color: var(--blue); border-color: rgba(24,95,165,0.3); }
-.chip.active-low    { background: #eaf3de; color: #3b6d11; border-color: rgba(59,109,17,0.3); }
-.filter-right { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
-.filter-search {
-  font-size: 12px; padding: 5px 10px 5px 30px; border: 1px solid var(--border); border-radius: 20px;
-  background: var(--bg-secondary); color: var(--text-primary); outline: none; width: 180px; transition: border-color .15s;
-}
-.filter-search:focus { border-color: var(--green); }
-.search-wrap { position: relative; }
-.search-wrap .ti { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
-
-/* Panels */
-.grid3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-.grid3-timeline { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 10px; }
-.panel {
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 1rem 1.25rem;
-  box-shadow: var(--shadow-sm); display: flex; flex-direction: column;
-}
-.panel.clickable { cursor: pointer; transition: transform 0.1s, box-shadow 0.1s, border-color 0.1s; }
-.panel.clickable:hover { border-color: var(--green); box-shadow: var(--shadow-md); transform: translateY(-1px); }
-
-.panel-title {
-  font-size: 13px; font-weight: 600; color: var(--text-primary);
-  margin-bottom: .875rem; display: flex; align-items: center; justify-content: space-between;
-}
-.panel-title i { font-size: 15px; color: var(--text-secondary); margin-right: 6px; }
-.panel-title .badge-count { font-size: 11px; font-weight: 500; background: var(--bg-secondary); color: var(--text-secondary); padding: 2px 8px; border-radius: 10px; }
-
-/* Country Bars */
-.country-bars { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
-.c-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
-.c-label { width: 70px; color: var(--text-primary); font-weight: 500; }
-.c-bar-bg { flex: 1; background: var(--bg-secondary); height: 6px; border-radius: 3px; overflow: hidden; }
-.c-bar-fill { height: 100%; border-radius: 3px; }
-.c-val { width: 40px; text-align: right; font-family: 'Courier New', monospace; color: var(--text-secondary); }
-
-/* Log Table */
-.log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.log-table th { text-align: left; font-weight: 500; color: var(--text-muted); font-size: 11px; padding: 0 8px 8px 0; border-bottom: 1px solid var(--border); }
-.log-table td { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: top; }
-.log-table tr:last-child td { border-bottom: none; }
-.log-table tbody tr { transition: background .1s; }
-.log-table tbody tr:hover { background: var(--bg-secondary); }
-
-.sev { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.2px; }
-.sev.critical { background: var(--red-bg); color: var(--red); }
-.sev.high     { background: var(--orange-bg); color: var(--orange); }
-.sev.medium   { background: var(--blue-bg); color: var(--blue); }
-.sev.low      { background: #eaf3de; color: #3b6d11; }
-
-.type-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 11px; background: var(--bg-secondary); color: var(--text-secondary); }
-.ip-mono { font-family: 'Courier New', monospace; font-size: 11.5px; color: var(--text-secondary); }
-
-.empty-state { text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 13px; }
-.empty-state i { font-size: 24px; margin-bottom: 5px; display: block; }
-
-/* Custom Legend */
-.custom-legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-.top-legend { margin-bottom: 10px; border-bottom: 1px dashed var(--border); padding-bottom: 12px; }
-.leg-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
-.leg-box { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-.leg-count { font-weight: 700; color: var(--text-primary); margin-left: 2px; }
-
-/* Threat Map */
-.map-panel {
-  margin-bottom: 10px;
-}
-.map-container {
-  position: relative;
-  width: 100%;
-  height: 400px;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-.map-bg {
-  position: absolute;
-  top: 0; left: 0; width: 100%; height: 100%;
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><path fill="%23d1d5db" d="M150,150 Q200,100 250,150 T350,150" opacity="0.3"/><circle cx="220" cy="175" r="5" fill="%239ca3af"/><circle cx="500" cy="250" r="5" fill="%239ca3af"/><circle cx="750" cy="175" r="5" fill="%239ca3af"/><circle cx="700" cy="100" r="5" fill="%239ca3af"/><circle cx="520" cy="140" r="5" fill="%239ca3af"/><circle cx="320" cy="325" r="5" fill="%239ca3af"/><circle cx="850" cy="375" r="5" fill="%239ca3af"/><circle cx="480" cy="130" r="5" fill="%239ca3af"/><circle cx="770" cy="240" r="5" fill="%239ca3af"/><circle cx="710" cy="225" r="5" fill="%239ca3af"/></svg>');
-  background-size: cover;
-  background-position: center;
-  opacity: 0.6;
-}
-:global(body[data-theme='dark']) .map-bg { opacity: 0.2; }
-
-.map-pin {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  z-index: 2;
-}
-.pin-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  position: relative;
-  z-index: 2;
-}
-.pin-ring {
-  position: absolute;
-  top: 50%; left: 50%;
-  width: 24px; height: 24px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  border: 2px solid;
-  animation: radarPulse 2s infinite ease-out;
-  opacity: 0;
-}
-.pin-label {
-  position: absolute;
-  top: 12px; left: 50%;
-  transform: translateX(-50%);
-  font-family: 'Courier New', monospace;
-  font-size: 10px;
-  color: var(--text-primary);
-  background: var(--bg-panel);
-  padding: 1px 4px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-.map-pin:hover .pin-label { opacity: 1; }
-
-@keyframes radarPulse {
-  0% { transform: translate(-50%, -50%) scale(0.1); opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
-}
-
-.live-badge {
-  display: flex; align-items: center; gap: 6px;
-  background: rgba(29,158,117,0.1); color: var(--green);
-  padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: 700;
-  letter-spacing: 0.5px;
-}
-.pulse-dot {
-  width: 6px; height: 6px; background: var(--green); border-radius: 50%;
-  animation: pulseDot 1.5s infinite;
-}
-@keyframes pulseDot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.8); }
-}
-
-@media (max-width: 900px) {
-  .grid3, .grid3-timeline { grid-template-columns: 1fr; }
-  .metrics { grid-template-columns: repeat(2,1fr); }
-  .filter-search { width: 140px; }
-  .map-container { height: 250px; }
-}
-
-.ip-link { color: var(--blue); text-decoration: none; font-weight: 500; cursor: pointer; transition: color 0.15s; }
-.ip-link:hover { color: #0f46a6; text-decoration: underline; }
-</style>
+</style>
