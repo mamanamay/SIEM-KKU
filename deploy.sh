@@ -29,7 +29,6 @@ echo ""
 echo "[1/4] 📦 Packing project files (excluding node_modules, logs, certs)..."
 
 tar --exclude='.git' \
-    --exclude='.env' \
     --exclude='node_modules' \
     --exclude='frontend/node_modules' \
     --exclude='backend/node_modules' \

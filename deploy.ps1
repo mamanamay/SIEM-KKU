@@ -14,7 +14,7 @@ if (-not $Username) { $Username = Read-Host "Enter SSH Username (e.g. ubuntu or 
 
 # Files / folders to EXCLUDE from deployment
 $excludePatterns = @(
-    ".git", ".gitattributes", ".env",
+    ".git", ".gitattributes",
     "node_modules",
     "frontend/node_modules", "backend/node_modules", "webtrap/node_modules",
     "frontend/build", "frontend/.svelte-kit",
