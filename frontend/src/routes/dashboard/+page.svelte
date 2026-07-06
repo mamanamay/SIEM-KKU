@@ -151,6 +151,16 @@
     return coords[country] || [13.7, 100.5];
   }
 
+  function getCountryCode(country: string): string {
+    if (country === 'Local Network') return 'LN';
+    const map: Record<string, string> = {
+      'United States': 'US', 'USA': 'US', 'China': 'CN', 'Russia': 'RU', 
+      'Germany': 'DE', 'Thailand': 'TH', 'Brazil': 'BR', 'United Kingdom': 'UK', 
+      'France': 'FR', 'Australia': 'AU', 'India': 'IN', 'Japan': 'JP', 'South Korea': 'KR'
+    };
+    return map[country] || country.substring(0, 2).toUpperCase();
+  }
+
   function initChart() {
     if (document.getElementById('attackChart')) {
       const ctx = document.getElementById('attackChart') as HTMLCanvasElement;
@@ -459,7 +469,7 @@
           {#each topCountries as item}
             {@const maxVal = topCountries[0]?.count || 1}
             <div class="c-row">
-              <div class="c-flag">{item.country === 'Local Network' ? '🔒' : item.country === 'China' ? '🇨🇳' : item.country === 'Russia' ? '🇷🇺' : item.country === 'United States' || item.country === 'USA' ? '🇺🇸' : item.country === 'Germany' ? '🇩🇪' : item.country === 'Thailand' ? '🇹🇭' : '🌍'}</div>
+              <div class="c-flag">{getCountryCode(item.country)}</div>
               <div class="c-label">{item.country === 'United States' ? 'USA' : item.country}</div>
               <div class="c-bar-bg">
                 <div class="c-bar-fill" style="width: {Math.max((item.count / maxVal) * 100, 3)}%; background: {getCountryColor(item.country)}"></div>

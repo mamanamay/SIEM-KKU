@@ -364,7 +364,7 @@
       </select>
     </div>
     <div style="flex-grow: 1;"></div>
-    <span style="font-size: 11px; color: var(--text-muted);">* ข้อมูล Mapping IP กับคณะ ใช้ข้อมูลจริงจากไฟล์ Excel</span>
+
   </div>
 
   <div class="kpi-row">

@@ -221,7 +221,7 @@
         <div class="ds-card-title"><i class="ti ti-map-pin-filled"></i> Top Source Countries</div>
         <span class="panel-badge">Real Data</span>
       </div>
-      <p class="panel-desc">ประเทศต้นทางของการโจมตี — หากโจมตีภายในวง LAN จะแสดงเป็น "Local Network"</p>
+
 
       {#if topCountries.length === 0}
         <div class="empty-state"><i class="ti ti-world-off"></i><br>ไม่มีข้อมูลประเทศ</div>
@@ -257,7 +257,7 @@
         <div class="ds-card-title"><i class="ti ti-crosshair"></i> Attack Vectors</div>
         <span class="panel-badge">Ranked by Frequency</span>
       </div>
-      <p class="panel-desc">ประเภทการโจมตีที่พบมากที่สุด (จากข้อมูลจริง 100%)</p>
+
 
       {#if topTypes.length === 0}
         <div class="empty-state"><i class="ti ti-shield-off"></i><br>ไม่มีข้อมูลรูปแบบการโจมตี</div>
@@ -298,7 +298,7 @@
         <div class="ds-card-title"><i class="ti ti-terminal-2"></i> Extracted Credentials & Payloads</div>
         <span class="panel-badge">{payloadEvents.length} records</span>
       </div>
-      <p class="panel-desc">คำสั่งหรือข้อมูลรหัสผ่านที่แฮกเกอร์พยายามพิมพ์เข้ามาผ่าน Shell / SSH</p>
+
 
       {#if payloadEvents.length === 0}
         <div class="empty-state"><i class="ti ti-file-off"></i><br>ยังไม่มีการบันทึก Payload หรือคำสั่งใดๆ</div>
