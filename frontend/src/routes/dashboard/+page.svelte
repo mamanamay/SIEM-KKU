@@ -175,10 +175,10 @@
       timelineChart = new Chart(ctx2, {
         type: 'line',
         data: {
-          labels: ['03:00', '04:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00'],
+          labels: [],
           datasets: [{
             label: 'Events',
-            data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // Real data will populate here
+            data: [], // Real data will populate here
             borderColor: '#1d9e75',
             backgroundColor: 'rgba(29, 158, 117, 0.1)',
             borderWidth: 2,
@@ -223,17 +223,26 @@
 
     if (timelineChart) {
       let hourlyCounts: Record<string, number> = {};
+      const nowMs = Date.now();
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      
       events.forEach(e => {
-        let t = e.time || e.timeStr || new Date().toISOString();
-        let hourMatch = t.match(/T(\d{2}):/) || t.match(/^(\d{2}):/);
-        let hour = hourMatch ? hourMatch[1] : new Date().getHours().toString().padStart(2, '0');
-        hourlyCounts[hour] = (hourlyCounts[hour] || 0) + 1;
+        let t = e.time || e.timeStr || e.createdAt || e.timestamp;
+        let eventTimeMs = new Date(t).getTime();
+        if (isNaN(eventTimeMs)) eventTimeMs = nowMs; // fallback
+        
+        // Only count events within the last 24 hours
+        if (nowMs - eventTimeMs <= oneDayMs) {
+          let dateObj = new Date(eventTimeMs);
+          let hourStr = dateObj.getHours().toString().padStart(2, '0');
+          hourlyCounts[hourStr] = (hourlyCounts[hourStr] || 0) + 1;
+        }
       });
 
       const labels = [];
       const data = [];
       const currentHour = new Date().getHours();
-      for(let i=9; i>=0; i--) {
+      for(let i=23; i>=0; i--) {
         let h = (currentHour - i + 24) % 24;
         let hStr = h.toString().padStart(2, '0');
         labels.push(`${hStr}:00`);
