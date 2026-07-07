@@ -53,8 +53,6 @@ tar --exclude='.git' \
     --exclude='proxy.js' \
     --exclude='simulate_attack.ps1' \
     --exclude='start_proxy.ps1' \
-    --exclude='ip_records.json' \
-    --exclude='temp_faculties.txt' \
     --exclude='CLAUDE.md' \
     --exclude='docker-compose.dev.yml' \
     -czf deploy.tar.gz .

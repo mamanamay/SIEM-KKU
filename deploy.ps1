@@ -24,7 +24,6 @@ $excludePatterns = @(
     "update_analytics.js", "update_ds.js", "test_db.js",
     "extract.py", "proxy.js",
     "simulate_attack.ps1", "start_proxy.ps1", "init-git.sh",
-    "ip_records.json", "temp_faculties.txt",
     "CLAUDE.md", "docker-compose.dev.yml",
     "deploy.tar.gz", "deploy.tar"
 )
