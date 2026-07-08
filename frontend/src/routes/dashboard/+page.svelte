@@ -324,34 +324,17 @@
 </script>
 
 <div class="db-content">
-
-  <!-- â•â•â• KPI Metric Cards â•â•â• -->
   <div class="metrics">
-    <div class="metric-card danger" on:click={() => navigateTo('/dashboard/logs?severity=critical')} title="ดู Critical Alerts">
-      <div class="metric-icon-wrap danger-icon"><i class="ti ti-alert-octagon"></i></div>
+    <div class="metric-card danger" on:click={() => navigateTo('/dashboard/logs?severity=critical')}>
       <div class="metric-body">
         <div class="metric-label">Critical Alerts</div>
         <div class="metric-val">{events.filter(e => e.severity === 'critical').length}</div>
-        <div class="metric-sub">ต้องการความสนใจทันที</div>
       </div>
-      <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card warn" on:click={() => navigateTo('/dashboard/logs')} title="ดู All Events">
-      <div class="metric-icon-wrap warn-icon"><i class="ti ti-activity"></i></div>
-      <div class="metric-body">
-        <div class="metric-label">Total Events</div>
-        <div class="metric-val">{events.length}</div>
-        <div class="metric-sub">บันทึกสดจาก Honeypot</div>
-      </div>
-      <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
-    </div>
-    <div class="metric-card ok" on:click={() => navigateTo('/dashboard/analytics')} title="ดู Analytics">
-      <div class="metric-icon-wrap ok-icon"><i class="ti ti-network"></i></div>
+    <div class="metric-card ok" on:click={() => navigateTo('/dashboard/analytics')}>
       <div class="metric-body">
         <div class="metric-label">Unique Sources</div>
         <div class="metric-val">{new Set(events.map(e => e.ip)).size}</div>
-        <div class="metric-sub">IP ที่ไม่ซ้ำกัน</div>
-      </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
     <div class="metric-card info" on:click={() => navigateTo('/dashboard/mitre')} title="ดู MITRE ATT&CK">
@@ -365,7 +348,7 @@
     </div>
   </div>
 
-  <!-- --- Filter Bar --- -->
+  <!-- Filter Bar -->
   <div class="filter-bar">
     <div class="filter-left">
       <span class="filter-label"><i class="ti ti-adjustments-horizontal"></i> Severity</span>
@@ -386,24 +369,79 @@
     </div>
   </div>
 
-  <!-- --- Threat Map (Full Width) --- -->
-  <div class="panel map-panel">
-    <div class="panel-header">
-      <div class="panel-title-group">
-        <div class="panel-icon green-icon"><i class="ti ti-map-2"></i></div>
+  <!-- ═══════════ LIVE MAP — REDESIGNED ═══════════ -->
+  <div class="map-panel">
+    <!-- Map Header Bar -->
+    <div class="map-header">
+      <div class="map-header-left">
+        <div class="map-logo"><i class="ti ti-radar"></i></div>
         <div>
-          <div class="panel-title">Live Threat Map</div>
-          <div class="panel-subtitle">แผนที่แสดงแหล่งที่มาของการโจมตีแบบเรียลไทม์</div>
+          <div class="map-title">Live Global Threat Map</div>
+          <div class="map-subtitle">Real-time attack origin tracking · Leaflet OpenStreetMap</div>
         </div>
       </div>
-      <span class="live-badge"><span class="pulse-dot"></span> LIVE</span>
+      <div class="map-header-right">
+        <div class="map-stat-pill red-pill">
+          <i class="ti ti-bolt"></i>
+          <span>{events.filter(e => e.severity === 'critical').length} Critical</span>
+        </div>
+        <div class="map-stat-pill orange-pill">
+          <i class="ti ti-map-pin"></i>
+          <span>{new Set(events.map(e => e.country)).size} Countries</span>
+        </div>
+        <span class="live-badge"><span class="pulse-dot"></span> LIVE</span>
+      </div>
     </div>
-    <div class="map-container" id="threat-map"></div>
+
+    <!-- Map + Sidebar -->
+    <div class="map-body">
+      <!-- Leaflet Map -->
+      <div class="map-container" id="threat-map"></div>
+
+      <!-- Sidebar Stats -->
+      <div class="map-sidebar">
+        <div class="map-sidebar-title"><i class="ti ti-world"></i> Top Origins</div>
+        <div class="map-country-list">
+          {#each topCountries as item, i}
+            {@const maxVal = topCountries[0]?.count || 1}
+            <div class="map-country-row">
+              <div class="map-country-rank rank-{i + 1}">{i + 1}</div>
+              <div class="map-country-info">
+                <div class="map-country-name">{item.country === 'United States' ? 'USA' : item.country}</div>
+                <div class="map-country-bar-bg">
+                  <div class="map-country-bar" style="width:{Math.max((item.count/maxVal)*100,4)}%; background:{getCountryColor(item.country)}"></div>
+                </div>
+              </div>
+              <div class="map-country-count">{item.count}</div>
+            </div>
+          {/each}
+          {#if topCountries.length === 0}
+            <div class="map-empty"><i class="ti ti-database-off"></i><br>No data</div>
+          {/if}
+        </div>
+
+        <div class="map-sidebar-divider"></div>
+
+        <div class="map-sidebar-title"><i class="ti ti-flame"></i> Last Attack</div>
+        {#if events.length > 0}
+          {@const last = events[0]}
+          <div class="map-last-event">
+            <div class="map-last-row"><span>IP</span><strong class="map-mono">{last.ip}</strong></div>
+            <div class="map-last-row"><span>Type</span><strong>{last.type || 'Unknown'}</strong></div>
+            <div class="map-last-row"><span>From</span><strong>{last.country || 'Unknown'}</strong></div>
+            <div class="map-last-row"><span>Sev</span>
+              <span class="sev {last.severity}">{last.severity}</span>
+            </div>
+          </div>
+        {:else}
+          <div class="map-empty"><i class="ti ti-shield-check"></i><br>No attacks yet</div>
+        {/if}
+      </div>
+    </div>
   </div>
 
-  <!-- --- Main Content Row --- -->
+  <!-- Main Content Row -->
   <div class="main-grid">
-
     <!-- Left: Recent Events Table -->
     <div class="panel clickable panel-tall" on:click={() => navigateTo('/dashboard/logs')} title="คลิกเพื่อไปยังหน้า Threat Logs">
       <div class="panel-header">
@@ -416,16 +454,13 @@
         </div>
         <span class="badge-count">{filteredEvents.length} events</span>
       </div>
-
       <table class="log-table">
-        <thead>
-          <tr>
-            <th>วันที่ & เวลา</th>
-            <th>Source IP</th>
-            <th>ประเภท</th>
-            <th>Severity</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th>วันที่ &amp; เวลา</th>
+          <th>Source IP</th>
+          <th>ประเภท</th>
+          <th>Severity</th>
+        </tr></thead>
         <tbody>
           {#each filteredEvents.slice(0, 7) as event}
           <tr>
@@ -440,10 +475,7 @@
         </tbody>
       </table>
       {#if filteredEvents.length === 0}
-      <div class="empty-state">
-        <i class="ti ti-inbox"></i>
-        ไม่พบ event ที่ตรงกับตัวกรองที่เลือก 
-      </div>
+      <div class="empty-state"><i class="ti ti-inbox"></i> ไม่พบ event ที่ตรงกับตัวกรองที่เลือก</div>
       {/if}
       <div class="panel-footer-link">
         <span>ดูทั้งหมดใน Threat Logs</span>
@@ -453,7 +485,6 @@
 
     <!-- Right: Side Panels -->
     <div class="side-panels">
-
       <!-- Top Countries -->
       <div class="panel clickable" on:click={() => navigateTo('/dashboard/analytics')} title="คลิกเพื่อไปยัง Analyst Center">
         <div class="panel-header">
@@ -461,7 +492,7 @@
             <div class="panel-icon orange-icon"><i class="ti ti-world"></i></div>
             <div>
               <div class="panel-title">Top Source Countries</div>
-              <div class="panel-subtitle">ประเทศที่โจมตีสูงสุด -> Analyst</div>
+              <div class="panel-subtitle">ประเทศที่โจมตีสูงสุด</div>
             </div>
           </div>
         </div>
@@ -471,18 +502,13 @@
             <div class="c-row">
               <div class="c-flag">{getCountryCode(item.country)}</div>
               <div class="c-label">{item.country === 'United States' ? 'USA' : item.country}</div>
-              <div class="c-bar-bg">
-                <div class="c-bar-fill" style="width: {Math.max((item.count / maxVal) * 100, 3)}%; background: {getCountryColor(item.country)}"></div>
-              </div>
-              <div class="c-val">{item.count.toLocaleString()}</div>
+              <div class="c-bar-bg"><div class="c-bar-fill" style="width:{Math.max((item.count/maxVal)*100,3)}%;background:{getCountryColor(item.country)}"></div></div>
+              <div class="c-val">{item.count}</div>
             </div>
           {/each}
-          {#if topCountries.length === 0}
-            <div class="empty-state" style="padding: 1rem 0;">ไม่มีข้อมูลประเทศจากการโจมตี</div>
-          {/if}
+          {#if topCountries.length === 0}<div class="empty-state" style="padding:1rem 0">ไม่มีข้อมูล</div>{/if}
         </div>
       </div>
-
       <!-- Internal Threats -->
       <div class="panel clickable" on:click={() => navigateTo('/dashboard/investigate')} title="คลิกเพื่อแกะรอยภัยคุกคามภายใน">
         <div class="panel-header">
@@ -490,7 +516,7 @@
             <div class="panel-icon red-icon"><i class="ti ti-building"></i></div>
             <div>
               <div class="panel-title">Internal Threats</div>
-              <div class="panel-subtitle">ภัยคุกคามภายในองค์กร → Investigate</div>
+              <div class="panel-subtitle">ภัยคุกคามภายในองค์กร</div>
             </div>
           </div>
         </div>
@@ -499,79 +525,57 @@
             {@const maxVal = topFaculties[0]?.count || 1}
             <div class="c-row">
               <div class="c-code-badge">{item.code}</div>
-              <div class="c-label" style="flex:1;" title="{item.name}">{item.name.length > 16 ? item.name.slice(0,16) + '…' : item.name}</div>
-              <div class="c-bar-bg" style="width: 80px; flex: none;">
-                <div class="c-bar-fill" style="width: {Math.max((item.count / maxVal) * 100, 3)}%; background: var(--red)"></div>
-              </div>
+              <div class="c-label" style="flex:1" title="{item.name}">{item.name.length > 16 ? item.name.slice(0,16)+'…' : item.name}</div>
+              <div class="c-bar-bg" style="width:80px;flex:none"><div class="c-bar-fill" style="width:{Math.max((item.count/maxVal)*100,3)}%;background:var(--red)"></div></div>
               <div class="c-val">{item.count}</div>
             </div>
           {/each}
-          {#if topFaculties.length === 0}
-            <div class="empty-state" style="padding: 1rem 0;">ไม่พบการโจมตีจากภายใน</div>
-          {/if}
+          {#if topFaculties.length === 0}<div class="empty-state" style="padding:1rem 0">ไม่พบการโจมตีจากภายใน</div>{/if}
         </div>
       </div>
-
     </div>
   </div>
 
-  <!-- --- Charts Row --- -->
+  <!-- Charts Row -->
   <div class="charts-grid">
-    <!-- Timeline Chart -->
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title-group">
           <div class="panel-icon green-icon"><i class="ti ti-chart-line"></i></div>
-          <div>
-            <div class="panel-title">Event Timeline</div>
-            <div class="panel-subtitle">จำนวนการโจมตีรายชั่วโมง</div>
-          </div>
+          <div><div class="panel-title">Event Timeline</div><div class="panel-subtitle">จำนวนการโจมตีรายชั่วโมง</div></div>
         </div>
       </div>
-      <div style="position:relative;width:100%;height:260px">
-        <canvas id="timelineChart"></canvas>
-      </div>
+      <div style="position:relative;width:100%;height:260px"><canvas id="timelineChart"></canvas></div>
     </div>
-
-    <!-- Attack Distribution Chart -->
     <div class="panel clickable" on:click={() => navigateTo('/dashboard/mitre')} title="คลิกดู MITRE ATT&CK Matrix">
       <div class="panel-header">
         <div class="panel-title-group">
           <div class="panel-icon purple-icon"><i class="ti ti-chart-bar"></i></div>
-          <div>
-            <div class="panel-title">Attack Distribution</div>
-            <div class="panel-subtitle">สัดส่วนประเภทการโจมตี → MITRE Map</div>
-          </div>
+          <div><div class="panel-title">Attack Distribution</div><div class="panel-subtitle">สัดส่วนประเภทการโจมตี → MITRE Map</div></div>
         </div>
       </div>
       <div class="custom-legend top-legend">
         {#each attackStats as stat}
-          <div class="leg-item">
-            <span class="leg-box" style="background:{stat.color}"></span>
-            {stat.type}
-            <span class="leg-count">{stat.count.toLocaleString()}</span>
-          </div>
+          <div class="leg-item"><span class="leg-box" style="background:{stat.color}"></span>{stat.type}<span class="leg-count">{stat.count.toLocaleString()}</span></div>
         {/each}
       </div>
-      <div style="position:relative;width:100%;height:220px;margin-top:10px">
-        <canvas id="attackChart"></canvas>
-      </div>
+      <div style="position:relative;width:100%;height:220px;margin-top:10px"><canvas id="attackChart"></canvas></div>
     </div>
   </div>
 
 </div>
 
 <style>
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ══════════════════════════════════════════════════
    DASHBOARD PAGE STYLES
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ══════════════════════════════════════════════════ */
 .db-content {
   max-width: 1400px;
   margin: 0 auto;
   padding-bottom: 2.5rem;
 }
 
-/* â”€â”€ KPI Metric Cards â”€â”€ */
+/* ── KPI Metric Cards ── */
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -597,11 +601,6 @@
 .metric-card.warn:hover   { border-color: var(--orange); }
 .metric-card.ok:hover     { border-color: var(--green); }
 .metric-card.info:hover   { border-color: var(--blue); }
-.metric-card::after {
-  content: '';
-  position: absolute; inset: 0;
-  opacity: 0; transition: opacity 0.2s;
-}
 
 .metric-icon-wrap {
   width: 44px; height: 44px;
@@ -616,17 +615,16 @@
 .info-icon   { background: var(--blue-bg);   color: var(--blue); }
 
 .metric-body { flex: 1; min-width: 0; }
-.metric-label { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); margin-bottom: 3px; letter-spacing: 0.2px; }
+.metric-label { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); margin-bottom: 3px; }
 .metric-val   { font-size: 30px; font-weight: 700; line-height: 1.1; letter-spacing: -1.5px; color: var(--text-primary); }
 .metric-sub   { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
 .metric-card.danger .metric-val { color: var(--red); }
 .metric-card.warn   .metric-val { color: var(--orange); }
 .metric-card.ok     .metric-val { color: var(--green); }
 .metric-card.info   .metric-val { color: var(--blue); }
-
 .metric-arrow { color: var(--text-muted); font-size: 16px; flex-shrink: 0; }
 
-/* â”€â”€ Filter Bar â”€â”€ */
+/* ── Filter Bar ── */
 .filter-bar {
   display: flex;
   align-items: center;
@@ -661,13 +659,11 @@
 .chip.active-high     { background: var(--orange-bg); color: var(--orange); border-color: rgba(133,79,11,0.25); }
 .chip.active-medium   { background: var(--blue-bg);   color: var(--blue);   border-color: rgba(24,95,165,0.25); }
 .chip.active-low      { background: #eaf3de;           color: #3b6d11;       border-color: rgba(59,109,17,0.25); }
-
 .chip-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .critical-dot { background: var(--red); }
 .high-dot     { background: var(--orange); }
 .medium-dot   { background: var(--blue); }
 .low-dot      { background: #3b6d11; }
-.chip-count { font-size: 10.5px; opacity: 0.65; font-weight: 400; }
 
 .filter-right { margin-left: auto; }
 .search-wrap { position: relative; }
@@ -680,7 +676,124 @@
 }
 .filter-search:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(29,158,117,0.1); }
 
-/* â”€â”€ Panel Base â”€â”€ */
+/* ──────────────────────────────────────────────────
+   NEW LIVE MAP PANEL
+   ────────────────────────────────────────────────── */
+.map-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 14px;
+}
+
+/* Map Header */
+.map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.map-header-left { display: flex; align-items: center; gap: 12px; }
+.map-logo {
+  width: 40px; height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(29,158,117,0.2), rgba(29,158,117,0.05));
+  border: 1px solid rgba(29,158,117,0.2);
+  color: var(--green);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.map-title { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.map-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.map-header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Stat pills in header */
+.map-stat-pill {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 11.5px; font-weight: 600;
+  border: 1px solid;
+}
+.red-pill    { background: var(--red-bg);    color: var(--red);    border-color: rgba(163,45,45,0.2); }
+.orange-pill { background: var(--orange-bg); color: var(--orange); border-color: rgba(133,79,11,0.2); }
+
+/* Map Body = map + sidebar */
+.map-body {
+  display: flex;
+  height: 420px;
+}
+.map-container {
+  flex: 1;
+  min-width: 0;
+  background: #0e1117;
+}
+
+/* Map right sidebar */
+.map-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+.map-sidebar-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  display: flex; align-items: center; gap: 5px;
+}
+.map-sidebar-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+}
+.map-country-list { display: flex; flex-direction: column; gap: 8px; }
+.map-country-row { display: flex; align-items: center; gap: 8px; }
+.map-country-rank {
+  width: 18px; height: 18px;
+  border-radius: 4px;
+  font-size: 9px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+}
+.map-country-rank.rank-1 { background: rgba(251,191,36,0.15); color: #d4a017; }
+.map-country-rank.rank-2 { background: rgba(163,163,163,0.15); color: #888; }
+.map-country-rank.rank-3 { background: rgba(180,120,80,0.15); color: #a0633a; }
+.map-country-info { flex: 1; min-width: 0; }
+.map-country-name { font-size: 11.5px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.map-country-bar-bg { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.map-country-bar { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+.map-country-count { font-size: 11px; font-weight: 700; color: var(--text-secondary); font-family: 'Courier New', monospace; flex-shrink: 0; }
+
+.map-last-event { display: flex; flex-direction: column; gap: 6px; }
+.map-last-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11.5px;
+}
+.map-last-row span:first-child { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.map-mono { font-family: 'Courier New', monospace; font-size: 11px; }
+.map-empty { text-align: center; color: var(--text-muted); font-size: 11px; padding: 10px 0; }
+.map-empty i { font-size: 20px; display: block; opacity: 0.3; margin-bottom: 4px; }
+
+/* ── Panel Base ── */
 .panel {
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -694,8 +807,7 @@
 
 .panel-header {
   display: flex; align-items: flex-start; justify-content: space-between;
-  margin-bottom: 1rem;
-  gap: 8px;
+  margin-bottom: 1rem; gap: 8px;
 }
 .panel-title-group { display: flex; align-items: center; gap: 10px; }
 .panel-icon {
@@ -713,7 +825,6 @@
 .panel-title    { font-size: 13.5px; font-weight: 700; color: var(--text-primary); line-height: 1.3; }
 .panel-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .badge-count { font-size: 11px; font-weight: 500; background: var(--bg-secondary); color: var(--text-secondary); padding: 3px 9px; border-radius: 12px; white-space: nowrap; flex-shrink: 0; }
-
 .panel-footer-link {
   display: flex; align-items: center; justify-content: flex-end; gap: 4px;
   margin-top: auto; padding-top: 10px;
@@ -722,16 +833,7 @@
 }
 .panel.clickable:hover .panel-footer-link { opacity: 1; }
 
-/* â”€â”€ Threat Map â”€â”€ */
-.map-panel { margin-bottom: 12px; }
-.map-container {
-  width: 100%; height: 380px;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-
-/* â”€â”€ Main Grid (events + side panels) â”€â”€ */
+/* ── Main Grid (events + side panels) ── */
 .main-grid {
   display: grid;
   grid-template-columns: 1fr 340px;
@@ -742,7 +844,7 @@
 .panel-tall { min-height: 360px; }
 .side-panels { display: flex; flex-direction: column; gap: 12px; }
 
-/* â”€â”€ Charts Grid â”€â”€ */
+/* ── Charts Grid ── */
 .charts-grid {
   display: grid;
   grid-template-columns: 3fr 2fr;
@@ -750,7 +852,7 @@
   margin-bottom: 12px;
 }
 
-/* â”€â”€ Country Bars â”€â”€ */
+/* ── Country Bars ── */
 .country-bars { display: flex; flex-direction: column; gap: 10px; }
 .c-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .c-flag { font-size: 16px; line-height: 1; width: 22px; text-align: center; flex-shrink: 0; }
@@ -758,21 +860,15 @@
 .c-bar-bg { flex: 1; background: var(--bg-secondary); height: 6px; border-radius: 3px; overflow: hidden; }
 .c-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
 .c-val { width: 36px; text-align: right; font-family: 'Courier New', monospace; font-size: 11px; color: var(--text-secondary); }
-.c-code-badge {
-  font-size: 10px; font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 5px;
-  background: var(--red-bg); color: var(--red);
-  white-space: nowrap; flex-shrink: 0;
-}
+.c-code-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: var(--red-bg); color: var(--red); white-space: nowrap; flex-shrink: 0; }
 
-/* â”€â”€ Log Table â”€â”€ */
+/* ── Log Table ── */
 .log-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 4px; }
 .log-table th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; padding: 0 8px 8px 0; border-bottom: 1px solid var(--border); }
 .log-table td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: middle; }
 .log-table tr:last-child td { border-bottom: none; }
 .log-table tbody tr { transition: background .1s; }
-.log-table tbody tr:hover { background: var(--bg-secondary); border-radius: 6px; }
+.log-table tbody tr:hover { background: var(--bg-secondary); }
 
 .sev { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.2px; }
 .sev.critical { background: var(--red-bg);    color: var(--red); }
@@ -788,20 +884,21 @@
 .empty-state { text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); font-size: 13px; }
 .empty-state i { font-size: 28px; margin-bottom: 8px; display: block; opacity: 0.5; }
 
-/* â”€â”€ Chart Legend â”€â”€ */
+/* ── Chart Legend ── */
 .custom-legend { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .top-legend { border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 2px; }
 .leg-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
 .leg-box { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
 .leg-count { font-weight: 700; color: var(--text-primary); }
 
-/* â”€â”€ Live Badge â”€â”€ */
+/* ── Live Badge ── */
 .live-badge {
   display: inline-flex; align-items: center; gap: 6px;
   background: rgba(29,158,117,0.12); color: var(--green);
-  padding: 4px 10px; border-radius: 12px;
+  padding: 4px 12px; border-radius: 20px;
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px;
   flex-shrink: 0;
+  border: 1px solid rgba(29,158,117,0.2);
 }
 .pulse-dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulseDot 1.5s infinite; flex-shrink: 0; }
 @keyframes pulseDot {
