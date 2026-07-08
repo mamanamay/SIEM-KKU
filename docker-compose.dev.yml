@@ -6,8 +6,8 @@ services:
     image: nginx:1.25-alpine
     container_name: honeypot_nginx_dev
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-8080}:80"
+      - "${HTTPS_PORT:-8443}:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
@@ -80,7 +80,7 @@ services:
     container_name: cowrie-honeypot_dev
     restart: always
     ports:
-      - "2222:2222"
+      - "${COWRIE_SSH_PORT:-2222}:2222"
     volumes:
       - ./cowrie-config/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
       - ./cowrie-config/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
@@ -97,8 +97,8 @@ services:
     container_name: webtrap_honeypot_dev
     restart: always
     ports:
-      - "8081:8080"
-      - "8444:8443"
+      - "${WEBTRAP_HTTP_PORT:-8081}:8080"
+      - "${WEBTRAP_HTTPS_PORT:-8444}:8443"
     volumes:
       - ./webtrap:/app
       - /app/node_modules

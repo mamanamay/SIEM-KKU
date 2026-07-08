@@ -185,9 +185,6 @@
       <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}">
         <i class="ti ti-settings"></i> System Settings
       </a>
-      <a href="/dashboard/users" class="nav-item {$page.url.pathname === '/dashboard/users' ? 'active' : ''}">
-        <i class="ti ti-users"></i> User Management
-      </a>
       {/if}
     </nav>
     <div class="sidebar-footer">
