@@ -325,16 +325,31 @@
 
 <div class="db-content">
   <div class="metrics">
-    <div class="metric-card danger" on:click={() => navigateTo('/dashboard/logs?severity=critical')}>
+    <div class="metric-card danger" on:click={() => navigateTo('/dashboard/logs?severity=critical')} title="ดู Critical Alerts">
+      <div class="metric-icon-wrap danger-icon"><i class="ti ti-alert-octagon"></i></div>
       <div class="metric-body">
         <div class="metric-label">Critical Alerts</div>
         <div class="metric-val">{events.filter(e => e.severity === 'critical').length}</div>
+        <div class="metric-sub">ต้องการความสนใจทันที</div>
       </div>
+      <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card ok" on:click={() => navigateTo('/dashboard/analytics')}>
+    <div class="metric-card warn" on:click={() => navigateTo('/dashboard/logs')} title="ดู All Events">
+      <div class="metric-icon-wrap warn-icon"><i class="ti ti-activity"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Total Events</div>
+        <div class="metric-val">{events.length}</div>
+        <div class="metric-sub">บันทึกสดจาก Honeypot</div>
+      </div>
+      <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
+    </div>
+    <div class="metric-card ok" on:click={() => navigateTo('/dashboard/analytics')} title="ดู Analytics">
+      <div class="metric-icon-wrap ok-icon"><i class="ti ti-network"></i></div>
       <div class="metric-body">
         <div class="metric-label">Unique Sources</div>
         <div class="metric-val">{new Set(events.map(e => e.ip)).size}</div>
+        <div class="metric-sub">IP ที่ไม่ซ้ำกัน</div>
+      </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
     <div class="metric-card info" on:click={() => navigateTo('/dashboard/mitre')} title="ดู MITRE ATT&CK">
@@ -347,6 +362,7 @@
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
   </div>
+
 
   <!-- Filter Bar -->
   <div class="filter-bar">
@@ -393,52 +409,12 @@
       </div>
     </div>
 
-    <!-- Map + Sidebar -->
+    <!-- Map body — full width map only -->
     <div class="map-body">
-      <!-- Leaflet Map -->
       <div class="map-container" id="threat-map"></div>
-
-      <!-- Sidebar Stats -->
-      <div class="map-sidebar">
-        <div class="map-sidebar-title"><i class="ti ti-world"></i> Top Origins</div>
-        <div class="map-country-list">
-          {#each topCountries as item, i}
-            {@const maxVal = topCountries[0]?.count || 1}
-            <div class="map-country-row">
-              <div class="map-country-rank rank-{i + 1}">{i + 1}</div>
-              <div class="map-country-info">
-                <div class="map-country-name">{item.country === 'United States' ? 'USA' : item.country}</div>
-                <div class="map-country-bar-bg">
-                  <div class="map-country-bar" style="width:{Math.max((item.count/maxVal)*100,4)}%; background:{getCountryColor(item.country)}"></div>
-                </div>
-              </div>
-              <div class="map-country-count">{item.count}</div>
-            </div>
-          {/each}
-          {#if topCountries.length === 0}
-            <div class="map-empty"><i class="ti ti-database-off"></i><br>No data</div>
-          {/if}
-        </div>
-
-        <div class="map-sidebar-divider"></div>
-
-        <div class="map-sidebar-title"><i class="ti ti-flame"></i> Last Attack</div>
-        {#if events.length > 0}
-          {@const last = events[0]}
-          <div class="map-last-event">
-            <div class="map-last-row"><span>IP</span><strong class="map-mono">{last.ip}</strong></div>
-            <div class="map-last-row"><span>Type</span><strong>{last.type || 'Unknown'}</strong></div>
-            <div class="map-last-row"><span>From</span><strong>{last.country || 'Unknown'}</strong></div>
-            <div class="map-last-row"><span>Sev</span>
-              <span class="sev {last.severity}">{last.severity}</span>
-            </div>
-          </div>
-        {:else}
-          <div class="map-empty"><i class="ti ti-shield-check"></i><br>No attacks yet</div>
-        {/if}
-      </div>
     </div>
   </div>
+
 
   <!-- Main Content Row -->
   <div class="main-grid">

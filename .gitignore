@@ -46,3 +46,11 @@ nginx/certs/*.key
 Thumbs.db
 *.swp
 *.swo
+
+# ── Removed dev/utility files (untracked) ─────────────────────────
+access.csv
+import_csv.js
+import_nginx.js
+backend/README.md
+backend/src/app.controller.spec.ts
+backend/test/
