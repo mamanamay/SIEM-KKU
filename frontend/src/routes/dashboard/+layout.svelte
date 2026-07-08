@@ -5,6 +5,22 @@
   
   let currentTime = '';
   let timeInterval: any;
+  let idleTimeout: any;
+
+  function resetIdleTime() {
+    localStorage.setItem('lastActive', Date.now().toString());
+  }
+
+  function checkIdleTime() {
+    const lastActive = parseInt(localStorage.getItem('lastActive') || Date.now().toString());
+    const now = Date.now();
+    const IDLE_LIMIT_MS = 60 * 60 * 1000; // 1 hour in ms
+
+    if (now - lastActive > IDLE_LIMIT_MS) {
+      alert('เซสชันหมดอายุเนื่องจากไม่มีการใช้งานเกิน 1 ชั่วโมง กรุณาเข้าสู่ระบบใหม่');
+      logout();
+    }
+  }
 
   // Notifications State
   let notificationsHistory: any[] = [];
@@ -59,11 +75,27 @@
     initSocket();
     updateTime();
     timeInterval = setInterval(updateTime, 1000);
+
+    // Auto logout tracking
+    resetIdleTime();
+    window.addEventListener('mousemove', resetIdleTime);
+    window.addEventListener('keydown', resetIdleTime);
+    window.addEventListener('click', resetIdleTime);
+    window.addEventListener('scroll', resetIdleTime);
+    idleTimeout = setInterval(checkIdleTime, 60000); // Check every minute
   });
 
   onDestroy(() => {
     disconnectSocket();
     if (timeInterval) clearInterval(timeInterval);
+    if (idleTimeout) clearInterval(idleTimeout);
+    
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('mousemove', resetIdleTime);
+      window.removeEventListener('keydown', resetIdleTime);
+      window.removeEventListener('click', resetIdleTime);
+      window.removeEventListener('scroll', resetIdleTime);
+    }
   });
 
   function updateTime() {
@@ -152,6 +184,9 @@
       <div class="nav-group-title mt-2">ADMINISTRATION</div>
       <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}">
         <i class="ti ti-settings"></i> System Settings
+      </a>
+      <a href="/dashboard/users" class="nav-item {$page.url.pathname === '/dashboard/users' ? 'active' : ''}">
+        <i class="ti ti-users"></i> User Management
       </a>
       {/if}
     </nav>
