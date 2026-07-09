@@ -65,13 +65,22 @@
 
     if (selectedRange !== 'all') {
       let rawTime = e.createdAt || e.timestamp;
-      // Fix for SQLite returning "YYYY-MM-DD HH:MM:SS" without timezone info
       if (typeof rawTime === 'string' && !rawTime.endsWith('Z') && !rawTime.includes('+') && !rawTime.includes('T')) {
         rawTime = rawTime.replace(' ', 'T') + 'Z';
       } else if (typeof rawTime === 'string' && rawTime.includes('T') && !rawTime.endsWith('Z') && !rawTime.includes('+')) {
         rawTime = rawTime + 'Z';
       }
-      const eventTime = rawTime ? new Date(rawTime).getTime() : 0;
+      
+      let eventTime = rawTime ? new Date(rawTime).getTime() : 0;
+      
+      // Fallback: Parse timeStr (DD/MM/YYYY HH:MM:SS) directly into local timestamp
+      if ((!eventTime || isNaN(eventTime)) && e.timeStr) {
+        const parts = e.timeStr.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/);
+        if (parts) {
+          eventTime = new Date(parseInt(parts[3]), parseInt(parts[2])-1, parseInt(parts[1]), parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6])).getTime();
+        }
+      }
+
       if (isNaN(eventTime) || eventTime < timeLimit) return false;
     }
     return true;
