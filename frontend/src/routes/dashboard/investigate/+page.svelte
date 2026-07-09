@@ -64,14 +64,18 @@
     }
 
     if (selectedRange !== 'all') {
-      let rawTime = e.createdAt || e.timestamp;
-      if (typeof rawTime === 'string' && !rawTime.endsWith('Z') && !rawTime.includes('+') && !rawTime.includes('T')) {
-        rawTime = rawTime.replace(' ', 'T') + 'Z';
-      } else if (typeof rawTime === 'string' && rawTime.includes('T') && !rawTime.endsWith('Z') && !rawTime.includes('+')) {
-        rawTime = rawTime + 'Z';
-      }
+      let eventTime = e.timestampMs ? Number(e.timestampMs) : 0;
       
-      let eventTime = rawTime ? new Date(rawTime).getTime() : 0;
+      // Fallback 1: Parse createdAt/timestamp string with 'Z' appended
+      if (!eventTime) {
+        let rawTime = e.createdAt || e.timestamp;
+        if (typeof rawTime === 'string' && !rawTime.endsWith('Z') && !rawTime.includes('+') && !rawTime.includes('T')) {
+          rawTime = rawTime.replace(' ', 'T') + 'Z';
+        } else if (typeof rawTime === 'string' && rawTime.includes('T') && !rawTime.endsWith('Z') && !rawTime.includes('+')) {
+          rawTime = rawTime + 'Z';
+        }
+        eventTime = rawTime ? new Date(rawTime).getTime() : 0;
+      }
       
       // Fallback: Parse timeStr (DD/MM/YYYY HH:MM:SS) directly into local timestamp
       if ((!eventTime || isNaN(eventTime)) && e.timeStr) {

@@ -384,6 +384,7 @@ export class LogService implements OnModuleInit {
         mitreCode:     payload.mitreCode,
         threatScore:   payload.threatScore,
         sessionId:     payload.sessionId,
+        timestampMs:   payload.timestamp,
       });
 
       // Check if IP is in blocked list

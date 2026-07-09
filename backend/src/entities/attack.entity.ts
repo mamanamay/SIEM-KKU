@@ -41,6 +41,9 @@ export class Attack {
   @Column({ nullable: true })
   sessionId: string;
 
+  @Column({ type: 'bigint', nullable: true })
+  timestampMs: number;
+
   @CreateDateColumn()
   createdAt: Date;
 }
