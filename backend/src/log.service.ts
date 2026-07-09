@@ -248,6 +248,7 @@ export class LogService implements OnModuleInit {
         chain.push(`[Server] SSH login failed: ${data.username}/${data.password} (attempt #${stat.count})`);
 
         payload = {
+          timestamp: attackTs,
           time: timeStr, ip: src_ip, type, severity,
           detail: `Failed: ${data.username}/${data.password} (attempt #${stat.count})`,
           mitigation: stat.count > 10 ? 'Auto-ban IP | Alert SecOps' : 'Monitor for further attempts',
@@ -264,6 +265,7 @@ export class LogService implements OnModuleInit {
         chain.push(`[Server] 🚨 SSH LOGIN SUCCESS: ${data.username}/${data.password}`);
 
         payload = {
+          timestamp: attackTs,
           time: timeStr, ip: src_ip, type: 'System Compromised', severity: 'critical',
           detail: `Login success: ${data.username}/${data.password}`,
           mitigation: 'Kill Session (Immediate) | Change Passwords | Isolate Host',
@@ -297,6 +299,7 @@ export class LogService implements OnModuleInit {
         }
 
         payload = {
+          timestamp: attackTs,
           time: timeStr, ip: src_ip, type: 'Command Execution', severity: 'critical',
           detail: `CMD: ${data.input}`,
           mitigation: 'Review Command for Malware | Rebuild Server',
@@ -346,6 +349,7 @@ export class LogService implements OnModuleInit {
       const mitre = mitreMap[data.type] || { code: 'T1190', score: 50 };
 
       const payload = {
+        timestamp: attackTs,
         time: timeStr, ip: src_ip,
         type: data.type || 'Web Scan',
         severity: data.severity || 'medium',
