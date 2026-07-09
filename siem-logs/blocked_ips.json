@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "ip": "141.11.33.140",
+    "blockedAt": "2026-07-09T02:45:50.248Z",
+    "reason": "Path Traversal — Severity: CRITICAL — GET /..%2f_next/static/chunks/app/(page)/layout-0bcc72c426af639a.js HTTP/1.1",
+    "attackId": 4836,
+    "faculty": null,
+    "switchPort": null,
+    "blockedBy": "SIEM Dashboard (Auto)",
+    "attackData": {
+      "type": "Path Traversal",
+      "severity": "critical",
+      "country": "United States",
+      "mitreCode": "T1190",
+      "threatScore": 80,
+      "detail": "GET /..%2f_next/static/chunks/app/(page)/layout-0bcc72c426af639a.js HTTP/1.1"
+    }
+  }
+]

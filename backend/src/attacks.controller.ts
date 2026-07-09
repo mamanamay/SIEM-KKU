@@ -7,9 +7,11 @@ import { LogService } from './log.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Persist blocked IPs to a JSON file so they survive restarts
-const BLOCKED_IPS_FILE = path.join('/app/siem-logs', 'blocked_ips.json');
-const ISOLATED_PORTS_FILE = path.join('/app/siem-logs', 'isolated_ports.json');
+const isDocker = process.env.NODE_ENV === 'production' || process.env.IS_DOCKER === 'true';
+const basePath = process.cwd().endsWith('backend') ? path.join(process.cwd(), '..') : process.cwd();
+
+const BLOCKED_IPS_FILE = isDocker ? '/app/siem-logs/blocked_ips.json' : path.join(basePath, 'siem-logs', 'blocked_ips.json');
+const ISOLATED_PORTS_FILE = isDocker ? '/app/siem-logs/isolated_ports.json' : path.join(basePath, 'siem-logs', 'isolated_ports.json');
 
 function readJSON(filePath: string, fallback: any[] = []) {
   try {
@@ -19,7 +21,9 @@ function readJSON(filePath: string, fallback: any[] = []) {
 }
 
 function writeJSON(filePath: string, data: any) {
-  try { fs.writeFileSync(filePath, JSON.stringify(data, null, 2)); } catch {}
+  try { fs.writeFileSync(filePath, JSON.stringify(data, null, 2)); } catch (err) {
+    console.error(`❌ Failed to write JSON to ${filePath}:`, err);
+  }
 }
 
 @Controller('api/attacks')
@@ -58,7 +62,7 @@ export class AttacksController {
   // ── Block IP (WAF Rule) ───────────────────────────────────────────────────
   // Adds the IP to blocked_ips.json and broadcasts to all clients
   @Post('block-ip')
-  blockIp(@Body() body: { ip: string; reason: string; attackId?: number; faculty?: any; port?: string }) {
+  async blockIp(@Body() body: { ip: string; reason: string; attackId?: number; faculty?: any; port?: string }) {
     if (!body.ip) throw new HttpException('Missing IP', HttpStatus.BAD_REQUEST);
 
     const blockedIps: any[] = readJSON(BLOCKED_IPS_FILE);
@@ -66,6 +70,11 @@ export class AttacksController {
     // Check if already blocked
     if (blockedIps.find(b => b.ip === body.ip)) {
       return { success: false, message: `IP ${body.ip} is already blocked.`, alreadyBlocked: true };
+    }
+
+    let attackData = null;
+    if (body.attackId) {
+      attackData = await this.attackRepository.findOne({ where: { id: body.attackId } });
     }
 
     const entry = {
@@ -76,6 +85,15 @@ export class AttacksController {
       faculty:   body.faculty || null,
       switchPort:body.port || null,
       blockedBy: 'SIEM Dashboard (Auto)',
+      // จำข้อมูลทั้งหมดของ IP ที่โดนบล็อกไว้ตามที่ผู้ใช้ขอ
+      attackData: attackData ? {
+        type: attackData.type,
+        severity: attackData.severity,
+        country: attackData.country,
+        mitreCode: attackData.mitreCode,
+        threatScore: attackData.threatScore,
+        detail: attackData.detail
+      } : null
     };
 
     blockedIps.push(entry);

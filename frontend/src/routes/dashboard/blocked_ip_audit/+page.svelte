@@ -90,7 +90,9 @@
           <tr>
             <th>Time Blocked</th>
             <th>Source IP</th>
-            <th>Rule ID</th>
+            <th>Country</th>
+            <th>Attack Type</th>
+            <th>Severity</th>
             <th>Status</th>
             <th>Action</th>
           </tr>
@@ -98,9 +100,29 @@
         <tbody>
           {#each paginatedList as b}
           <tr>
-            <td>{new Date(b.timestamp).toLocaleString('en-GB')}</td>
-            <td class="ds-mono">{b.ip}</td>
-            <td>BL_AUT_WAF</td>
+            <td>{new Date(b.blockedAt || b.timestamp).toLocaleString('en-GB')}</td>
+            <td class="ds-mono" style="font-weight: 600;">{b.ip}</td>
+            <td>
+              {#if b.attackData && b.attackData.country}
+                {b.attackData.country}
+              {:else}
+                <span style="color:var(--text-muted)">-</span>
+              {/if}
+            </td>
+            <td>
+              {#if b.attackData && b.attackData.type}
+                {b.attackData.type}
+              {:else}
+                <span style="color:var(--text-muted)">Manual Block</span>
+              {/if}
+            </td>
+            <td>
+              {#if b.attackData && b.attackData.severity}
+                <span class="ds-badge {b.attackData.severity}">{b.attackData.severity}</span>
+              {:else}
+                <span style="color:var(--text-muted)">-</span>
+              {/if}
+            </td>
             <td><span class="ds-badge red">Blocked</span></td>
             <td>
               {#if $roleStore === 'admin'}
@@ -114,7 +136,7 @@
           </tr>
           {/each}
           {#if paginatedList.length === 0}
-          <tr><td colspan="5" class="ds-empty">No blocked IPs</td></tr>
+          <tr><td colspan="7" class="ds-empty">No blocked IPs</td></tr>
           {/if}
         </tbody>
       </table>

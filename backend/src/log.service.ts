@@ -9,10 +9,14 @@ import * as readline from 'readline';
 
 // ─── Log File Paths ──────────────────────────────────────────────────────────
 // Docker volumes mount these paths into the container
-const COWRIE_LOG   = '/app/logs/cowrie.json';
-const WEBTRAP_LOG  = '/app/webtrap-logs/webtrap.json';
-const ACCESS_LOG   = '/app/siem-logs/access_layer.log';
-const CNC_LOG      = '/app/siem-logs/cnc_outbound.log';
+const isDocker = process.env.NODE_ENV === 'production' || process.env.IS_DOCKER === 'true';
+const basePath = process.cwd().endsWith('backend') ? path.join(process.cwd(), '..') : process.cwd();
+
+// If running inside docker-compose, use the mounted volume paths
+const COWRIE_LOG   = isDocker ? '/app/logs/cowrie.json' : path.join(basePath, 'cowrie-config', 'var', 'log', 'cowrie', 'cowrie.json');
+const WEBTRAP_LOG  = isDocker ? '/app/webtrap-logs/webtrap.json' : path.join(basePath, 'webtrap-logs', 'webtrap.json');
+const ACCESS_LOG   = isDocker ? '/app/siem-logs/access_layer.log' : path.join(basePath, 'siem-logs', 'access_layer.log');
+const CNC_LOG      = isDocker ? '/app/siem-logs/cnc_outbound.log' : path.join(basePath, 'siem-logs', 'cnc_outbound.log');
 
 // ─── Correlation Time Window ─────────────────────────────────────────────────
 const CORRELATION_WINDOW_MS = 5000; // 5 วินาที = ถือว่าเป็นเหตุการณ์เดียวกัน
@@ -381,7 +385,8 @@ export class LogService implements OnModuleInit {
       // Check if IP is in blocked list
       let isBlockedRepeat = false;
       try {
-        const blockedRaw = fs.readFileSync(path.join('/app/siem-logs', 'blocked_ips.json'), 'utf8');
+        const blockedIpPath = isDocker ? '/app/siem-logs/blocked_ips.json' : path.join(basePath, 'siem-logs', 'blocked_ips.json');
+        const blockedRaw = fs.readFileSync(blockedIpPath, 'utf8');
         const blockedList = JSON.parse(blockedRaw);
         isBlockedRepeat = blockedList.some((b: any) => b.ip === payload.ip);
       } catch(e) {}
