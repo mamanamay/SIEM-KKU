@@ -64,7 +64,13 @@
     }
 
     if (selectedRange !== 'all') {
-      const rawTime = e.createdAt || e.timestamp;
+      let rawTime = e.createdAt || e.timestamp;
+      // Fix for SQLite returning "YYYY-MM-DD HH:MM:SS" without timezone info
+      if (typeof rawTime === 'string' && !rawTime.endsWith('Z') && !rawTime.includes('+') && !rawTime.includes('T')) {
+        rawTime = rawTime.replace(' ', 'T') + 'Z';
+      } else if (typeof rawTime === 'string' && rawTime.includes('T') && !rawTime.endsWith('Z') && !rawTime.includes('+')) {
+        rawTime = rawTime + 'Z';
+      }
       const eventTime = rawTime ? new Date(rawTime).getTime() : 0;
       if (isNaN(eventTime) || eventTime < timeLimit) return false;
     }
