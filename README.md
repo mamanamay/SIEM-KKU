@@ -97,7 +97,7 @@ Demo_Honeypot/
 
 ---
 
-## 🖥️ หน้า Dashboard ทั้งหมด (17 Routes)
+## 🖥️ หน้า Dashboard ทั้งหมด (11 Routes)
 
 ### Detection & Analysis
 | Route | หน้า |
@@ -108,27 +108,14 @@ Demo_Honeypot/
 | `/dashboard/analytics` | Analyst Center — สถิติเชิงลึก, Top Attackers |
 | `/dashboard/investigate` | IP Investigation — วิเคราะห์ IP แบบ Deep-dive |
 | `/dashboard/mitre` | MITRE ATT&CK Matrix — จำแนก Tactic & Technique |
-| `/dashboard/faculty` | Faculty Monitor — ภัยคุกคามภายในองค์กร (KKU Subnet) |
-| `/dashboard/traffic` | Network Traffic — การจราจรเครือข่าย |
+| `/dashboard/network-map` | Network Map — แผนผังเครือข่าย |
 
 ### Response & Intelligence
 | Route | หน้า |
 |-------|------|
 | `/dashboard/blocked_ip_audit` | IP Block Audit — จัดการ Firewall Block List |
-| `/dashboard/ioc` | IOC Database — Indicators of Compromise |
-| `/dashboard/threat` | Threat Intelligence — ฐานข้อมูลภัยคุกคาม |
 | `/dashboard/cve` | CVE Lookup — ค้นหาช่องโหว่ |
-
-### Integration & Compliance
-| Route | หน้า |
-|-------|------|
-| `/dashboard/wazuh` | Wazuh SIEM — FIM & SCA Integration |
-| `/dashboard/ai_monitor` | AI Monitor — AI-based Threat Detection |
-| `/dashboard/malware` | Malware Analysis |
-| `/dashboard/ddos` | DDoS Detection |
-| `/dashboard/cis` | CIS Benchmark Compliance |
-| `/dashboard/pdpa` | PDPA Compliance Report |
-| `/dashboard/remoteaccess` | Remote Access Log — VPN & RDP |
+| `/dashboard/api-history` | API History — ประวัติการใช้งาน API |
 
 ### System
 | Route | หน้า |
