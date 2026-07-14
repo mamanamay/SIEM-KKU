@@ -65,6 +65,7 @@ $remoteScript += " if [ ! -f .env ]; then cp .env.example .env; echo '  [WARNING
 $remoteScript += " chmod +x nginx/generate-ssl.sh;"
 $remoteScript += " bash nginx/generate-ssl.sh;"
 $remoteScript += " mkdir -p logs/siem logs/webtrap logs/cowrie honeypots/cowrie/var/lib/cowrie;"
+$remoteScript += " docker compose build --no-cache frontend;"
 $remoteScript += " docker compose up -d --build;"
 $remoteScript += " docker compose ps"
 

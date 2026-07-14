@@ -129,7 +129,7 @@
         </div>
       </div>
       <button class="ds-btn primary" on:click={() => showExportModal = true}>
-        <i class="ti ti-download"></i> Export Logs
+        <i class="ti ti-download"></i> Export Logs (V2)
       </button>
     </div>
 
