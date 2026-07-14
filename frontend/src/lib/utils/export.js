@@ -1,33 +1,53 @@
 export function downloadCSV(data, selectedColumns, filename = 'export.csv') {
   if (!data || data.length === 0 || !selectedColumns || selectedColumns.length === 0) return;
 
-  // Header row
-  const header = selectedColumns.join(',');
-  
-  // Data rows
-  const rows = data.map(row => {
-    return selectedColumns.map(col => {
-      let val = row[col] || '';
-      // Escape commas and quotes for CSV
-      if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
-        val = '"' + val.replace(/"/g, '""') + '"';
-      }
-      return val;
-    }).join(',');
-  });
+  try {
+    // Header row
+    const header = selectedColumns.join(',');
+    
+    // Data rows
+    const rows = data.map(row => {
+      return selectedColumns.map(col => {
+        let val = row[col];
+        if (val === null || val === undefined) val = '';
+        val = String(val); // Convert everything to string safely
+        
+        // Escape commas and quotes for CSV
+        if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+          val = '"' + val.replace(/"/g, '""') + '"';
+        }
+        return val;
+      }).join(',');
+    });
 
-  const csvContent = [header, ...rows].join('\n');
-  
-  // Create Blob and trigger download
-  const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM for UTF-8 Excel support
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', filename);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+    const csvContent = [header, ...rows].join('\n');
+    
+    // Create Blob and trigger download
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM for UTF-8 Excel support
+    
+    // Fallback for older browsers
+    if (window.navigator && window.navigator.msSaveOrOpenBlob) {
+      window.navigator.msSaveOrOpenBlob(blob, filename);
+      return;
+    }
+    
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 100);
+  } catch (err) {
+    console.error("CSV Download Error:", err);
+    alert("เกิดข้อผิดพลาดในการดาวน์โหลด CSV: " + err.message);
+  }
 }
 
 function loadScript(src) {
@@ -82,5 +102,6 @@ export async function downloadPDF(data, selectedColumns, filename = 'export.pdf'
     doc.save(filename);
   } catch (err) {
     console.error("Failed to load PDF libraries", err);
+    alert("ไม่สามารถสร้าง PDF ได้\n\nโปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ต (จำเป็นต้องโหลดไลบรารีจากภายนอก) หรือลอง Export เป็น CSV แทน");
   }
 }

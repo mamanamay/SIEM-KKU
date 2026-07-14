@@ -128,11 +128,9 @@
           <input type="text" bind:value={searchText} placeholder="Search IPs, payloads…" />
         </div>
       </div>
-      {#if $roleStore === 'admin'}
       <button class="ds-btn primary" on:click={() => showExportModal = true}>
         <i class="ti ti-download"></i> Export Logs
       </button>
-      {/if}
     </div>
 
     <div class="ds-table-wrap">
