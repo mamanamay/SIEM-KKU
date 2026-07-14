@@ -1,0 +1,29 @@
+node_modules
+npm-debug.log
+.DS_Store
+.git
+.gitignore
+.dockerignore
+*.md
+.env
+.env.example
+
+# Frontend specific
+frontend/node_modules
+frontend/.svelte-kit
+frontend/build
+frontend/dist
+
+# Backend specific
+backend/node_modules
+backend/dist
+
+# Infrastructure
+pgdata/
+pgdata_dev/
+logs/
+nginx/certs/
+
+# Ignore honeypot logs from host to avoid copying large files
+honeypots/cowrie/var/log/
+honeypots/webtrap/logs/
