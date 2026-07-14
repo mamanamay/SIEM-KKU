@@ -143,7 +143,10 @@
       '/dashboard/mitre': 'MITRE ATT&CK Matrix',
       '/dashboard/cve': 'CVE Database',
       '/dashboard/blocked_ip_audit': 'Blocked IP Audit',
-      '/dashboard/settings': 'System Settings'
+      '/dashboard/settings': 'System Settings',
+      '/dashboard/logs': 'Security Logs',
+      '/dashboard/network-map': 'Network Map Management',
+      '/dashboard/api-history': 'API History'
     };
     return titles[path] || 'Command Center';
   }
