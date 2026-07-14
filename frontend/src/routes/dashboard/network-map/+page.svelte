@@ -477,9 +477,7 @@
       <i class="ti ti-apps"></i> ทั่วไป (General)
       <span class="tab-badge">{generalRecords.length}</span>
     </button>
-    <button class="tab-btn {activeTab === 'api-config' ? 'active' : ''}" on:click={() => activeTab = 'api-config'}>
-      <i class="ti ti-api"></i> API Config
-    </button>
+
   </div>
 
   <!-- Faculties Table -->
@@ -635,34 +633,5 @@
     </div>
   {/if}
 
-  <!-- API Config -->
-  {#if activeTab === 'api-config'}
-    <div class="data-panel" style="max-width: 800px; margin-top: 1.5rem;">
-      <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text-primary);">External API Settings</h2>
-      <p style="color: var(--text-secondary); margin-bottom: 2rem;">ตั้งค่า API สำหรับดึงข้อมูล IP ของคณะและหน่วยงานจากมหาวิทยาลัย</p>
 
-      <div style="margin-bottom: 1.5rem;">
-        <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">API Endpoint URL</label>
-        <input type="text" placeholder="https://api.kku.ac.th/v1/network/subnets" class="select-box" style="width: 100%;" />
-      </div>
-
-      <div style="margin-bottom: 1.5rem;">
-        <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">Authentication Token (Optional)</label>
-        <input type="password" placeholder="Bearer Token หรือ API Key" class="select-box" style="width: 100%;" />
-      </div>
-
-      <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
-        <button class="ds-btn primary">Save Config</button>
-        <button class="ds-btn">Test Connection & Sync</button>
-      </div>
-
-      <div style="border-top: 1px solid var(--border); padding-top: 1.5rem;">
-        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: var(--text-primary);">สถานะการ Sync ล่าสุด</h3>
-        <div style="padding: 1rem; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
-          <strong>สถานะ:</strong> รอการเชื่อมต่อ (Mock Mode) <br/>
-          <strong>อัปเดตล่าสุด:</strong> -
-        </div>
-      </div>
-    </div>
-  {/if}
 </div>

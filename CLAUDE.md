@@ -1,147 +1,321 @@
-# KKU-SIEM — AI Assistant Context (CLAUDE.md)
+# CLAUDE.md — AI Agent Development Guide for KKUSIEM
 
-ไฟล์นี้คือ Context อ้างอิงหลักสำหรับ AI Assistants (Claude, Gemini ฯลฯ)
-ให้ AI เข้าใจสถาปัตยกรรม เทคโนโลยี และโครงสร้างภายในของโปรเจกต์นี้อย่างถูกต้อง
-
----
-
-## 🏗 Tech Stack & Architecture
-
-### Frontend — SvelteKit 2 + TypeScript
-- **Path:** `frontend/`
-- **Port (dev):** `3000`
-- **Styling:** Vanilla CSS ล้วน — ไม่ใช้ Tailwind
-- **Theme:** Dark-mode Enterprise SIEM (คล้าย FortiGate / Splunk Dark)
-- **Design System:** ใช้ CSS variables ผ่าน global classes `ds-*` ใน `app.css`
-  - `ds-card`, `ds-card-head`, `ds-card-title`
-  - `ds-table`, `ds-table-wrap`
-  - `ds-btn`, `ds-badge`, `ds-search`, `ds-filters`
-  - `ds-pagination`, `ds-page-btn`, `ds-page-info`
-  - `ds-empty`, `ds-mono`, `ds-text-primary`
-- **Icons:** Tabler Icons (CDN) — ใช้ class `ti ti-*`
-- **Realtime:** ดึงข้อมูลผ่าน `eventsStore` (Svelte store) ที่รับจาก WebSocket
-
-### Backend — NestJS 10 + TypeORM
-- **Path:** `backend/`
-- **Port:** `5001` (ตั้งค่าใน `main.ts` และ `vite.config.ts`)
-- **Database:** SQLite (ผ่าน TypeORM) — ไม่ใช้ PostgreSQL / Redis ใน version นี้
-- **Database file:** สร้างอัตโนมัติที่ `backend/honeypot.db`
-
-### Core Services (backend/src/)
-
-| ไฟล์ | หน้าที่ |
-|------|--------|
-| `main.ts` | Entry point — Listen port 5001 |
-| `app.module.ts` | Root module — register entities, services |
-| `log.service.ts` | อ่าน Log จาก 3 แหล่ง, Time-Correlation, Enrichment |
-| `events.gateway.ts` | WebSocket Gateway (socket.io) — broadcast ข้อมูลให้ Frontend |
-| `attacks.controller.ts` | REST API สำหรับดึงข้อมูลการโจมตี + Block/Unblock IP |
-| `auth.controller.ts` | Login, Session audit, User CRUD API |
-| `seed.service.ts` | **⚠️ CRITICAL** — สร้าง default admin/guest accounts ตอน startup |
-
-### Entities (TypeORM)
-
-| Entity | ตาราง | ข้อมูล |
-|--------|-------|--------|
-| `attack.entity.ts` | attacks | บันทึกการโจมตีแต่ละครั้ง |
-| `user.entity.ts` | users | บัญชีผู้ใช้งาน (username, passwordHash, role) |
-| `login-session.entity.ts` | login_sessions | ประวัติการ Login (audit log) |
+This file provides essential context for AI coding assistants working on the KKUSIEM (Khon Kaen University SIEM) project.
 
 ---
 
-## 🗂 Routes & Pages (Dashboard)
+## 🏗️ Tech Stack
 
-Layout หลักอยู่ที่ `frontend/src/routes/dashboard/+layout.svelte`
-- มี **Auth Guard** — ตรวจ token ทุกครั้งที่เปลี่ยนหน้า
-- มี **Idle Timer** — Auto logout หลังไม่มีการใช้งาน (ค่า default: 60 นาที)
-- มี **Role Guard** — Admin เห็น Settings, User Management; Guest เห็นแค่ read-only
-
-### หน้าที่มีอยู่จริง (ทุกหน้า)
-
-**Detection & Analysis**
-- `/dashboard` — SIEM Overview (KPI Cards, Live Threat Map, Timeline Chart, Attack Distribution)
-- `/dashboard/alert` — Alerts & SOAR
-- `/dashboard/logs` — Security Logs (multi-source)
-- `/dashboard/analytics` — Analyst Center
-- `/dashboard/investigate` — IP Deep-dive
-- `/dashboard/mitre` — MITRE ATT&CK Matrix
-- `/dashboard/network-map` — Network Map
-
-**Response & Intelligence**
-- `/dashboard/blocked_ip_audit` — IP Block Audit
-- `/dashboard/cve` — CVE Database
-- `/dashboard/api-history` — System API History
-
-**System**
-- `/dashboard/settings` — Settings (4 tabs: User Management, Login Audit, System Config, About)
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| Frontend | **SvelteKit** (TypeScript) | File-based routing, SSR disabled (SPA mode) |
+| Backend | **NestJS** (TypeScript) | REST API + WebSocket gateway |
+| Database | **PostgreSQL 16** | Persistent attack event storage |
+| Cache | **Redis 7** | Session cache, message broker |
+| Honeypot 1 | **Cowrie** | SSH/Telnet emulator (Docker image: `cowrie/cowrie:latest`) |
+| Honeypot 2 | **WebTrap** | Custom Express.js HTTP honeypot |
+| Proxy | **Nginx 1.25** | Reverse proxy, SSL termination |
+| Containerization | **Docker Compose** | All services run in Docker |
+| Charts | **Chart.js 4.4.1** | Loaded via CDN in dashboard |
+| Maps | **Leaflet + OpenStreetMap** | Threat map visualization |
 
 ---
 
-## 🔑 Authentication System
+## 📁 Key File Locations
 
-**Login flow:**
-1. ผู้ใช้ POST `/api/auth/login` → รับ `access_token` + `role`
-2. Token เก็บใน `localStorage`
-3. `eventsStore` จัดการ state (role, token)
-4. WebSocket connect ใช้ token ใน handshake
-
-**User roles:**
-- `admin` — เข้าถึงได้ทุกอย่าง รวม Settings และ User Management
-- `guest` — Read-only, ไม่เห็นหน้า Settings
-
-**Default credentials:** ดูและแก้ไขได้ที่ `backend/src/seed.service.ts`
-> ⚠️ ต้องเปลี่ยนก่อน Deploy ขึ้น Server จริงทุกครั้ง
-
-**User Management API:**
-- `GET /api/auth/users` — รายชื่อผู้ใช้ทั้งหมด
-- `POST /api/auth/register` — สร้างบัญชีใหม่
-- `DELETE /api/auth/users/:username` — ลบบัญชี
-- `GET /api/auth/sessions` — Login audit log
-
----
-
-## 📁 Log Files ที่ระบบอ่าน (Runtime)
-
-`log.service.ts` อ่านไฟล์เหล่านี้ทุก 5 วินาที:
-
-| Path | แหล่ง | รูปแบบ |
-|------|-------|--------|
-| `logs/siem/access_layer.log` | Nginx access log | CSV หรือ Combined Log Format |
-| `logs/cowrie/cowrie.json` | Cowrie | JSON Lines |
-| `logs/siem/cnc_outbound.log` | Custom | JSON Lines |
-
-ไฟล์ที่ระบบเขียนเอง:
-- `logs/siem/blocked_ips.json` — รายการ IP ที่ Block แล้ว
-
----
-
-## 🔄 Realtime Data Flow
-
+### Frontend
 ```
-log.service.ts (ทุก 5 วินาที)
-    → อ่าน 3 log sources
-    → Time-Correlation
-    → Enrichment (MITRE, ThreatScore, Faculty, GeoIP)
-    → events.gateway.ts
-        → socket.io broadcast → "new_attack"
-            → Frontend eventsStore.update()
-                → ทุก component ที่ bind กับ $eventsStore อัปเดตอัตโนมัติ
+frontend/src/
+  routes/
+    dashboard/
+      +page.svelte              ← Main dashboard (KPI cards, threat map, events table)
+      +layout.svelte            ← Sidebar nav, auth guard, WebSocket init
+      logs/+page.svelte         ← Full threat log table with export
+      investigate/+page.svelte  ← IP deep-dive + investigation tools
+      network-map/+page.svelte  ← KKU IP map with attack overlay
+      mitre/+page.svelte        ← MITRE ATT&CK framework mapping
+      cve/+page.svelte          ← Live CVE lookup (MITRE API)
+      alert/+page.svelte        ← Real-time alert center
+      analytics/+page.svelte    ← Charts and statistics
+      blocked_ip_audit/+page.svelte  ← Blocked IP management
+      settings/+page.svelte     ← Admin system settings
+    api/
+      scorecard/+server.ts      ← Server-side proxy for external Scorecard API
+  stores/
+    events.ts                   ← Svelte store + WebSocket client + eventsStore
+    faculties.ts                ← KKU faculty/CIDR lookup functions
+  lib/
+    data/ip_records.json        ← Static KKU IP subnet database (644+ entries)
+    components/
+      ExportPreviewModal.svelte ← CSV/PDF export modal
+    utils/
+      export.ts                 ← CSV + PDF generation utilities
+      ip.ts                     ← CIDR/IP matching utilities
+```
+
+### Backend
+```
+backend/src/
+  log.service.ts          ← SIEM correlation engine (MOST IMPORTANT FILE)
+  attacks.controller.ts   ← Block IP / Isolate Port / Status endpoints
+  auth.controller.ts      ← Login, user management, session audit
+  events.gateway.ts       ← WebSocket gateway (Socket.IO)
+  entities/
+    attack.entity.ts      ← TypeORM entity for attack events
+    user.entity.ts        ← User accounts
+    login-session.entity.ts ← Login audit log
+```
+
+### Infrastructure
+```
+honeypots/
+  cowrie/
+    cowrie.cfg            ← Cowrie SSH honeypot configuration
+    userdb.txt            ← Accepted credentials for honeypot
+  webtrap/
+    server.js             ← Express.js HTTP honeypot (attack classifier)
+logs/
+  cowrie/cowrie.json      ← Live SSH attack log (watched by backend)
+  webtrap/webtrap.json    ← Live HTTP attack log (watched by backend)
+  siem/
+    access_layer.log      ← Core switch NetFlow data (correlated)
+    cnc_outbound.log      ← Firewall outbound C&C log (correlated)
+siem-logs/
+  blocked_ips.json        ← Persisted blocked IP list
+  isolated_ports.json     ← Persisted isolated switch ports
+nginx/
+  nginx.conf              ← Nginx reverse proxy config
+  certs/                  ← SSL certificates (cert.pem, key.pem)
 ```
 
 ---
 
-## 🛠 Coding Conventions
+## 🔄 Real-Time Data Flow
 
-1. **CSS:** ใช้ global `ds-*` classes ก่อนเสมอ — อย่าเขียน local style ซ้ำ
-2. **HTML:** ตรวจ `<div>` ปิดครบทุกครั้ง (Svelte จะ error 500 ถ้า tag ไม่ครบ)
-3. **TypeScript:** ไม่บังคับ strict — ใช้ `any` ได้ถ้าจำเป็น
-4. **Ports:** Backend = 5001, Frontend = 3000 (เปลี่ยนแล้วจาก 5000)
-5. **ห้ามแตะ logic** ใน `eventsStore`, `log.service.ts`, `events.gateway.ts` โดยไม่จำเป็น
+```
+1. Attacker → Cowrie/WebTrap honeypot
+2. Honeypot → writes JSON line to log file (cowrie.json or webtrap.json)
+3. Backend (log.service.ts) → fs.watchFile() detects new line (500ms polling)
+4. Backend → parses line, resolves real IP, finds correlated events
+5. Backend → saves to PostgreSQL via TypeORM
+6. Backend → broadcasts via WebSocket: this.eventsGateway.broadcastAttack(enriched)
+7. Frontend (events.ts store) → socket.on('new_attack') updates eventsStore
+8. Dashboard components → $eventsStore reactive update renders new data
+```
 
 ---
 
-## 📦 Deployment
+## 🧠 SIEM Correlation Engine (log.service.ts)
 
-**Production:** `docker-compose.yml` — รัน Nginx, Frontend, Backend, Cowrie, WebTrap  
-**Development:** `docker-compose.dev.yml` หรือรัน `npm run dev` แยก  
-**Scripts:** `deploy.sh` (Linux) / `deploy.ps1` (Windows)
+The heart of the system. Key methods:
+
+```typescript
+onModuleInit()              // Starts file watchers for all 4 log sources
+watchFile()                 // Generic file watcher with 500ms interval
+processCowrieLine()         // Parses Cowrie SSH events, classifies by eventid
+processWebTrapLine()        // Parses WebTrap HTTP events, maps to MITRE
+processAccessLayerLine()    // Caches NetFlow events for correlation
+processCncOutboundLine()    // Caches outbound C&C events for correlation
+resolveRealIp()             // Time-based correlation to map session → real IP
+findAccessEvent()           // Finds Access Layer event within 5s window
+findCncEvent()              // Finds C&C event within 30s window
+saveAndBroadcast()          // Saves to PostgreSQL + emits WebSocket event
+```
+
+**Correlation time windows:**
+- Access Layer: ±5 seconds (`CORRELATION_WINDOW_MS = 5000`)
+- C&C Outbound: 30 seconds after SSH login
+- IP cache: 100 most recent connections (ring buffer)
+
+---
+
+## 🌐 API Endpoints Reference
+
+### Auth (`/api/auth/*`)
+- `POST /api/auth/login` — `{ username, password }` → `{ access_token, role }`
+- `POST /api/auth/register` — `{ username, password, role }` → `{ success }`
+- `GET /api/auth/users` — returns user list (no passwords)
+- `DELETE /api/auth/users/:username` — delete user (cannot delete 'admin')
+- `GET /api/auth/sessions` — login audit log (last 100)
+
+### Attacks (`/api/attacks/*`)
+- `POST /api/attacks/block-ip` — `{ ip, reason, attackId?, faculty?, port? }` → writes `blocked_ips.json` + broadcasts
+- `POST /api/attacks/unblock-ip` — `{ ip }` → removes from `blocked_ips.json`
+- `GET /api/attacks/blocked-ips` — reads `blocked_ips.json`
+- `PATCH /api/attacks/:id/status` — `{ status: 'Opened'|'In Progress'|'Closed' }`
+- `POST /api/attacks/isolate-port` — `{ ip, switchPort, building, floor, portNumber }` → writes `isolated_ports.json`
+- `GET /api/attacks/isolated-ports` — reads `isolated_ports.json`
+- `POST /api/attacks/ip-map` — `{ realIp, faculty?, service?, timestamp? }` → registers IP for correlation
+
+### WebSocket Events (Socket.IO)
+- Emitted by backend: `new_attack`, `ip_blocked`, `ip_unblocked`, `port_isolated`, `status_updated`
+- Frontend connects in `+layout.svelte` using Socket.IO client
+- Events update `eventsStore` in `stores/events.ts`
+
+### Frontend Internal API
+- `GET /api/scorecard` — server-side proxy to external Scorecard API (bypasses CORS + SSL)
+  - Reads `x-scorecard-url` header for target URL
+  - Reads `x-scorecard-key` header for bearer token
+  - Uses Node.js `https` module with `rejectUnauthorized: false`
+
+---
+
+## 🗄️ Database Schema (TypeORM Entities)
+
+### Attack Entity
+```typescript
+id: number (PK)
+timeStr: string        // Formatted timestamp (Bangkok timezone)
+ip: string             // Source IP address
+type: string           // Attack type (SSH Brute Force, SQL Inject, etc.)
+severity: string       // critical | high | medium | low
+detail: string         // Detailed description with credentials/payload
+mitigation: string     // Recommended mitigation action
+country: string        // Geolocation (prefix-based lookup)
+clientVersion: string  // SSH client version or HTTP User-Agent
+mitreCode: string      // MITRE ATT&CK technique ID (T1110, T1059, etc.)
+threatScore: number    // 0-100 threat score
+sessionId: string      // Cowrie session ID for correlation
+timestampMs: number    // Unix timestamp in milliseconds
+status: string         // Opened | In Progress | Closed (default: Opened)
+createdAt: Date        // Auto-generated
+```
+
+### User Entity
+```typescript
+id: number (PK)
+username: string
+passwordHash: string   // Plain text in demo — use bcrypt in production
+role: string           // admin | guest
+```
+
+### LoginSession Entity
+```typescript
+id: number (PK)
+username: string
+role: string
+ipAddress: string
+timestamp: Date        // Auto-generated
+```
+
+---
+
+## ⚠️ Known Limitations & TODOs
+
+1. **Passwords stored in plain text** — `auth.controller.ts` line 51: `passwordHash: password` — needs bcrypt
+2. **JWT tokens are fake strings** — `auth.controller.ts` line 30: returns `fake-jwt-token-for-${role}` — needs proper JWT implementation
+3. **GeoIP is prefix-based** — `log.service.ts` line 133: `getCountry()` uses simple IP prefix matching, not a real GeoIP database
+4. **Port isolation is simulated** — `attacks.controller.ts` generates the correct Cisco IOS command but does not actually SSH into the switch
+5. **Scorecard API returns HTML** — The target URL `10.101.118.184:4333/dashboard` returns HTML, not JSON. Need the actual JSON API endpoint
+6. **IP Records are static** — `ip_records.json` requires a rebuild to update; Network IP Sync API integration is not yet implemented
+
+---
+
+## 🛠️ Common Development Patterns
+
+### Adding a new dashboard page
+
+1. Create `frontend/src/routes/dashboard/your-page/+page.svelte`
+2. Add to sidebar in `frontend/src/routes/dashboard/+layout.svelte` (search for `navItems`)
+3. Page automatically gets auth guard from the layout
+
+### Accessing attack events in a page
+
+```svelte
+<script lang="ts">
+  import { eventsStore } from '../../../stores/events';
+  $: events = $eventsStore;
+  // events is Attack[] — reactive, updates in real-time via WebSocket
+</script>
+```
+
+### Blocking an IP from a page
+
+```javascript
+await fetch('/api/attacks/block-ip', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ ip: '1.2.3.4', reason: 'Manual block', attackId: 123 })
+});
+```
+
+### Settings stored in localStorage
+
+```javascript
+// Read
+const url = localStorage.getItem('cfg_scorecard_url') || '';
+// Write (done in Settings page's saveConfig())
+localStorage.setItem('cfg_scorecard_url', newUrl);
+```
+
+---
+
+## 🐳 Docker Commands Cheatsheet
+
+```bash
+# Start all services
+docker compose up -d --build
+
+# Stop all services
+docker compose down
+
+# View logs
+docker compose logs -f [service]     # service: nginx, frontend, backend, cowrie, webtrap
+
+# Restart a service
+docker compose restart backend
+
+# Shell into a container
+docker compose exec backend sh
+docker compose exec postgres psql -U admin -d honeypot
+
+# Rebuild only frontend (after code changes)
+docker compose up -d --build frontend
+
+# Remove all data (WARNING: deletes database)
+docker compose down -v
+```
+
+---
+
+## 🔧 Environment Variables
+
+Required in `.env` (copy from `.env.example`):
+
+```bash
+POSTGRES_USER=admin
+POSTGRES_PASSWORD=your_secure_password    # CHANGE THIS
+POSTGRES_DB=honeypot
+JWT_SECRET=your_jwt_secret               # CHANGE THIS
+HTTP_PORT=18080
+HTTPS_PORT=18443
+COWRIE_SSH_PORT=22222
+COWRIE_TELNET_PORT=22223
+WEBTRAP_HTTP_PORT=28081
+WEBTRAP_HTTPS_PORT=28444
+```
+
+---
+
+## 📋 Deployment Checklist
+
+Before deploying to production:
+
+- [ ] Change `POSTGRES_PASSWORD` in `.env`
+- [ ] Change `JWT_SECRET` in `.env`
+- [ ] Change default `admin/admin` password via Settings → User Management
+- [ ] Place SSL certificates in `nginx/certs/cert.pem` and `nginx/certs/key.pem`
+- [ ] Set correct firewall rules — expose only ports 80, 443, 22222, 22223, 28081, 28444
+- [ ] Configure Scorecard API URL in Settings if using external scorecard
+- [ ] Implement bcrypt password hashing (`auth.controller.ts`)
+- [ ] Implement real JWT tokens (`auth.controller.ts`)
+- [ ] (Optional) Replace prefix-based GeoIP with MaxMind GeoIP2 database
+
+---
+
+## 🚦 PowerShell Notes (Windows Development)
+
+- Use `Select-Object -Last N` instead of `tail -n N`
+- Use `curl.exe` (not `curl` alias) for HTTP testing: `curl.exe -k https://...`
+- Log files use `\n` line endings on Linux containers but `\r\n` may appear when viewed on Windows
+- Run PowerShell as Administrator for Docker commands if needed

@@ -25,6 +25,12 @@
   let enableToastNotify = true;
   let enableSoundAlert = false;
   let configSaved = false;
+  
+  let cfgScorecardUrl = '';
+  let cfgScorecardKey = '';
+
+  let cfgIpSyncUrl = '';
+  let cfgIpSyncKey = '';
 
   onMount(() => {
     if ($roleStore !== 'admin') return;
@@ -99,11 +105,19 @@
     sessionTimeout = parseInt(localStorage.getItem('cfg_session_timeout') || '60');
     enableToastNotify = localStorage.getItem('cfg_toast') !== 'false';
     enableSoundAlert = localStorage.getItem('cfg_sound') === 'true';
+    cfgScorecardUrl = localStorage.getItem('cfg_scorecard_url') || 'https://10.101.118.184:4333/dashboard';
+    cfgScorecardKey = localStorage.getItem('cfg_scorecard_key') || '4c25eebe1323386cca6319b3b4516d3f';
+    cfgIpSyncUrl = localStorage.getItem('cfg_ip_sync_url') || '';
+    cfgIpSyncKey = localStorage.getItem('cfg_ip_sync_key') || '';
   }
   function saveConfig() {
     localStorage.setItem('cfg_session_timeout', sessionTimeout.toString());
     localStorage.setItem('cfg_toast', enableToastNotify.toString());
     localStorage.setItem('cfg_sound', enableSoundAlert.toString());
+    localStorage.setItem('cfg_scorecard_url', cfgScorecardUrl);
+    localStorage.setItem('cfg_scorecard_key', cfgScorecardKey);
+    localStorage.setItem('cfg_ip_sync_url', cfgIpSyncUrl);
+    localStorage.setItem('cfg_ip_sync_key', cfgIpSyncKey);
     configSaved = true;
     setTimeout(() => configSaved = false, 3000);
   }
@@ -356,6 +370,63 @@
                 <input type="checkbox" bind:checked={enableSoundAlert} />
                 <span class="slider"></span>
               </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- External APIs -->
+        <div class="ds-card">
+          <div class="ds-card-head">
+            <div class="ds-card-title"><i class="ti ti-api"></i> External Integrations</div>
+          </div>
+          <div class="config-section">
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div class="config-label">
+                <div class="config-name">Scorecard API URL</div>
+                <div class="config-desc">Endpoint หรือ URL ของระบบ Scorecard (ถ้ามี)</div>
+              </div>
+              <input type="text" bind:value={cfgScorecardUrl} class="input-field" placeholder="https://api.example.com/v1/scorecard" />
+            </div>
+            <hr class="ds-divider" />
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div class="config-label">
+                <div class="config-name">Scorecard API Key</div>
+                <div class="config-desc">Token หรือ Key สำหรับยืนยันตัวตนกับ API (ถ้ามี)</div>
+              </div>
+              <input type="password" bind:value={cfgScorecardKey} class="input-field" placeholder="API Key" />
+            </div>
+          </div>
+        </div>
+
+        <div class="ds-card">
+          <div class="ds-card-head">
+            <div class="ds-card-title"><i class="ti ti-sitemap"></i> Network IP Sync API</div>
+          </div>
+          <div class="config-section">
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div class="config-label">
+                <div class="config-name">API Endpoint URL</div>
+                <div class="config-desc">ตั้งค่า API สำหรับดึงข้อมูล IP ของคณะและหน่วยงานจากมหาวิทยาลัย</div>
+              </div>
+              <input type="text" bind:value={cfgIpSyncUrl} class="input-field" placeholder="https://api.kku.ac.th/v1/network/subnets" />
+            </div>
+            <hr class="ds-divider" />
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div class="config-label">
+                <div class="config-name">Authentication Token (Optional)</div>
+                <div class="config-desc">Bearer Token หรือ API Key สำหรับการเชื่อมต่อ</div>
+              </div>
+              <input type="password" bind:value={cfgIpSyncKey} class="input-field" placeholder="API Key" />
+            </div>
+            <hr class="ds-divider" />
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">สถานะการ Sync ล่าสุด</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">รอการเชื่อมต่อ (Mock Mode) - อัปเดตล่าสุด: ยังไม่มีการเชื่อมต่อ</div>
+              </div>
+              <button class="ds-btn sm" on:click={() => alert('ฟังก์ชันเชื่อมต่อจำลองการทำงาน (Mock)')}>
+                <i class="ti ti-refresh"></i> Test Connection &amp; Sync
+              </button>
             </div>
           </div>
         </div>

@@ -101,18 +101,40 @@
 
   let scorecard: any = null;
   let scorecardLoading = true;
+  let scorecardError: string | null = null;
+  let showScorecardModal = false;
+
+  // ══════════════════════════════════════════════
+  // ดึงข้อมูลผ่าน Proxy Backend ของเราเอง (แก้ปัญหา CORS & SSL)
+  // ══════════════════════════════════════════════
+  const SCORECARD_API_URL = '/api/scorecard';
+  // ══════════════════════════════════════════════
 
   onMount(async () => {
     // Fetch Scorecard
     try {
-      const res = await fetch('/api/scorecard', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      const res = await fetch(SCORECARD_API_URL, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`, // ส่ง Token เพื่อยืนยันว่าเป็น Admin ในระบบเรา
+          'x-scorecard-url': localStorage.getItem('cfg_scorecard_url') || '',
+          'x-scorecard-key': localStorage.getItem('cfg_scorecard_key') || ''
+        }
       });
       if (res.ok) {
         scorecard = await res.json();
+        scorecardError = null;
+      } else {
+        try {
+          const errData = await res.json();
+          scorecardError = errData.error || 'Error from API Proxy';
+          console.warn('Scorecard API returned error:', errData);
+        } catch {
+          scorecardError = `HTTP Error ${res.status}`;
+        }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to fetch scorecard', e);
+      scorecardError = e.message || 'Network error';
     } finally {
       scorecardLoading = false;
     }
@@ -369,23 +391,128 @@
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card info" style="border-left: 4px solid var(--green);" title="Organization Security Posture Score">
+    <div class="metric-card info" style="border-left: 4px solid var(--green); cursor: pointer; transition: box-shadow 0.2s, transform 0.15s;" title="คลิกเพื่อดู Security Posture Score รายละเอียด" on:click={() => showScorecardModal = true} role="button" tabindex="0">
       <div class="metric-icon-wrap" style="background: var(--green-bg); color: var(--green);"><i class="ti ti-shield-check"></i></div>
       <div class="metric-body">
-        <div class="metric-label">Security Posture (API)</div>
+        <div class="metric-label">Security Posture <i class="ti ti-external-link" style="font-size:10px; opacity:0.5;"></i></div>
         {#if scorecardLoading}
           <div class="metric-val skeleton-text" style="width: 80px; height: 28px; margin: 4px 0; border-radius:4px;"></div>
           <div class="metric-sub skeleton-text" style="width: 120px; height: 14px; border-radius:4px;"></div>
         {:else if scorecard}
           <div class="metric-val ds-kpi-val" style="color: var(--green); font-size:24px; padding:0;">{scorecard.score}<span style="font-size:14px;color:var(--text-muted)">/{scorecard.maxScore}</span></div>
-          <div class="metric-sub" style="font-size:11px;">{scorecard.organization}</div>
+          <div class="metric-sub" style="font-size:11px;">{scorecard.organization || 'ดูรายละเอียด →'}</div>
+        {:else if scorecardError}
+          <div class="metric-val ds-kpi-val" style="color: var(--red); font-size:14px; padding:0;">Error</div>
+          <div class="metric-sub" style="font-size:10px; color:var(--red);">ไม่สามารถดึงข้อมูลได้</div>
         {:else}
-          <div class="metric-val ds-kpi-val" style="color: var(--red); font-size:24px; padding:0;">Error</div>
-          <div class="metric-sub">Failed to load API</div>
+          <div class="metric-val ds-kpi-val" style="color: var(--text-muted); font-size:18px; padding:0;">—</div>
+          <div class="metric-sub" style="font-size:10px;">คลิกเพื่อโหลดใหม่</div>
         {/if}
+      </div>
+      <div class="metric-arrow"><i class="ti ti-info-circle" style="color: var(--green); opacity: 0.5;"></i></div>
+    </div>
+  </div>
+
+  <!-- ══════ SCORECARD DETAIL MODAL ══════ -->
+  {#if showScorecardModal}
+  <div class="sc-backdrop" on:click={() => showScorecardModal = false} role="button" tabindex="-1">
+    <div class="sc-modal" on:click|stopPropagation>
+      <!-- Header -->
+      <div class="sc-header">
+        <div class="sc-header-left">
+          <div class="sc-icon"><i class="ti ti-shield-check"></i></div>
+          <div>
+            <div class="sc-title">Security Posture Score</div>
+            <div class="sc-subtitle">{scorecard?.organization || 'Organization Scorecard'}</div>
+          </div>
+        </div>
+        <button class="sc-close" on:click={() => showScorecardModal = false}><i class="ti ti-x"></i></button>
+      </div>
+
+      {#if scorecardLoading}
+        <div class="sc-loading">
+          <div class="sc-spinner"></div>
+          <span>กำลังโหลดข้อมูล...</span>
+        </div>
+      {:else if scorecardError}
+        <div style="padding: 2rem; text-align: center; color: var(--red);">
+          <i class="ti ti-alert-circle" style="font-size: 3rem; margin-bottom: 1rem; display: block;"></i>
+          <strong>เกิดข้อผิดพลาดในการดึงข้อมูล Scorecard</strong>
+          <p style="font-size: 13px; margin-top: 8px; color: var(--text-muted);">{scorecardError}</p>
+          <div style="margin-top: 2rem; font-size: 12px; color: var(--text-secondary); text-align: left; background: var(--bg-secondary); padding: 1rem; border-radius: 8px;">
+            <strong style="display:block; margin-bottom: 6px;">💡 คำแนะนำ:</strong>
+            1. ตรวจสอบว่าใส่ API Endpoint ในหน้า Settings ถูกต้อง<br/>
+            2. Endpoint ต้องคืนค่ากลับมาเป็นรูปแบบ <code>JSON</code> ไม่ใช่หน้าเว็บ <code>HTML</code><br/>
+            3. ตรวจสอบ API Key ว่าถูกต้อง (ถ้ามี)
+          </div>
+        </div>
+      {:else if scorecard}
+        <!-- Score Ring -->
+        <div class="sc-score-section">
+          <div class="sc-ring-wrap">
+            <svg viewBox="0 0 120 120" class="sc-ring">
+              <circle cx="60" cy="60" r="50" fill="none" stroke="var(--border)" stroke-width="10"/>
+              <circle cx="60" cy="60" r="50" fill="none"
+                stroke="{scorecard.score >= 80 ? 'var(--green)' : scorecard.score >= 60 ? 'var(--orange)' : 'var(--red)'}"
+                stroke-width="10"
+                stroke-linecap="round"
+                stroke-dasharray="{(scorecard.score / scorecard.maxScore) * 314} 314"
+                transform="rotate(-90 60 60)"
+                style="transition: stroke-dasharray 1s ease;"
+              />
+            </svg>
+            <div class="sc-ring-inner">
+              <div class="sc-ring-score" style="color: {scorecard.score >= 80 ? 'var(--green)' : scorecard.score >= 60 ? 'var(--orange)' : 'var(--red)'}">{scorecard.score}</div>
+              <div class="sc-ring-max">/{scorecard.maxScore}</div>
+              <div class="sc-ring-status" style="background: {scorecard.score >= 80 ? 'var(--green-bg)' : 'var(--orange-bg)'}; color: {scorecard.score >= 80 ? 'var(--green)' : 'var(--orange)'}">{scorecard.status || 'N/A'}</div>
+            </div>
+          </div>
+          <div class="sc-meta">
+            {#if scorecard.lastUpdated}
+            <div class="sc-meta-row"><i class="ti ti-clock"></i> อัปเดตล่าสุด: {new Date(scorecard.lastUpdated).toLocaleString('th-TH')}</div>
+            {/if}
+            {#if scorecard.breakdown}
+              <div class="sc-breakdown-title">คะแนนแยกประเภท</div>
+              {#each Object.entries(scorecard.breakdown) as [key, val]}
+              <div class="sc-breakdown-row">
+                <span class="sc-breakdown-label">{key.charAt(0).toUpperCase() + key.slice(1)}</span>
+                <div class="sc-breakdown-bar-bg">
+                  <div class="sc-breakdown-bar" style="width: {val}%; background: {Number(val) >= 80 ? 'var(--green)' : Number(val) >= 60 ? 'var(--orange)' : 'var(--red)'}"></div>
+                </div>
+                <span class="sc-breakdown-val">{val}</span>
+              </div>
+              {/each}
+            {/if}
+          </div>
+        </div>
+
+        <!-- Recommendations -->
+        {#if scorecard.recommendations && scorecard.recommendations.length > 0}
+        <div class="sc-recom-section">
+          <div class="sc-recom-title"><i class="ti ti-bulb"></i> Recommendations</div>
+          <ul class="sc-recom-list">
+            {#each scorecard.recommendations as rec}
+            <li class="sc-recom-item"><i class="ti ti-alert-triangle" style="color: var(--orange);"></i> {rec}</li>
+            {/each}
+          </ul>
+        </div>
+        {/if}
+      {:else}
+        <div class="sc-loading" style="flex-direction: column; gap: 12px;">
+          <i class="ti ti-cloud-off" style="font-size: 36px; color: var(--text-muted); opacity: 0.4;"></i>
+          <span style="color: var(--text-muted);">ไม่สามารถโหลดข้อมูลได้</span>
+          <span style="font-size: 11px; color: var(--text-muted);">กรุณาตรวจสอบ API Key และ URL ใน +page.svelte</span>
+        </div>
+      {/if}
+
+      <!-- Footer -->
+      <div class="sc-footer">
+        <span style="font-size: 11px; color: var(--text-muted);"><i class="ti ti-api"></i> Powered by External Scorecard API</span>
+        <button class="sc-close-btn" on:click={() => showScorecardModal = false}>ปิด</button>
       </div>
     </div>
   </div>
+  {/if}
 
 
   <!-- Filter Bar -->
@@ -454,12 +581,12 @@
         </div>
         <span class="badge-count">{filteredEvents.length} events</span>
       </div>
-      <table class="log-table">
+      <table class="log-table" style="table-layout: fixed; width: 100%;">
         <thead><tr>
-          <th>วันที่ &amp; เวลา</th>
-          <th>Source IP</th>
-          <th>ประเภท</th>
-          <th>Severity</th>
+          <th style="width: 30%;">วันที่ &amp; เวลา</th>
+          <th style="width: 25%;">Source IP</th>
+          <th style="width: 25%;">ประเภท</th>
+          <th style="width: 20%;">Severity</th>
         </tr></thead>
         <tbody>
           {#each filteredEvents.slice(0, 7) as event}
@@ -929,4 +1056,118 @@
   .metrics { grid-template-columns: 1fr 1fr; }
   .metric-val { font-size: 24px; }
 }
+
+/* ══════ SCORECARD MODAL ══════ */
+.sc-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  animation: scFadeIn 0.2s ease;
+}
+@keyframes scFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.sc-modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 560px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+  animation: scSlideUp 0.25s ease;
+}
+@keyframes scSlideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)     scale(1); }
+}
+
+.sc-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sc-header-left { display: flex; align-items: center; gap: 12px; }
+.sc-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--green-bg); color: var(--green);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; flex-shrink: 0;
+}
+.sc-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.sc-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.sc-close {
+  background: var(--bg-secondary); border: none; cursor: pointer;
+  width: 30px; height: 30px; border-radius: 8px;
+  color: var(--text-muted); font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.sc-close:hover { background: var(--red-bg); color: var(--red); }
+
+.sc-loading {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 48px 24px; color: var(--text-muted); font-size: 14px;
+}
+.sc-spinner {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 3px solid var(--border); border-top-color: var(--green);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.sc-score-section {
+  display: flex; align-items: flex-start; gap: 24px;
+  padding: 24px;
+}
+.sc-ring-wrap {
+  position: relative; width: 120px; height: 120px; flex-shrink: 0;
+}
+.sc-ring { width: 120px; height: 120px; }
+.sc-ring-inner {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.sc-ring-score { font-size: 28px; font-weight: 800; line-height: 1; }
+.sc-ring-max   { font-size: 12px; color: var(--text-muted); }
+.sc-ring-status {
+  margin-top: 4px; padding: 2px 8px; border-radius: 10px;
+  font-size: 10px; font-weight: 700;
+}
+
+.sc-meta { flex: 1; min-width: 0; }
+.sc-meta-row { font-size: 11.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 5px; }
+.sc-breakdown-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 10px; }
+.sc-breakdown-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.sc-breakdown-label { font-size: 12px; font-weight: 600; color: var(--text-primary); width: 85px; flex-shrink: 0; }
+.sc-breakdown-bar-bg { flex: 1; height: 6px; background: var(--bg-secondary); border-radius: 3px; overflow: hidden; }
+.sc-breakdown-bar { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+.sc-breakdown-val { font-size: 11px; font-weight: 700; font-family: 'Courier New', monospace; color: var(--text-secondary); width: 28px; text-align: right; flex-shrink: 0; }
+
+.sc-recom-section {
+  padding: 0 24px 20px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px; padding-top: 16px;
+}
+.sc-recom-title { font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.sc-recom-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.sc-recom-item { font-size: 12.5px; color: var(--text-secondary); display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; padding: 8px 12px; background: var(--bg-secondary); border-radius: 8px; }
+.sc-recom-item i { flex-shrink: 0; margin-top: 2px; }
+
+.sc-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  border-radius: 0 0 16px 16px;
+}
+.sc-close-btn {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  color: var(--text-primary); font-size: 13px; font-weight: 600;
+  padding: 6px 18px; border-radius: 8px; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.sc-close-btn:hover { background: var(--green-bg); border-color: var(--green); color: var(--green); }
 </style>
