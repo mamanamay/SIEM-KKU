@@ -12,7 +12,7 @@ let socket: Socket | null = null;
 export function initSocket() {
   const token = localStorage.getItem('token');
   if (!token) {
-    window.location.href = '/';
+    window.location.href = '/?expired=true';
     return;
   }
   
@@ -57,7 +57,7 @@ export function initSocket() {
     if (err.message === 'Unauthorized') {
       localStorage.removeItem('token');
       localStorage.removeItem('role');
-      window.location.href = '/';
+      window.location.href = '/?expired=true';
     }
   });
 

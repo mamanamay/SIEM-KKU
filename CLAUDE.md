@@ -65,23 +65,12 @@ Layout หลักอยู่ที่ `frontend/src/routes/dashboard/+layout.
 - `/dashboard/analytics` — Analyst Center
 - `/dashboard/investigate` — IP Deep-dive
 - `/dashboard/mitre` — MITRE ATT&CK Matrix
-- `/dashboard/faculty` — Faculty / Internal Threat Monitor
-- `/dashboard/traffic` — Network Traffic
+- `/dashboard/network-map` — Network Map
 
 **Response & Intelligence**
 - `/dashboard/blocked_ip_audit` — IP Block Audit
-- `/dashboard/ioc` — Indicators of Compromise
-- `/dashboard/threat` — Threat Intelligence
 - `/dashboard/cve` — CVE Database
-
-**Integration & Compliance**
-- `/dashboard/wazuh` — Wazuh SIEM Integration
-- `/dashboard/ai_monitor` — AI Monitor
-- `/dashboard/malware` — Malware Analysis
-- `/dashboard/ddos` — DDoS Detection
-- `/dashboard/cis` — CIS Benchmark
-- `/dashboard/pdpa` — PDPA Compliance
-- `/dashboard/remoteaccess` — Remote Access Log
+- `/dashboard/api-history` — System API History
 
 **System**
 - `/dashboard/settings` — Settings (4 tabs: User Management, Login Audit, System Config, About)
@@ -117,12 +106,12 @@ Layout หลักอยู่ที่ `frontend/src/routes/dashboard/+layout.
 
 | Path | แหล่ง | รูปแบบ |
 |------|-------|--------|
-| `siem-logs/access_layer.log` | Nginx access log | CSV หรือ Combined Log Format |
-| `cowrie-config/var/log/cowrie/cowrie.json` | Cowrie | JSON Lines |
-| `siem-logs/cnc_outbound.log` | Custom | JSON Lines |
+| `logs/siem/access_layer.log` | Nginx access log | CSV หรือ Combined Log Format |
+| `logs/cowrie/cowrie.json` | Cowrie | JSON Lines |
+| `logs/siem/cnc_outbound.log` | Custom | JSON Lines |
 
 ไฟล์ที่ระบบเขียนเอง:
-- `siem-logs/blocked_ips.json` — รายการ IP ที่ Block แล้ว
+- `logs/siem/blocked_ips.json` — รายการ IP ที่ Block แล้ว
 
 ---
 

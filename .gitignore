@@ -29,11 +29,9 @@ deploy.tar
 *.zip
 
 # ── Log files (สร้างขึ้นตอน runtime ไม่ต้อง commit) ────────────
-cowrie-config/var/log/cowrie/cowrie.json.*
-cowrie-config/var/log/cowrie/*.log
-siem-logs/access_layer.log
-siem-logs/cnc_outbound.log
-webtrap-logs/webtrap.json
+logs/
+honeypots/cowrie/var/
+!logs/.gitkeep
 
 # ── SSL Certificates (generate บน server ด้วย generate-ssl.sh) ─
 nginx/certs/*.pem

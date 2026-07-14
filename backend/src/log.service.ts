@@ -13,10 +13,10 @@ const isDocker = process.env.NODE_ENV === 'production' || process.env.IS_DOCKER 
 const basePath = process.cwd().endsWith('backend') ? path.join(process.cwd(), '..') : process.cwd();
 
 // If running inside docker-compose, use the mounted volume paths
-const COWRIE_LOG   = isDocker ? '/app/logs/cowrie.json' : path.join(basePath, 'cowrie-config', 'var', 'log', 'cowrie', 'cowrie.json');
-const WEBTRAP_LOG  = isDocker ? '/app/webtrap-logs/webtrap.json' : path.join(basePath, 'webtrap-logs', 'webtrap.json');
-const ACCESS_LOG   = isDocker ? '/app/siem-logs/access_layer.log' : path.join(basePath, 'siem-logs', 'access_layer.log');
-const CNC_LOG      = isDocker ? '/app/siem-logs/cnc_outbound.log' : path.join(basePath, 'siem-logs', 'cnc_outbound.log');
+const COWRIE_LOG   = isDocker ? '/app/logs/cowrie/cowrie.json' : path.join(basePath, 'logs', 'cowrie', 'cowrie.json');
+const WEBTRAP_LOG  = isDocker ? '/app/logs/webtrap/webtrap.json' : path.join(basePath, 'logs', 'webtrap', 'webtrap.json');
+const ACCESS_LOG   = isDocker ? '/app/logs/siem/access_layer.log' : path.join(basePath, 'logs', 'siem', 'access_layer.log');
+const CNC_LOG      = isDocker ? '/app/logs/siem/cnc_outbound.log' : path.join(basePath, 'logs', 'siem', 'cnc_outbound.log');
 
 // ─── Correlation Time Window ─────────────────────────────────────────────────
 const CORRELATION_WINDOW_MS = 5000; // 5 วินาที = ถือว่าเป็นเหตุการณ์เดียวกัน

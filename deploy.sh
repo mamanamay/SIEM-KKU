@@ -28,8 +28,9 @@ fi
 echo ""
 echo "[1/4] 📦 Packing project files (excluding node_modules, logs, certs)..."
 
-tar --exclude='.git' \
-    --exclude='node_modules' \
+tar --exclude='node_modules' \
+    --exclude='logs' \
+    --exclude='.git' \
     --exclude='frontend/node_modules' \
     --exclude='backend/node_modules' \
     --exclude='webtrap/node_modules' \
@@ -91,7 +92,7 @@ ssh ${USERNAME}@${SERVER_IP} << 'REMOTE'
   bash nginx/generate-ssl.sh
 
   echo "  → Creating required log directories..."
-  mkdir -p siem-logs webtrap-logs cowrie-config/var/log/cowrie cowrie-config/var/lib/cowrie
+  mkdir -p logs/siem logs/webtrap logs/cowrie honeypots/cowrie/var/lib/cowrie
 
   echo "  → Starting Docker containers..."
   docker compose up -d --build

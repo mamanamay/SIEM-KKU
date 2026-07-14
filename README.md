@@ -58,16 +58,7 @@ Demo_Honeypot/
 │   │   │       ├── cve/             # CVE Database Lookup
 │   │   │       ├── blocked_ip_audit/ # Firewall Block Audit
 │   │   │       ├── ioc/             # Indicators of Compromise
-│   │   │       ├── threat/          # Threat Intelligence
-│   │   │       ├── faculty/         # Internal Faculty Threat Monitor
-│   │   │       ├── traffic/         # Network Traffic
-│   │   │       ├── wazuh/           # Wazuh SIEM Integration
-│   │   │       ├── ai_monitor/      # AI Threat Monitor
-│   │   │       ├── malware/         # Malware Analysis
-│   │   │       ├── ddos/            # DDoS Detection
-│   │   │       ├── cis/             # CIS Benchmark
-│   │   │       ├── pdpa/            # PDPA Compliance
-│   │   │       ├── remoteaccess/    # Remote Access Log
+│   │   │       ├── network-map/     # Network Map
 │   │   │       └── settings/        # System Settings + User Management
 │   │   └── stores/
 │   │       ├── events.ts            # WebSocket store (realtime data)
@@ -94,18 +85,6 @@ Demo_Honeypot/
 │   ├── nginx.conf                   # Reverse proxy config
 │   └── generate-ssl.sh              # Self-signed SSL certificate script
 │
-├── cowrie-config/                   # Cowrie SSH Honeypot configuration
-│   ├── cowrie.cfg                   # Main config
-│   ├── userdb.txt                   # Fake credential list
-│   └── var/
-│       ├── lib/cowrie/              # SSH host keys (rotate on deploy)
-│       └── log/cowrie/cowrie.json   # Live attack log (runtime)
-│
-├── webtrap/                         # Web Attack Trap service
-│   ├── server.js                    # Express server: SQLi / Path Traversal trap
-│   └── Dockerfile
-│
-├── siem-logs/                       # Shared log directory (runtime)
 │   └── blocked_ips.json             # Blocked IP list (persisted)
 │
 ├── docker-compose.yml               # Production deployment

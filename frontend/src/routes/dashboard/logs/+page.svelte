@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { eventsStore, roleStore } from '../../../stores/events';
+  import ExportPreviewModal from '$lib/components/ExportPreviewModal.svelte';
   
   $: events = $eventsStore;
   
@@ -41,17 +42,39 @@
     }
     expandedRows = expandedRows; // trigger reactivity
   }
+  import { downloadCSV, downloadPDF } from '$lib/utils/export';
 
   // Modal State
   let showExportModal = false;
-  let selectedExportFormat = 'csv';
   let showToast = false;
 
-  function handleExport() {
+  function handleExport(e: CustomEvent) {
+    const { format, selectedColumns, filteredData } = e.detail;
+
+    if (format === 'csv') {
+      downloadCSV(filteredData, selectedColumns, 'threat_logs.csv');
+    } else if (format === 'pdf') {
+      downloadPDF(filteredData, selectedColumns, 'threat_logs.pdf', 'KKUSIEM - Threat Logs Report');
+    }
+    
     showExportModal = false;
     showToast = true;
     setTimeout(() => showToast = false, 3000);
   }
+
+  $: fullExportData = (filteredEvents || []).map(evt => ({
+    "Time": evt.time || evt.timeStr,
+    "Source IP": evt.ip,
+    "Country": evt.country || 'Unknown',
+    "Attack Type": evt.type,
+    "Severity": evt.severity,
+    "Log Source": evt.type?.includes('SQL') || evt.type?.includes('XSS') ? 'NGINX Access Log' : (evt.type?.includes('System') ? 'Server Syslog' : 'Firewall Traffic Log'),
+    "Status": evt.status,
+    "Threat Score": evt.threatScore || 50,
+    "Tool / Client": evt.clientVersion || '-',
+    "MITRE Tactic": evt.mitreCode || '-',
+    "Payload Details": evt.detail || '-'
+  }));
 
   function getFlagEmoji(country) {
     if (country === 'Russia') return '🇷🇺';
@@ -121,6 +144,7 @@
             <th>Source IP</th>
             <th>Attack Type</th>
             <th>Severity</th>
+            <th>Log Source</th>
             <th>Status</th>
             <th>Threat Score</th>
           </tr>
@@ -140,6 +164,15 @@
             </td>
             <td><span class="type-badge">{event.type}</span></td>
             <td><span class="sev {event.severity}">{event.severity}</span></td>
+            <td>
+              {#if event.type?.includes('SQL') || event.type?.includes('XSS') || event.type?.includes('Web') || event.type?.includes('Path')}
+                <span class="ds-badge blue"><i class="ti ti-world"></i> NGINX Access Log</span>
+              {:else if event.type?.includes('System Compromised') || event.type?.includes('Command')}
+                <span class="ds-badge green"><i class="ti ti-server"></i> Server Syslog</span>
+              {:else}
+                <span class="ds-badge gray"><i class="ti ti-shield"></i> Firewall Traffic Log</span>
+              {/if}
+            </td>
             <td>
               <span class="status-badge {event.status === 'Closed' ? 'closed' : event.status === 'In Progress' ? 'progress' : 'opened'}">
                 {event.status || 'Opened'}
@@ -265,39 +298,16 @@
   </div>
 </div>
 
-<!-- Export Modal -->
-{#if showExportModal}
-<div class="modal-backdrop show">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title"><i class="ti ti-download" style="color:var(--green)"></i> Export Threat Logs</div>
-      <button class="modal-close" on:click={() => showExportModal = false}><i class="ti ti-x"></i></button>
-    </div>
-    <div class="export-filter-note">
-      <i class="ti ti-info-circle"></i>
-      <span>Exporting <strong>{filteredEvents.length}</strong> filtered events.</span>
-    </div>
-    <div class="modal-options">
-      <button class="export-opt {selectedExportFormat === 'csv' ? 'selected' : ''}" on:click={() => selectedExportFormat = 'csv'}>
-        <div class="export-opt-info">
-          <div class="export-opt-name">CSV Format</div>
-          <div class="export-opt-desc">For Excel / SIEM integration</div>
-        </div>
-      </button>
-      <button class="export-opt {selectedExportFormat === 'json' ? 'selected' : ''}" on:click={() => selectedExportFormat = 'json'}>
-        <div class="export-opt-info">
-          <div class="export-opt-name">JSON Format</div>
-          <div class="export-opt-desc">Raw structured data</div>
-        </div>
-      </button>
-    </div>
-    <div class="modal-footer">
-      <button class="ds-btn" on:click={() => showExportModal = false}>Cancel</button>
-      <button class="ds-btn primary" on:click={handleExport}><i class="ti ti-download"></i> Download</button>
-    </div>
-  </div>
-</div>
-{/if}
+<ExportPreviewModal 
+
+    show={showExportModal} 
+    title="Threat Investigation Logs" 
+    columns={["Time", "Source IP", "Country", "Attack Type", "Severity", "Log Source", "Status", "Threat Score", "Tool / Client", "MITRE Tactic", "Payload Details"]}
+    data={fullExportData}
+    ipColumn="Source IP"
+    on:close={() => showExportModal = false}
+    on:confirm={handleExport}
+  />
 
 <!-- Toast -->
 <div class="toast {showToast ? 'show' : ''}">
@@ -318,18 +328,18 @@
 .details-container { padding: 20px 32px 28px; background: var(--bg-panel); box-shadow: inset 0 3px 6px rgba(0,0,0,0.02); }
 
 /* Detail Panels Grid */
-.details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-.detail-panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; }
+.details-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.detail-panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; min-width: 0; word-break: break-word; overflow-wrap: anywhere; }
 .dp-title { font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-.dp-content { display: flex; flex-direction: column; gap: 8px; }
+.dp-content { display: flex; flex-direction: column; gap: 8px; word-break: break-word; overflow-wrap: anywhere; }
 .kv { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; font-size: 12px; margin-bottom: 4px; }
 .k { color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
 .v { color: var(--text-primary); font-weight: 500; text-align: right; word-break: break-all; }
 .badge-mitre { background: var(--blue-bg); color: var(--blue); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
 
 /* Mitigation Items */
-.mit-item { padding: 8px 12px; border-radius: 6px; font-size: 11.5px; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; font-weight: 500; }
-.mit-item i { font-size: 16px; margin-top: 1px; }
+.mit-item { padding: 8px 12px; border-radius: 6px; font-size: 11.5px; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; font-weight: 500; white-space: normal; word-break: break-word; }
+.mit-item i { font-size: 16px; margin-top: 1px; flex-shrink: 0; }
 .mit-item.immediate { background: var(--red-bg); color: var(--red); border: 1px solid rgba(163,45,45,0.2); }
 .mit-item.longterm { background: var(--green-bg); color: var(--green); border: 1px solid rgba(29,158,117,0.2); }
 

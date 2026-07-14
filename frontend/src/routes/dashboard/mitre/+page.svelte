@@ -40,7 +40,7 @@
 <div style="display:flex;flex-direction:column;gap:16px;padding-bottom:2rem;">
   <div class="ds-card-head" style="margin-bottom: 0;">
     <div class="ds-card-title"><i class="ti ti-grid-dots"></i> MITRE ATT&CK® Matrix Mapping</div>
-    <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Mapping real-time honeypot alerts to adversary tactics, techniques, and procedures (TTPs).</div>
+    <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Mapping real-time KKUSIEM alerts to adversary tactics, techniques, and procedures (TTPs).</div>
   </div>
 
   <!-- KPI Summary Cards -->
@@ -193,7 +193,7 @@
         <div class="technique-card active danger">
           <div class="t-id">T1059</div>
           <div class="t-name">Command & Scripting</div>
-          <p class="t-desc">Adversary is executing unauthorized shell commands on the honeypot.</p>
+          <p class="t-desc">Adversary is executing unauthorized shell commands on the KKUSIEM.</p>
           <div class="t-body">
             <div class="badge-group">
               <span class="ds-badge red">Command Execution</span>

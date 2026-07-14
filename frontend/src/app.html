@@ -4,12 +4,49 @@
 		<meta charset="utf-8" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!-- Tabler Icons -->
 		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+		<!-- Google Fonts: Noto Sans Thai (For all text) + Inter (For numbers) + JetBrains Mono (For IP/Code) -->
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Thai:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 		<script src="https://cdn.tailwindcss.com"></script>
-		<title>Sentinel SIEM</title>
+		<script>
+			tailwind.config = {
+				theme: {
+					fontFamily: {
+						sans: ['"Noto Sans Thai"', 'sans-serif'],
+						num: ['"Inter"', 'sans-serif'],
+						mono: ['"JetBrains Mono"', 'monospace'],
+					},
+					extend: {}
+				}
+			}
+		</script>
+		<style>
+			/* Global Font Stack */
+			:root {
+				--font-thai: 'Noto Sans Thai', sans-serif;
+				--font-en: 'Noto Sans Thai', sans-serif;
+				--font-mono: 'Noto Sans Thai', sans-serif;
+			}
+			/* Force Noto Sans Thai on all text elements except code, icons, and terminal */
+			*:not(code):not(pre):not([class^="ti-"]):not(.ti):not(.terminal-box):not(i) {
+				font-family: 'Noto Sans Thai', sans-serif !important;
+			}
+			html, body {
+				font-family: 'Noto Sans Thai', sans-serif !important;
+				-webkit-font-smoothing: antialiased;
+				-moz-osx-font-smoothing: grayscale;
+				text-rendering: optimizeLegibility;
+				font-size: 15px; /* คืนค่าขนาดที่เหมาะสมกับ Noto Sans Thai */
+				letter-spacing: normal;
+			}
+		</style>
+		<title>Sentinel SIEM | KKUSIEM</title>
 		%sveltekit.head%
 	</head>
-	<body data-sveltekit-preload-data="hover" class="bg-gray-50 text-gray-900 font-sans">
+	<body data-sveltekit-preload-data="hover">
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

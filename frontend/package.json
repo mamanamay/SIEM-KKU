@@ -19,7 +19,9 @@
     "vite": "^5.0.3"
   },
   "dependencies": {
-    "socket.io-client": "^4.7.4",
-    "chart.js": "^4.4.1"
+    "chart.js": "^4.4.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
+    "socket.io-client": "^4.7.4"
   }
 }

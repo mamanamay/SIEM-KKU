@@ -47,9 +47,7 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
-      - ./cowrie-config/var/log/cowrie:/app/logs:ro
-      - ./webtrap-logs:/app/webtrap-logs:ro
-      - ./siem-logs:/app/siem-logs        # Access Layer + C&C Outbound Logs (read-write: backend writes blocked_ips.json here)
+      - ./logs:/app/logs
     depends_on:
       - postgres
       - redis
@@ -82,17 +80,17 @@ services:
     ports:
       - "${COWRIE_SSH_PORT:-2222}:2222"
     volumes:
-      - ./cowrie-config/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
-      - ./cowrie-config/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
-      - ./cowrie-config/var/log/cowrie:/cowrie/cowrie-git/var/log/cowrie
-      - ./cowrie-config/var/lib/cowrie:/cowrie/cowrie-git/var/lib/cowrie
+      - ./honeypots/cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
+      - ./honeypots/cowrie/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
+      - ./logs/cowrie:/cowrie/cowrie-git/var/log/cowrie
+      - ./honeypots/cowrie/var/lib/cowrie:/cowrie/cowrie-git/var/lib/cowrie
     environment:
       - COWRIE_TELNET_ENABLED=yes
 
   # WebTrap (Web Vulnerability Honeypot)
   webtrap:
     build:
-      context: ./webtrap
+      context: ./honeypots/webtrap
       dockerfile: Dockerfile
     container_name: webtrap_honeypot_dev
     restart: always
@@ -100,9 +98,9 @@ services:
       - "${WEBTRAP_HTTP_PORT:-8081}:8080"
       - "${WEBTRAP_HTTPS_PORT:-8444}:8443"
     volumes:
-      - ./webtrap:/app
+      - ./honeypots/webtrap:/app
       - /app/node_modules
-      - ./webtrap-logs:/logs
+      - ./logs/webtrap:/logs
       - ./nginx/certs:/certs:ro
 
 volumes:

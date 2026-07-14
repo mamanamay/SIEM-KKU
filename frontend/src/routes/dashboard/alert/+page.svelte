@@ -1,5 +1,6 @@
 <script>
     import { eventsStore } from '../../../stores/events';
+    import ExportPreviewModal from '$lib/components/ExportPreviewModal.svelte';
     let selectedRange = 'all';
     
     $: getTimeLimit = (range) => {
@@ -51,6 +52,35 @@
     }
 
     $: displayTime = selectedRange === 'all' ? "ทั้งหมด (All Time)" : formatDate(timeLimit) + " - " + formatDate(Date.now());
+
+    import { downloadCSV, downloadPDF } from '$lib/utils/export';
+
+    let showExportModal = false;
+    let showToast = false;
+    function handleExport(e) {
+      const { format, selectedColumns, filteredData } = e.detail;
+
+      if (format === 'csv') {
+        downloadCSV(filteredData, selectedColumns, 'alert_logs.csv');
+      } else if (format === 'pdf') {
+        downloadPDF(filteredData, selectedColumns, 'alert_logs.pdf', 'KKUSIEM - Critical Alerts Report');
+      }
+      
+      showExportModal = false;
+      showToast = true;
+      setTimeout(() => showToast = false, 3000);
+    }
+
+    $: fullExportData = (alerts || []).map(alert => ({
+      "Time": alert.time || alert.timeStr || formatDate(alert.createdAt),
+      "Source IP": alert.ip,
+      "Country": alert.country || 'Unknown',
+      "Alert Rule": alert.type,
+      "Severity": alert.severity,
+      "Action Taken": 'Blocked/Alerted',
+      "Threat Score": alert.threatScore || 80,
+      "Target/Destination": alert.path || 'Internal Network'
+    }));
   </script>
   <div class="al-page">
     <!-- Header -->
@@ -59,7 +89,10 @@
         <div class="ds-card-title"><i class="ti ti-bell-ringing"></i> Alert Log</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Showing <strong style="color:var(--text-primary)">{alerts.length}</strong> critical / high severity alerts &bull; {displayTime}</div>
       </div>
-      <button class="ds-btn" on:click={() => {}}><i class="ti ti-refresh"></i> Refresh</button>
+      <div style="display: flex; gap: 8px;">
+        <button class="ds-btn" on:click={() => {}}><i class="ti ti-refresh"></i> Refresh</button>
+        <button class="ds-btn primary" on:click={() => showExportModal = true}><i class="ti ti-download"></i> Export Report</button>
+      </div>
     </div>
 
     <!-- Time Range Filter -->
@@ -128,7 +161,23 @@
       {/if}
     </div>
   </div>
-<style>
+
+  <ExportPreviewModal 
+    show={showExportModal} 
+    title="Critical Alerts" 
+    columns={["Time", "Source IP", "Country", "Alert Rule", "Severity", "Action Taken", "Threat Score", "Target/Destination"]}
+    data={fullExportData}
+    ipColumn="Source IP"
+    on:close={() => showExportModal = false}
+    on:confirm={handleExport}
+  />
+
+  <div class="toast {showToast ? 'show' : ''}">
+    <i class="ti ti-check" style="color:var(--green)"></i>
+    <span>Export Successful</span>
+  </div>
+
+  <style>
 .al-page {
   display: flex;
   flex-direction: column;

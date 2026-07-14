@@ -18,8 +18,8 @@ $excludePatterns = @(
     "node_modules",
     "frontend/node_modules", "backend/node_modules", "webtrap/node_modules",
     "frontend/build", "frontend/.svelte-kit",
-    "backend/dist",
-    "siem-logs", "webtrap-logs",
+    "honeypots", "logs",
+    "docker-compose.yml", ".env",
     "check_divs.js", "fix_divs.js", "fix_text_2.js",
     "update_analytics.js", "update_ds.js", "test_db.js",
     "extract.py", "proxy.js",
@@ -64,7 +64,7 @@ $remoteScript += " cd ~/honeypot-siem;"
 $remoteScript += " if [ ! -f .env ]; then cp .env.example .env; echo '  [WARNING] .env created from template. Edit it then run: cd ~/honeypot-siem && bash nginx/generate-ssl.sh && docker compose up -d --build'; exit 0; fi;"
 $remoteScript += " chmod +x nginx/generate-ssl.sh;"
 $remoteScript += " bash nginx/generate-ssl.sh;"
-$remoteScript += " mkdir -p siem-logs webtrap-logs cowrie-config/var/log/cowrie cowrie-config/var/lib/cowrie;"
+$remoteScript += " mkdir -p logs/siem logs/webtrap logs/cowrie honeypots/cowrie/var/lib/cowrie;"
 $remoteScript += " docker compose up -d --build;"
 $remoteScript += " docker compose ps"
 

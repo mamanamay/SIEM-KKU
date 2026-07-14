@@ -99,7 +99,24 @@
     goto(path);
   }
 
-  onMount(() => {
+  let scorecard: any = null;
+  let scorecardLoading = true;
+
+  onMount(async () => {
+    // Fetch Scorecard
+    try {
+      const res = await fetch('/api/scorecard', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        scorecard = await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to fetch scorecard', e);
+    } finally {
+      scorecardLoading = false;
+    }
+
     // Load Chart.js
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
@@ -339,7 +356,7 @@
       <div class="metric-body">
         <div class="metric-label">Total Events</div>
         <div class="metric-val">{events.length}</div>
-        <div class="metric-sub">บันทึกสดจาก Honeypot</div>
+        <div class="metric-sub">บันทึกสดจาก KKUSIEM</div>
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
@@ -352,14 +369,21 @@
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card info" on:click={() => navigateTo('/dashboard/mitre')} title="ดู MITRE ATT&CK">
-      <div class="metric-icon-wrap info-icon"><i class="ti ti-shield-lock"></i></div>
+    <div class="metric-card info" style="border-left: 4px solid var(--green);" title="Organization Security Posture Score">
+      <div class="metric-icon-wrap" style="background: var(--green-bg); color: var(--green);"><i class="ti ti-shield-check"></i></div>
       <div class="metric-body">
-        <div class="metric-label">Filtered Results</div>
-        <div class="metric-val">{filteredEvents.length}</div>
-        <div class="metric-sub">{activeSev === 'all' ? 'แสดงทุก severity' : `กรอง: ${activeSev}`}</div>
+        <div class="metric-label">Security Posture (API)</div>
+        {#if scorecardLoading}
+          <div class="metric-val skeleton-text" style="width: 80px; height: 28px; margin: 4px 0; border-radius:4px;"></div>
+          <div class="metric-sub skeleton-text" style="width: 120px; height: 14px; border-radius:4px;"></div>
+        {:else if scorecard}
+          <div class="metric-val ds-kpi-val" style="color: var(--green); font-size:24px; padding:0;">{scorecard.score}<span style="font-size:14px;color:var(--text-muted)">/{scorecard.maxScore}</span></div>
+          <div class="metric-sub" style="font-size:11px;">{scorecard.organization}</div>
+        {:else}
+          <div class="metric-val ds-kpi-val" style="color: var(--red); font-size:24px; padding:0;">Error</div>
+          <div class="metric-sub">Failed to load API</div>
+        {/if}
       </div>
-      <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
   </div>
 
@@ -425,7 +449,7 @@
           <div class="panel-icon blue-icon"><i class="ti ti-list-details"></i></div>
           <div>
             <div class="panel-title">Recent Attack Events</div>
-            <div class="panel-subtitle">เหตุการณ์ล่าสุดจาก Honeypot</div>
+            <div class="panel-subtitle">เหตุการณ์ล่าสุดจาก KKUSIEM</div>
           </div>
         </div>
         <span class="badge-count">{filteredEvents.length} events</span>
@@ -440,7 +464,7 @@
         <tbody>
           {#each filteredEvents.slice(0, 7) as event}
           <tr>
-            <td class="ip-mono">{event.time || event.timeStr}</td>
+            <td class="ds-mono">{event.time || event.timeStr}</td>
             <td class="ip-mono">
               <a href="/dashboard/logs?ip={event.ip}" class="ip-link" on:click|stopPropagation title="ดูรายละเอียด IP นี้">{event.ip}</a>
             </td>
@@ -905,4 +929,4 @@
   .metrics { grid-template-columns: 1fr 1fr; }
   .metric-val { font-size: 24px; }
 }
-</style>
+</style>

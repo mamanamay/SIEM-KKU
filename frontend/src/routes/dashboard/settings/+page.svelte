@@ -117,7 +117,7 @@
 </script>
 
 <svelte:head>
-  <title>Settings - Honeypot Command Center</title>
+  <title>Settings - KKUSIEM Command Center</title>
 </svelte:head>
 
 <div class="ds-page">
@@ -381,7 +381,7 @@
           </div>
           <div class="about-hero">
             <div class="about-logo"><i class="ti ti-radar"></i></div>
-            <div class="about-name">KKU Honeypot SIEM</div>
+            <div class="about-name">KKU KKUSIEM SIEM</div>
             <div class="about-version">Version 2.0.0</div>
           </div>
           <div class="info-rows">

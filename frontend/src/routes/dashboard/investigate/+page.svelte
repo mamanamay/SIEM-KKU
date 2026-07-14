@@ -4,6 +4,7 @@
   import { getFacultyForIP } from '../../../stores/faculties';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import ExportPreviewModal from '$lib/components/ExportPreviewModal.svelte';
 
   $: events = $eventsStore;
   let searchIp = $page.url.searchParams.get('ip') || '';
@@ -50,8 +51,8 @@
 
   $: timeLimit = getTimeLimit(selectedRange);
 
-  $: filteredEvents = events.filter(e => {
-    const matchIp = e.ip.includes(searchIp);
+  $: filteredEvents = (events || []).filter(e => {
+    const matchIp = (e.ip || '').includes(searchIp);
     if (!matchIp) return false;
     
     if (searchTime) {
@@ -271,6 +272,37 @@
     };
     return map[code] || 'Unknown Tactic';
   }
+
+  import { downloadCSV, downloadPDF } from '$lib/utils/export';
+  let showExportModal = false;
+  let showToast = false;
+
+  function handleExport(e: CustomEvent) {
+    const { format, selectedColumns, filteredData } = e.detail;
+
+    if (format === 'csv') {
+      downloadCSV(filteredData, selectedColumns, 'investigate_logs.csv');
+    } else if (format === 'pdf') {
+      downloadPDF(filteredData, selectedColumns, 'investigate_logs.pdf', 'KKUSIEM - Threat Investigation Report');
+    }
+    
+    showExportModal = false;
+    showToast = true;
+    setTimeout(() => showToast = false, 3000);
+  }
+
+  $: fullExportData = (filteredEvents || []).map(log => ({
+    "Time": log.time || log.timeStr,
+    "Source IP": log.ip,
+    "Country": log.country || 'Unknown',
+    "Event Type": log.type || 'Unknown Event',
+    "Severity": log.severity || 'medium',
+    "Status": 'Investigating',
+    "Threat Score": log.threatScore || 50,
+    "Tool / Client": log.userAgent || '-',
+    "MITRE Tactic": mitreTactic(log.tacticId),
+    "Payload Details": log.payload || '-'
+  }));
 </script>
 
 <div style="display:flex;flex-direction:column;gap:16px;padding-bottom:2rem;">
@@ -281,11 +313,11 @@
       คลิกที่แถวเพื่อดูรายละเอียดและดำเนินการตอบสนองภัยคุกคาม
     </div>
     <div class="log-sources-bar">
-      <span class="log-src access"><i class="ti ti-router"></i> ACCESS LAYER LOG</span>
+      <span class="log-src access"><i class="ti ti-shield"></i> FIREWALL TRAFFIC LOG</span>
       <span class="src-sep">+</span>
-      <span class="log-src server"><i class="ti ti-server"></i> SERVER HONEYPOT LOG</span>
+      <span class="log-src server"><i class="ti ti-server"></i> SERVER SYSLOG</span>
       <span class="src-sep">+</span>
-      <span class="log-src cnc"><i class="ti ti-world-x"></i> C&C FIREWALL LOG</span>
+      <span class="log-src cnc"><i class="ti ti-world"></i> NGINX ACCESS LOG</span>
       <span class="src-sep">=</span>
       <span class="log-src siem"><i class="ti ti-shield-bolt"></i> CORRELATED EVENT</span>
     </div>
@@ -303,9 +335,14 @@
       </div>
     </div>
     
-    <div style="position:relative;flex:1;min-width:200px;max-width:300px;">
-      <i class="ti ti-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);"></i>
-      <input type="text" bind:value={searchIp} on:input={() => { resetAlertMode(); }} placeholder="ค้นหาด้วย IP Address..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px 8px 36px;border-radius:8px;font-size:13px;outline:none;transition:border-color 0.2s;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="position:relative;flex:1;min-width:200px;max-width:300px;">
+        <i class="ti ti-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);"></i>
+        <input type="text" bind:value={searchIp} on:input={() => { resetAlertMode(); }} placeholder="ค้นหาด้วย IP Address..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px 8px 36px;border-radius:8px;font-size:13px;outline:none;transition:border-color 0.2s;">
+      </div>
+      <button class="ds-btn primary" on:click={() => showExportModal = true}>
+        <i class="ti ti-download"></i> Export Report
+      </button>
     </div>
   </div>
 
@@ -329,7 +366,7 @@
             <td class="text-center">
               <button class="toggle-btn">{expandedEvent === e ? '−' : '+'}</button>
             </td>
-            <td class="mono">{e.time || e.timeStr || '—'}</td>
+            <td class="ds-mono">{e.time || e.timeStr || '-'}</td>
             <td class="mono">
               {e.ip}
               {#if getFacultyForIP(e.ip)}
@@ -344,9 +381,9 @@
             </td>
             <td>
               <div class="log-dots">
-                <span class="dot {hasAccess ? 'dot-access' : 'dot-off'}" title="Access Layer Log">A</span>
-                <span class="dot dot-server" title="Server Honeypot Log">S</span>
-                <span class="dot {hasCnc ? 'dot-cnc' : 'dot-off'}" title="C&C Outbound Log">C</span>
+                <span class="dot {hasAccess ? 'dot-access' : 'dot-off'}" title="Firewall Traffic Log">FW</span>
+                <span class="dot dot-server" title="Server Syslog">SRV</span>
+                <span class="dot {hasCnc ? 'dot-cnc' : 'dot-off'}" title="NGINX Access Log">WEB</span>
               </div>
             </td>
             <td>
@@ -378,9 +415,9 @@
                     <!-- Log 1: Access Layer -->
                     <div class="log-card {e.accessLayer ? 'card-active-access' : 'card-dim'}">
                       <div class="log-card-header">
-                        <span class="log-badge badge-access">A</span>
-                        <span>ACCESS LAYER LOG</span>
-                        <span class="log-card-src">access_layer.log</span>
+                        <span class="log-badge badge-access">FW</span>
+                        <span>FIREWALL TRAFFIC LOG</span>
+                        <span class="log-card-src">firewall.log</span>
                       </div>
                       <div class="log-card-icon"><i class="ti ti-router"></i></div>
                       {#if e.accessLayer}
@@ -404,12 +441,12 @@
 
                     <div class="chain-arrow"><i class="ti ti-arrow-right"></i></div>
 
-                    <!-- Log 2: Server Honeypot -->
+                    <!-- Log 2: Server KKUSIEM -->
                     <div class="log-card card-active-server">
                       <div class="log-card-header">
-                        <span class="log-badge badge-server">S</span>
-                        <span>SERVER LOG</span>
-                        <span class="log-card-src">{e.type?.includes('Web') || e.type?.includes('SQL') || e.type?.includes('Scan') || e.type?.includes('XSS') ? 'webtrap.json' : 'cowrie.json'}</span>
+                        <span class="log-badge badge-server">SRV</span>
+                        <span>SERVER SYSLOG</span>
+                        <span class="log-card-src">{e.type?.includes('Web') || e.type?.includes('SQL') || e.type?.includes('Scan') || e.type?.includes('XSS') ? 'webtrap.json' : 'edr_agent.json'}</span>
                       </div>
                       <div class="log-card-icon server-icon"><i class="ti ti-server"></i></div>
                       <div class="log-field"><label>Event ID</label><code>{e.mitreCode || 'T1110'}</code></div>
@@ -433,9 +470,9 @@
                     <!-- Log 3: C&C Outbound -->
                     <div class="log-card {hasCnc ? 'card-active-cnc' : 'card-dim'}">
                       <div class="log-card-header">
-                        <span class="log-badge badge-cnc">C</span>
-                        <span>C&C OUTBOUND LOG</span>
-                        <span class="log-card-src">cnc_outbound.log</span>
+                        <span class="log-badge badge-cnc">WEB</span>
+                        <span>NGINX ACCESS LOG</span>
+                        <span class="log-card-src">access.log</span>
                       </div>
                       <div class="log-card-icon cnc-icon"><i class="ti ti-world-x"></i></div>
                       {#if hasCnc}
@@ -530,7 +567,7 @@
                       <p class="mitigation-text">{e.mitigation || 'Block IP at Firewall | Monitor for further attempts'}</p>
 
                       <div class="action-section">
-                        <div class="action-label">WAF / Firewall Action:</div>
+                        <div class="action-label"><i class="ti ti-bolt"></i> SOAR Playbook: WAF / Firewall Action:</div>
                         {#if $roleStore === 'admin'}
                           <button
                             class="btn-action {isBlocked ? 'btn-done' : 'red'} {isActionLoading[e.ip] ? 'btn-loading' : ''}"
@@ -550,7 +587,7 @@
                         {/if}
 
                         <div class="action-label" style="margin-top:10px">
-                          Switch Port Action:
+                          <i class="ti ti-bolt"></i> SOAR Playbook: Switch Port Action:
                           {#if !faculty}
                             <span class="action-note">ไม่สามารถดำเนินการได้ — IP ภายนอก ไม่มี Switch Port</span>
                           {:else if !portInfo.verified}
@@ -645,6 +682,21 @@
   </div>
 </div>
 
+<ExportPreviewModal 
+  show={showExportModal} 
+  title="Threat Investigation Logs" 
+  columns={["Time", "Source IP", "Country", "Event Type", "Severity", "Status", "Threat Score", "Tool / Client", "MITRE Tactic", "Payload Details"]}
+  data={fullExportData}
+  ipColumn="Source IP"
+  on:close={() => showExportModal = false}
+  on:confirm={handleExport}
+/>
+
+<div class="toast {showToast ? 'show' : ''}">
+  <i class="ti ti-check" style="color:var(--green)"></i>
+  <span>Export Successful</span>
+</div>
+
 <style>
   /* ─── Page Layout ────────────────────────────────────────────────────────── */
   
@@ -701,7 +753,7 @@
 
   /* ─── Expanded Panel ─────────────────────────────────────────────────────── */
   .expanded-content-row td { padding: 0; }
-  .expanded-panel { padding: 20px 20px 25px 20px; border-bottom: 2px solid var(--border); background: rgba(0,0,0,0.12); }
+  .expanded-panel { padding: 20px 20px 25px 20px; border-bottom: 2px solid var(--border); background: rgba(0,0,0,0.12); word-break: break-word; overflow-wrap: anywhere; }
 
   .chain-header { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
   .chain-header i { color: var(--accent); font-size: 18px; }
@@ -712,7 +764,7 @@
   .chain-arrow { display: flex; align-items: center; justify-content: center; padding: 0 5px; color: var(--accent); font-size: 20px; align-self: center; }
   .chain-arrow.arrow-dim { color: var(--text-muted); opacity: 0.4; }
 
-  .log-card { flex: 1; min-width: 0; border-radius: 8px; padding: 14px; border: 1px solid var(--border); background: var(--bg-secondary); display: flex; flex-direction: column; gap: 8px; }
+  .log-card { flex: 1; min-width: 0; border-radius: 8px; padding: 14px; border: 1px solid var(--border); background: var(--bg-secondary); display: flex; flex-direction: column; gap: 8px; word-break: break-word; overflow-wrap: anywhere; }
   .card-active-access { border-color: rgba(0,200,255,0.4); background: rgba(0,200,255,0.04); }
   .card-active-server { border-color: rgba(46,204,113,0.4); background: rgba(46,204,113,0.04); }
   .card-active-cnc    { border-color: rgba(255,51,51,0.4);  background: rgba(255,51,51,0.04); }
@@ -745,7 +797,7 @@
 
   /* ─── Defense Grid ────────────────────────────────────────────────────────── */
   .defense-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 5px; }
-  .defense-box { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .defense-box { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; min-width: 0; word-break: break-word; overflow-wrap: anywhere; }
   .defense-box h5 { font-size: 12px; font-weight: 700; color: var(--text-primary); margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px; text-transform: uppercase; }
   .defense-box h5 i { color: var(--accent); }
 

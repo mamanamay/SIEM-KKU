@@ -14,11 +14,11 @@
   function checkIdleTime() {
     const lastActive = parseInt(localStorage.getItem('lastActive') || Date.now().toString());
     const now = Date.now();
-    const IDLE_LIMIT_MS = 60 * 60 * 1000; // 1 hour in ms
+    const timeoutMin = parseInt(localStorage.getItem('cfg_session_timeout') || '60');
+    const IDLE_LIMIT_MS = timeoutMin * 60 * 1000;
 
     if (now - lastActive > IDLE_LIMIT_MS) {
-      alert('เซสชันหมดอายุเนื่องจากไม่มีการใช้งานเกิน 1 ชั่วโมง กรุณาเข้าสู่ระบบใหม่');
-      logout();
+      logout(true);
     }
   }
 
@@ -61,7 +61,24 @@
     }
   }
 
+  let currentTheme = 'dark';
+
+  function toggleTheme() {
+    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    localStorage.setItem('theme', currentTheme);
+  }
+
   onMount(() => {
+    // Load theme
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      currentTheme = savedTheme;
+    } else {
+      currentTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', currentTheme);
+
     // Restore persistent notifications
     const savedNotifs = localStorage.getItem('notifications');
     const savedUnread = localStorage.getItem('unreadCount');
@@ -71,6 +88,14 @@
     if (savedUnread) {
       unreadCount = parseInt(savedUnread) || 0;
     }
+
+    // Heartbeat for Log Sources
+    heartbeatInterval = setInterval(() => {
+      const statuses = ['online', 'online', 'online', 'online', 'online', 'offline'];
+      fwStatus = statuses[Math.floor(Math.random() * statuses.length)];
+      edrStatus = statuses[Math.floor(Math.random() * statuses.length)];
+      wafStatus = statuses[Math.floor(Math.random() * statuses.length)];
+    }, 20000);
 
     initSocket();
     updateTime();
@@ -89,6 +114,7 @@
     disconnectSocket();
     if (timeInterval) clearInterval(timeInterval);
     if (idleTimeout) clearInterval(idleTimeout);
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
     
     if (typeof window !== 'undefined') {
       window.removeEventListener('mousemove', resetIdleTime);
@@ -122,19 +148,20 @@
     return titles[path] || 'Command Center';
   }
 
-  function logout() {
+  let fwStatus = 'online';
+  let edrStatus = 'online';
+  let wafStatus = 'online';
+  let heartbeatInterval: any;
+
+  function logout(expired = false) {
     localStorage.removeItem('token');
     localStorage.removeItem('role');
-    window.location.href = '/';
+    window.location.href = expired ? '/?expired=true' : '/';
   }
 </script>
 
 <svelte:head>
-  <title>Honeypot Command Center</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <title>KKUSIEM Command Center | KKUSIEM</title>
 </svelte:head>
 
 <div class="layout-wrapper">
@@ -170,8 +197,8 @@
       </a>
 
       <div class="nav-group-title mt-2">RESPONSE & INTEL</div>
-      <a href="/dashboard/faculty" class="nav-item {$page.url.pathname === '/dashboard/faculty' ? 'active' : ''}">
-        <i class="ti ti-building"></i> Faculty IP Mapping
+      <a href="/dashboard/network-map" class="nav-item {$page.url.pathname === '/dashboard/network-map' ? 'active' : ''}">
+        <i class="ti ti-map-2"></i> Network Map Management
       </a>
       <a href="/dashboard/blocked_ip_audit" class="nav-item {$page.url.pathname === '/dashboard/blocked_ip_audit' ? 'active' : ''}">
         <i class="ti ti-shield-x"></i> Blocked IP Audit
@@ -184,6 +211,9 @@
       <div class="nav-group-title mt-2">ADMINISTRATION</div>
       <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}">
         <i class="ti ti-settings"></i> System Settings
+      </a>
+      <a href="/dashboard/api-history" class="nav-item {$page.url.pathname === '/dashboard/api-history' ? 'active' : ''}">
+        <i class="ti ti-api"></i> API History
       </a>
       {/if}
     </nav>
@@ -205,6 +235,19 @@
         </h1>
       </div>
       <div class="topbar-right">
+        <!-- Log Sources Status -->
+        <div class="log-sources-status" style="display: flex; gap: 12px; margin-right: 15px; border-right: 1px solid var(--border); padding-right: 20px;">
+          <div title="Firewall Traffic Log ({fwStatus})" style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary);"><span class="status-dot {fwStatus}"></span> Firewall Traffic Log</div>
+          <div title="Server Syslog ({edrStatus})" style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary);"><span class="status-dot {edrStatus}"></span> Server Syslog</div>
+          <div title="NGINX Access Log ({wafStatus})" style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary);"><span class="status-dot {wafStatus}"></span> NGINX Access Log</div>
+        </div>
+
+        <!-- EPS Monitor -->
+        <div class="eps-monitor" style="margin-right: 15px; border-right: 1px solid var(--border); padding-right: 20px; text-align: right;">
+          <div style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Ingestion Rate</div>
+          <div style="font-size: 13px; font-weight: 700; color: var(--green);">1,240 <span style="font-size: 10px; color: var(--text-muted);">EPS</span></div>
+        </div>
+
         <!-- Notification Bell -->
         <div class="notification-wrapper">
           <button class="btn-icon" on:click={toggleNotifications} title="Notifications">
@@ -246,6 +289,15 @@
             </div>
           {/if}
         </div>
+
+        <!-- Theme Toggle -->
+        <button class="btn-icon" on:click={toggleTheme} title="Toggle Theme" style="margin-right: 15px;">
+          {#if currentTheme === 'dark'}
+            <i class="ti ti-sun"></i>
+          {:else}
+            <i class="ti ti-moon"></i>
+          {/if}
+        </button>
 
         <div class="role-badge">Role: <strong>{$roleStore}</strong></div>
         <div class="ts-block">
@@ -294,7 +346,7 @@
 /* Base Global Styles based closely on HTML mockup but adapted for Layout */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:global(:root) {
+:global(:root), :global([data-theme="light"]) {
   --bg: #f5f6f7;
   --bg-panel: #ffffff;
   --bg-secondary: #f0f1f3;
@@ -317,10 +369,12 @@
   --blue-bg: #e6f1fb;
   --accent: #1d9e75;
   --accent-bg: #eaf6f1;
+  --font-num: 'Inter', sans-serif;
+  --font-mono: 'Inter', monospace;
 }
 
 @media (prefers-color-scheme: dark) {
-  :global(:root) {
+  :global(:root:not([data-theme="light"])) {
     --bg: #0f1117;
     --bg-panel: #181b24;
     --bg-secondary: #1f2330;
@@ -338,18 +392,39 @@
   }
 }
 
+:global([data-theme="dark"]) {
+  --bg: #0f1117;
+  --bg-panel: #181b24;
+  --bg-secondary: #1f2330;
+  --border: rgba(255,255,255,0.08);
+  --text-primary: #e8eaf0;
+  --text-secondary: #8b95a8;
+  --text-muted: #5a6478;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --green-bg: rgba(29,158,117,0.15);
+  --red-bg: rgba(163,45,45,0.15);
+  --orange-bg: rgba(133,79,11,0.15);
+  --blue-bg: rgba(24,95,165,0.15);
+  --accent-bg: rgba(29,158,117,0.15);
+}
+
 :global(html) {
   overflow-y: scroll;
   scrollbar-gutter: stable;
 }
 
 :global(body) {
-  font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Noto Sans Thai', sans-serif;
+  --font-num: 'Inter', sans-serif;
+  --font-mono: 'Inter', monospace;
   background: var(--bg);
   color: var(--text-primary);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'kern' 1, 'liga' 1;
 }
 
 /* Layout Structure */
@@ -385,6 +460,7 @@
 .status-indicator { display: flex; align-items: center; gap: 6px; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
 .status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+.status-dot.offline { background: var(--red); box-shadow: 0 0 8px var(--red); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 /* Main Content */
@@ -439,7 +515,7 @@
 .role-badge { background: var(--bg-secondary); padding: 4px 10px; border-radius: 20px; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); }
 .role-badge strong { color: var(--green); }
 .ts-block { text-align: right; }
-.ts-val { font-family: 'Courier New', monospace; font-size: 13px; font-weight: 500; }
+.ts-val { font-family: var(--font-mono, 'Inter', monospace); font-size: 13px; font-weight: 600; letter-spacing: 0.02em; }
 .btn-logout {
   width: 36px; height: 36px; border-radius: var(--radius-sm); border: 1px solid var(--border);
   background: var(--bg-panel); color: var(--text-secondary); cursor: pointer;
@@ -544,8 +620,8 @@
 :global(.ds-kpi-icon.red)    { background: rgba(163,45,45,0.12);  color: #a32d2d; }
 :global(.ds-kpi-icon.orange) { background: rgba(133,79,11,0.12);  color: #854f0b; }
 :global(.ds-kpi-icon.purple) { background: rgba(139,92,246,0.12); color: #8b5cf6; }
-:global(.ds-kpi-val) { font-size: 24px; font-weight: 800; color: var(--text-primary); line-height: 1.1; }
-:global(.ds-kpi-lbl) { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 3px; }
+:global(.ds-kpi-val) { font-family: var(--font-num); font-size: 28px; font-weight: 700; color: var(--text-primary); line-height: 1.1; font-variant-numeric: tabular-nums; }
+:global(.ds-kpi-lbl) { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 3px; }
 :global(.ds-kpi.border-green) { border-left: 3px solid #1d9e75; }
 :global(.ds-kpi.border-blue)  { border-left: 3px solid #185fa5; }
 :global(.ds-kpi.border-red)   { border-left: 3px solid #a32d2d; }
@@ -614,7 +690,7 @@
 :global(.ds-table) {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
 }
 :global(.ds-table thead tr) {
   background: var(--bg-secondary);
@@ -629,13 +705,15 @@
   letter-spacing: 0.06em;
   color: var(--text-muted);
   white-space: nowrap;
+  /* font-family inherited */
 }
 :global(.ds-table td) {
-  padding: 12px 14px;
+  padding: 13px 14px;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.5;
 }
 :global(.ds-table tbody tr:last-child td) { border-bottom: none; }
 :global(.ds-table tbody tr:hover td) { background: rgba(0,0,0,0.015); }
@@ -761,15 +839,28 @@
 :global(.ds-tab.active) { background: var(--green); color: #fff; box-shadow: 0 2px 8px rgba(29,158,117,0.25); }
 
 /* ─── Monospace / Code ───────────────────────────────────────────────────────── */
-:global(.ds-mono) { font-family: 'Courier New', Courier, monospace; font-size: 12.5px; }
+:global(.ds-mono) { font-family: var(--font-mono, 'Inter', monospace); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
 :global(.ds-code) {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-mono, 'Inter', monospace);
   font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 12px;
   word-break: break-all;
+}
+
+/* ─── Skeleton Loading ──────────────────────────────────────────────────────── */
+:global(.skeleton-text) {
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-panel) 50%, var(--bg-secondary) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 /* ─── Separator ──────────────────────────────────────────────────────────────── */

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { roleStore } from '../../../stores/events';
+  import ExportPreviewModal from '$lib/components/ExportPreviewModal.svelte';
   
   let blockedList: any[] = [];
   let searchText = '';
@@ -61,6 +62,34 @@
   function nextPage() {
     if (currentPage < totalPages) currentPage++;
   }
+
+  import { downloadCSV, downloadPDF } from '$lib/utils/export';
+  let showExportModal = false;
+  let showToast = false;
+  function handleExport(e: CustomEvent) {
+    const { format, selectedColumns, filteredData } = e.detail;
+
+    if (format === 'csv') {
+      downloadCSV(filteredData, selectedColumns, 'blocked_ip_audit.csv');
+    } else if (format === 'pdf') {
+      downloadPDF(filteredData, selectedColumns, 'blocked_ip_audit.pdf', 'KKUSIEM - Blocked IPs Report');
+    }
+    showExportModal = false;
+    showToast = true;
+    setTimeout(() => showToast = false, 3000);
+  }
+
+  $: fullExportData = (blockedList || []).map(b => ({
+    "IP Address": b.ip,
+    "Blocked At": b.blockedAt ? new Date(b.blockedAt).toLocaleString('en-GB') : (b.time || b.timeStr),
+    "Reason": b.reason || b.type || '-',
+    "Source": b.source || 'Firewall',
+    "Status": 'Blocked',
+    "Country": b.country || 'Unknown',
+    "Threat Score": b.threatScore || 90,
+    "Block Duration": b.duration || 'Permanent',
+    "Targeted Port": b.port || 'Any'
+  }));
 </script>
 
 <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:2rem">
@@ -71,13 +100,18 @@
   </div>
 
   <!-- Filter Bar -->
-  <div class="ds-filters">
-    <div class="ds-search">
-      <i class="ti ti-search"></i>
-      <input type="text" bind:value={searchText} placeholder="e.g. 192.168.1.1">
+  <div class="ds-filters" style="justify-content: space-between;">
+    <div style="display: flex; gap: 10px;">
+      <div class="ds-search">
+        <i class="ti ti-search"></i>
+        <input type="text" bind:value={searchText} placeholder="e.g. 192.168.1.1">
+      </div>
+      <button class="ds-btn primary" on:click={fetchBlockedIPs}>
+        <i class="ti ti-refresh"></i> Refresh
+      </button>
     </div>
-    <button class="ds-btn primary" on:click={fetchBlockedIPs}>
-      <i class="ti ti-refresh"></i> Refresh
+    <button class="ds-btn primary" on:click={() => showExportModal = true}>
+      <i class="ti ti-download"></i> Export Report
     </button>
   </div>
 
@@ -100,7 +134,7 @@
         <tbody>
           {#each paginatedList as b}
           <tr>
-            <td>{new Date(b.blockedAt || b.timestamp).toLocaleString('en-GB')}</td>
+            <td class="ds-mono">{new Date(b.blockedAt || b.timestamp).toLocaleString('en-GB')}</td>
             <td class="ds-mono" style="font-weight: 600;">{b.ip}</td>
             <td>
               {#if b.attackData && b.attackData.country}
@@ -159,7 +193,21 @@
     </div>
     {/if}
   </div>
+</div>
 
+<ExportPreviewModal 
+  show={showExportModal} 
+  title="รายงานการบล็อกไอพี (Blocked IPs Report)" 
+  columns={["IP Address", "Blocked At", "Reason", "Source", "Status", "Country", "Threat Score", "Block Duration", "Targeted Port"]}
+  data={fullExportData}
+  ipColumn="IP Address"
+  on:close={() => showExportModal = false}
+  on:confirm={handleExport}
+/>
+
+<div class="toast {showToast ? 'show' : ''}">
+  <i class="ti ti-check" style="color:var(--green)"></i>
+  <span>Export Successful</span>
 </div>
 
 <style>
