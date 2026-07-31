@@ -50,6 +50,10 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - SSO_CLIENT_ID=${SSO_CLIENT_ID}
+      - SSO_CLIENT_SECRET=${SSO_CLIENT_SECRET}
+      - SSO_CALLBACK_URL=${SSO_CALLBACK_URL}
     expose:
       - "5000"
     volumes:

@@ -34,6 +34,8 @@ tar --exclude='node_modules' \
     --exclude='frontend/node_modules' \
     --exclude='backend/node_modules' \
     --exclude='webtrap/node_modules' \
+    --exclude='.env' \
+    --exclude='backend/.env' \
     --exclude='frontend/build' \
     --exclude='frontend/.svelte-kit' \
     --exclude='backend/dist' \
@@ -79,9 +81,11 @@ ssh ${USERNAME}@${SERVER_IP} << 'REMOTE'
   echo "  → Setting up .env..."
   if [ ! -f .env ]; then
     cp .env.example .env
+    cp backend/.env.example backend/.env
     echo ""
-    echo "  ⚠️  .env created from template. Please edit it before continuing:"
+    echo "  ⚠️  .env created from template. Please edit .env and backend/.env before continuing:"
     echo "      nano ~/honeypot-siem/.env"
+    echo "      nano ~/honeypot-siem/backend/.env"
     echo ""
     echo "  After editing, run: cd ~/honeypot-siem && bash nginx/generate-ssl.sh && docker compose up -d --build"
     exit 0

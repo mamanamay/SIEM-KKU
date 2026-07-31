@@ -32,6 +32,9 @@ deploy.tar
 logs/
 honeypots/cowrie/var/
 !logs/.gitkeep
+# ── อนุญาตให้ SvelteKit route ที่ชื่อ "logs" ผ่านได้ ────────────
+!frontend/src/routes/dashboard/logs/
+!frontend/src/routes/dashboard/logs/**
 
 # ── SSL Certificates (generate บน server ด้วย generate-ssl.sh) ─
 nginx/certs/*.pem

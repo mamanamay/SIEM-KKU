@@ -43,7 +43,8 @@
   const TYPE_COLORS: Record<string, string> = {
     ssh: '#ef4444', compromised: '#ef4444', brute: '#ef4444',
     port: '#f97316', scan: '#3b82f6', web: '#3b82f6',
-    sql: '#10b981', command: '#10b981', ftp: '#8b5cf6', recon: '#a855f7'
+    sql: '#10b981', command: '#10b981', ftp: '#8b5cf6', recon: '#a855f7',
+    wazuh: '#f59e0b'
   };
   
   function getTypeColor(type: string) {
@@ -60,6 +61,7 @@
 
   function getTypeIcon(type: string) {
     const t = type.toLowerCase();
+    if (t.includes('wazuh')) return 'ti-eye';
     if (t.includes('ssh') || t.includes('brute') || t.includes('login')) return 'ti-lock';
     if (t.includes('sql') || t.includes('inject')) return 'ti-database';
     if (t.includes('web') || t.includes('scan')) return 'ti-world-search';

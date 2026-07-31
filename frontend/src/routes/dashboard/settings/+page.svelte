@@ -3,15 +3,24 @@
   import { roleStore } from '../../../stores/events';
 
   let activeTab = 'users';
-  
+
   // === User Management State ===
   let users: any[] = [];
   let newUsername = '';
   let newPassword = '';
   let newRole = 'guest';
+  let showNewPassword = false;
   let userMsg = '';
   let userErr = '';
   let userLoading = false;
+
+  // Password visibility per-user (map of username -> boolean)
+  let visiblePasswords: Record<string, boolean> = {};
+
+  // === Edit Password Modal ===
+  let editModal: { open: boolean; username: string; newPw: string; showPw: boolean; loading: boolean; msg: string; err: string } = {
+    open: false, username: '', newPw: '', showPw: false, loading: false, msg: '', err: ''
+  };
 
   // === Login Audit State ===
   let sessions: any[] = [];
@@ -25,10 +34,8 @@
   let enableToastNotify = true;
   let enableSoundAlert = false;
   let configSaved = false;
-  
   let cfgScorecardUrl = '';
   let cfgScorecardKey = '';
-
   let cfgIpSyncUrl = '';
   let cfgIpSyncKey = '';
 
@@ -61,7 +68,7 @@
       const data = await res.json();
       if (res.ok) {
         userMsg = `✓ สร้างบัญชี "${newUsername}" สำเร็จ`;
-        newUsername = ''; newPassword = ''; newRole = 'guest';
+        newUsername = ''; newPassword = ''; newRole = 'guest'; showNewPassword = false;
         await loadUsers();
       } else {
         userErr = data.message || 'เกิดข้อผิดพลาด';
@@ -77,6 +84,41 @@
       if (res.ok) { await loadUsers(); }
       else { alert(data.message || 'ไม่สามารถลบได้'); }
     } catch(e) { alert('Network error'); }
+  }
+
+  function togglePasswordVisibility(username: string) {
+    visiblePasswords = { ...visiblePasswords, [username]: !visiblePasswords[username] };
+  }
+
+  // ── Edit Password Modal ──
+  function openEditModal(username: string) {
+    editModal = { open: true, username, newPw: '', showPw: false, loading: false, msg: '', err: '' };
+  }
+  function closeEditModal() {
+    editModal = { ...editModal, open: false };
+  }
+  async function submitPasswordChange() {
+    editModal.msg = ''; editModal.err = '';
+    if (!editModal.newPw.trim() || editModal.newPw.length < 4) {
+      editModal.err = 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร'; return;
+    }
+    editModal.loading = true;
+    try {
+      const res = await fetch(`/api/auth/users/${editModal.username}/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: editModal.newPw })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        editModal.msg = data.message;
+        await loadUsers();
+        setTimeout(() => closeEditModal(), 1500);
+      } else {
+        editModal.err = data.message || 'เกิดข้อผิดพลาด';
+      }
+    } catch(e) { editModal.err = 'Network error'; }
+    editModal.loading = false;
   }
 
   // ---------- Login Audit ----------
@@ -165,22 +207,79 @@
 
     <!-- ═══════════════════ TAB: User Management ═══════════════════ -->
     {#if activeTab === 'users'}
+
+      <!-- Password Edit Modal -->
+      {#if editModal.open}
+        <div class="modal-overlay" on:click|self={closeEditModal}>
+          <div class="modal-box">
+            <div class="modal-head">
+              <div class="modal-title"><i class="ti ti-key"></i> เปลี่ยนรหัสผ่าน</div>
+              <button class="modal-close" on:click={closeEditModal}><i class="ti ti-x"></i></button>
+            </div>
+            <div class="modal-body">
+              <div class="modal-user-chip">
+                <div class="avatar admin">{editModal.username[0]?.toUpperCase()}</div>
+                <span>{editModal.username}</span>
+              </div>
+              {#if editModal.msg}<div class="msg success">{editModal.msg}</div>{/if}
+              {#if editModal.err}<div class="msg error">{editModal.err}</div>{/if}
+              <div class="field">
+                <label>รหัสผ่านใหม่</label>
+                <div class="pw-wrap">
+                  {#if editModal.showPw}
+                    <input type="text" bind:value={editModal.newPw} class="input-field" placeholder="กรอกรหัสผ่านใหม่" autofocus />
+                  {:else}
+                    <input type="password" bind:value={editModal.newPw} class="input-field" placeholder="กรอกรหัสผ่านใหม่" autofocus />
+                  {/if}
+                  <button type="button" class="pw-eye" on:click={() => editModal.showPw = !editModal.showPw}>
+                    <i class="ti {editModal.showPw ? 'ti-eye-off' : 'ti-eye'}"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="ds-btn sm" on:click={closeEditModal}>ยกเลิก</button>
+              <button class="ds-btn primary" on:click={submitPasswordChange} disabled={editModal.loading}>
+                {#if editModal.loading}<span class="mini-spin"></span>{/if}
+                <i class="ti ti-check"></i> บันทึกรหัสผ่าน
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
       <div class="two-col">
         <!-- Create Form -->
         <div class="ds-card">
           <div class="ds-card-head">
             <div class="ds-card-title"><i class="ti ti-user-plus"></i> Create New Account</div>
           </div>
+          <div class="sso-whitelist-note">
+            <i class="ti ti-shield-lock"></i>
+            <div>
+              <strong>KKU SSO Whitelist</strong><br>
+              <span>KKU SSO กรอกในช่อง username เพียงช่องเดียว</span>
+            </div>
+          </div>
           {#if userMsg}<div class="msg success">{userMsg}</div>{/if}
           {#if userErr}<div class="msg error">{userErr}</div>{/if}
           <form on:submit|preventDefault={createUser} class="form-stack">
             <div class="field">
-              <label>Username</label>
-              <input type="text" bind:value={newUsername} placeholder="e.g. john.doe" class="input-field" />
+              <label>Username <span class="label-hint">(Email เต็ม — สำหรับผูกกับ SSO)</span></label>
+              <input type="text" bind:value={newUsername} placeholder="e.g. user@anydomain.com" class="input-field" style="padding-right:12px;" />
             </div>
             <div class="field">
-              <label>Password</label>
-              <input type="password" bind:value={newPassword} placeholder="Min 6 characters" class="input-field" />
+              <label>Password <span class="label-hint">(สำหรับล็อกอินแบบปกติ)</span></label>
+              <div class="pw-wrap">
+                {#if showNewPassword}
+                  <input type="text" bind:value={newPassword} placeholder="Min 4 characters" class="input-field" />
+                {:else}
+                  <input type="password" bind:value={newPassword} placeholder="Min 4 characters" class="input-field" />
+                {/if}
+                <button type="button" class="pw-eye" on:click={() => showNewPassword = !showNewPassword}>
+                  <i class="ti {showNewPassword ? 'ti-eye-off' : 'ti-eye'}"></i>
+                </button>
+              </div>
             </div>
             <div class="field">
               <label>Role</label>
@@ -191,9 +290,9 @@
             </div>
             <div class="role-hint {newRole}">
               {#if newRole === 'admin'}
-                <i class="ti ti-shield-check"></i> Admin สามารถเข้าถึงทุกเมนูและจัดการบัญชีได้
+                <i class="ti ti-shield-check"></i> Admin เข้าถึงทุกเมนูและจัดการบัญชีได้
               {:else}
-                <i class="ti ti-eye"></i> Guest สามารถดูข้อมูลได้เท่านั้น ไม่สามารถแก้ไขได้
+                <i class="ti ti-eye"></i> Guest ดูข้อมูลได้เท่านั้น ไม่สามารถแก้ไขได้
               {/if}
             </div>
             <button type="submit" class="ds-btn primary full-w">
@@ -213,7 +312,7 @@
           {:else}
             <div class="ds-table-wrap">
               <table class="ds-table">
-                <thead><tr><th>#</th><th>Username</th><th>Role</th><th>Action</th></tr></thead>
+                <thead><tr><th>#</th><th>Username</th><th>Role</th><th>Password</th><th>Action</th></tr></thead>
                 <tbody>
                   {#each users as u, i}
                     <tr>
@@ -221,7 +320,12 @@
                       <td>
                         <div class="user-row">
                           <div class="avatar {u.role}">{u.username[0].toUpperCase()}</div>
-                          <strong>{u.username}</strong>
+                          <div>
+                            <strong>{u.username}</strong>
+                            {#if u.isSso}
+                              <div class="sso-tag"><i class="ti ti-brand-oauth"></i> SSO</div>
+                            {/if}
+                          </div>
                         </div>
                       </td>
                       <td>
@@ -230,19 +334,45 @@
                           {u.role}
                         </span>
                       </td>
-                      <td>
-                        {#if u.username !== 'admin'}
-                          <button class="ds-btn danger sm" on:click={() => deleteUser(u.username)}>
-                            <i class="ti ti-trash"></i> Delete
-                          </button>
+                      <td class="pw-cell">
+                        {#if u.isSso}
+                          <span class="sso-pw-label"><i class="ti ti-brand-oauth"></i> SSO Managed</span>
                         {:else}
-                          <span class="protected-label"><i class="ti ti-lock"></i> Protected</span>
+                          <div class="pw-reveal-wrap">
+                            <code class="pw-value">
+                              {visiblePasswords[u.username] ? (u.passwordHash || '—') : '••••••••'}
+                            </code>
+                            <button
+                              type="button"
+                              class="pw-eye-sm"
+                              title={visiblePasswords[u.username] ? 'ซ่อน' : 'แสดงรหัสผ่าน'}
+                              on:click|stopPropagation={() => togglePasswordVisibility(u.username)}
+                            >
+                              <i class="ti {visiblePasswords[u.username] ? 'ti-eye-off' : 'ti-eye'}"></i>
+                            </button>
+                          </div>
                         {/if}
+                      </td>
+                      <td>
+                        <div class="action-btns">
+                          {#if !u.isSso}
+                            <button class="ds-btn sm" title="เปลี่ยนรหัสผ่าน" on:click={() => openEditModal(u.username)}>
+                              <i class="ti ti-key"></i>
+                            </button>
+                          {/if}
+                          {#if u.username !== 'admin'}
+                            <button class="ds-btn danger sm" title="ลบบัญชี" on:click={() => deleteUser(u.username)}>
+                              <i class="ti ti-trash"></i>
+                            </button>
+                          {:else}
+                            <span class="protected-label"><i class="ti ti-lock"></i> Protected</span>
+                          {/if}
+                        </div>
                       </td>
                     </tr>
                   {/each}
                   {#if users.length === 0}
-                    <tr><td colspan="4"><div class="ds-empty">No accounts found</div></td></tr>
+                    <tr><td colspan="5"><div class="ds-empty">No accounts found</div></td></tr>
                   {/if}
                 </tbody>
               </table>
@@ -496,6 +626,12 @@
 </div>
 
 <style>
+  /* Hide browser default password reveal icon (Edge/Chrome on Windows) */
+  :global(input[type="password"]::-ms-reveal),
+  :global(input[type="password"]::-ms-clear) {
+    display: none;
+  }
+
   /* ── Tab Navigation ──────────────────────────────── */
   .tab-nav {
     display: flex;
@@ -549,12 +685,31 @@
   }
   @media (max-width: 900px) { .about-grid { grid-template-columns: 1fr; } }
 
+  /* ── SSO Whitelist Note ───────────────────────────── */
+  .sso-whitelist-note {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: rgba(29,158,117,0.06);
+    border: 1px solid rgba(29,158,117,0.2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+  .sso-whitelist-note i { color: var(--green); font-size: 18px; flex-shrink: 0; margin-top: 2px; }
+  .sso-whitelist-note strong { display: block; color: var(--green); font-size: 12px; margin-bottom: 2px; }
+  .sso-whitelist-note code { font-family: monospace; background: rgba(29,158,117,0.1); padding: 1px 5px; border-radius: 4px; color: var(--green); }
+
   /* ── Form ────────────────────────────────────────── */
   .form-stack { display: flex; flex-direction: column; gap: 14px; }
   .field label { display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .label-hint { font-size: 10px; font-weight: 400; text-transform: none; color: var(--text-muted); opacity: 0.7; }
   .input-field {
     width: 100%;
-    padding: 9px 12px;
+    padding: 9px 36px 9px 12px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -563,9 +718,28 @@
     font-family: inherit;
     outline: none;
     transition: border-color 0.2s;
+    box-sizing: border-box;
   }
   .input-field:focus { border-color: var(--green); }
   .full-w { width: 100%; justify-content: center; }
+
+  /* Password input with eye button */
+  .pw-wrap { position: relative; display: flex; align-items: center; }
+  .pw-wrap .input-field { padding-right: 38px; }
+  .pw-eye {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+  }
+  .pw-eye:hover { color: var(--text-primary); }
 
   .role-hint {
     font-size: 12px;
@@ -593,6 +767,151 @@
   .avatar.admin { background: var(--blue-bg); color: var(--blue); }
   .avatar.guest { background: var(--bg-secondary); color: var(--text-secondary); }
   .protected-label { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+  .action-btns { display: flex; gap: 6px; align-items: center; }
+
+  /* SSO tag under username */
+  .sso-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #7c3aed;
+    background: rgba(124,58,237,0.1);
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-top: 2px;
+  }
+
+  /* Password column */
+  .pw-cell { min-width: 140px; }
+  .pw-reveal-wrap { display: flex; align-items: center; gap: 6px; }
+  .pw-value {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    color: var(--text-primary);
+    letter-spacing: 0.05em;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+  }
+  .pw-eye-sm {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 3px 5px;
+    display: flex;
+    align-items: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .pw-eye-sm:hover { border-color: var(--green); color: var(--green); }
+  .sso-pw-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #7c3aed;
+    background: rgba(124,58,237,0.08);
+    border: 1px solid rgba(124,58,237,0.2);
+    border-radius: 6px;
+    padding: 3px 8px;
+  }
+
+  /* ── Password Edit Modal ──────────────────────────── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.2s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  .modal-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.5);
+    animation: slideUp 0.25s cubic-bezier(.175,.885,.32,1.275);
+    overflow: hidden;
+  }
+  @keyframes slideUp { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+  .modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .modal-title i { color: var(--green); font-size: 18px; }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+  }
+  .modal-close:hover { color: var(--red); }
+  .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .modal-user-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .mini-spin {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Config ──────────────────────────────────────── */
   .config-section { display: flex; flex-direction: column; gap: 0; }

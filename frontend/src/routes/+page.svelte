@@ -169,6 +169,18 @@
       </button>
     </form>
 
+    <!-- SSO Divider -->
+    <div class="sso-divider">
+      <span>Or continue with</span>
+    </div>
+
+    <!-- SSO Button -->
+    <a href="/api/auth/sso/login" class="btn-sso">
+      <i class="ti ti-login"></i>
+      <span>KKU SSO</span>
+    </a>
+    <div class="sso-hint">Authorized personnel only</div>
+
     <!-- Footer -->
     <div class="login-footer">
       <i class="ti ti-shield-lock"></i>
@@ -221,6 +233,12 @@
     --exp-bg: rgba(255, 255, 255, 0.98);
     --exp-text: #1f2937;
     --exp-border: rgba(0,0,0,0.1);
+  }
+
+
+  :global(input[type="password"]::-ms-reveal),
+  :global(input[type="password"]::-ms-clear) {
+    display: none;
   }
 
   /* ── Theme Toggle ────────────────────────────────────────────── */
@@ -542,6 +560,53 @@
   }
   .btn-login:active:not([disabled]) { transform: translateY(0); }
   .btn-login[disabled] { opacity: 0.6; cursor: not-allowed; }
+
+  /* ── SSO Button ─────────────────────────────────────────────── */
+  .sso-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 24px 0 16px;
+    color: var(--log-text-muted);
+    font-size: 12px;
+  }
+  .sso-divider::before,
+  .sso-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid var(--log-input-border);
+  }
+  .sso-divider span {
+    padding: 0 12px;
+  }
+  
+  .btn-sso {
+    width: 100%;
+    padding: 13px;
+    background: #93c5fd; /* Light blue representing SSO */
+    color: #1e3a8a;
+    font-size: 14px;
+    font-weight: 700;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+    text-decoration: none;
+  }
+  .btn-sso:hover {
+    background: #bfdbfe;
+    transform: translateY(-1px);
+  }
+  .sso-hint {
+    text-align: center;
+    font-size: 11px;
+    color: var(--log-text-muted);
+    margin-top: 8px;
+  }
 
   /* ── Spinner ─────────────────────────────────────────────────── */
   .spinner {

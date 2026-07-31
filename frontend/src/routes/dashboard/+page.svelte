@@ -73,6 +73,7 @@
     if (type === 'System Compromised') return '#c0392b'; // Dark Red
     if (type === 'Port Scan') return '#854f0b'; // Brown
     if (type === 'SQL Inject' || type === 'Path Traversal' || type === 'XSS' || type === 'Web Scan') return '#1d9e75'; // Web attacks green
+    if (type.toLowerCase().startsWith('wazuh:')) return '#f59e0b'; // Wazuh Orange
     return '#185fa5'; // Blue default
   }
 
@@ -259,7 +260,10 @@
       const types = Object.keys(counts).sort((a,b) => counts[b] - counts[a]).slice(0, 5);
       
       attackStats = types.map(t => ({
-        type: t === 'Aggressive Brute Force' ? 'SSH Brute' : (t === 'SSH Brute Force' ? 'SSH Brute' : (t === 'SSH Login Attempt' ? 'SSH Login' : t)),
+        type: t === 'Aggressive Brute Force' ? 'SSH Brute' : 
+              (t === 'SSH Brute Force' ? 'SSH Brute' : 
+              (t === 'SSH Login Attempt' ? 'SSH Login' : 
+              (t.toLowerCase().startsWith('wazuh:') ? 'Wazuh Alert' : t))),
         count: counts[t],
         color: getTypeColor(t)
       }));
@@ -364,7 +368,7 @@
 
 <div class="db-content">
   <div class="metrics">
-    <div class="metric-card danger" on:click={() => navigateTo('/dashboard/logs?severity=critical')} title="ดู Critical Alerts">
+    <div class="metric-card danger" on:click={() => navigateTo('/dashboard/threats?severity=critical')} title="ดู Critical Alerts">
       <div class="metric-icon-wrap danger-icon"><i class="ti ti-alert-octagon"></i></div>
       <div class="metric-body">
         <div class="metric-label">Critical Alerts</div>
@@ -373,7 +377,7 @@
       </div>
       <div class="metric-arrow"><i class="ti ti-chevron-right"></i></div>
     </div>
-    <div class="metric-card warn" on:click={() => navigateTo('/dashboard/logs')} title="ดู All Events">
+    <div class="metric-card warn" on:click={() => navigateTo('/dashboard/threats')} title="ดู All Events">
       <div class="metric-icon-wrap warn-icon"><i class="ti ti-activity"></i></div>
       <div class="metric-body">
         <div class="metric-label">Total Events</div>
@@ -570,7 +574,7 @@
   <!-- Main Content Row -->
   <div class="main-grid">
     <!-- Left: Recent Events Table -->
-    <div class="panel clickable panel-tall" on:click={() => navigateTo('/dashboard/logs')} title="คลิกเพื่อไปยังหน้า Threat Logs">
+    <div class="panel clickable panel-tall" on:click={() => navigateTo('/dashboard/threats')} title="คลิกเพื่อไปยังหน้า Threat Logs">
       <div class="panel-header">
         <div class="panel-title-group">
           <div class="panel-icon blue-icon"><i class="ti ti-list-details"></i></div>
@@ -593,7 +597,7 @@
           <tr>
             <td class="ds-mono">{event.time || event.timeStr}</td>
             <td class="ip-mono">
-              <a href="/dashboard/logs?ip={event.ip}" class="ip-link" on:click|stopPropagation title="ดูรายละเอียด IP นี้">{event.ip}</a>
+              <a href="/dashboard/threats?ip={event.ip}" class="ip-link" on:click|stopPropagation title="ดูรายละเอียด IP นี้">{event.ip}</a>
             </td>
             <td><span class="type-badge">{event.type}</span></td>
             <td><span class="sev {event.severity}">{event.severity}</span></td>

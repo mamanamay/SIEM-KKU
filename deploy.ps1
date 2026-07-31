@@ -18,7 +18,6 @@ $excludePatterns = @(
     "node_modules",
     "frontend/node_modules", "backend/node_modules", "webtrap/node_modules",
     "frontend/build", "frontend/.svelte-kit",
-    "logs",
     ".env",
     "check_divs.js", "fix_divs.js", "fix_text_2.js",
     "update_analytics.js", "update_ds.js", "test_db.js",
@@ -61,12 +60,12 @@ $remoteScript += " mkdir -p ~/honeypot-siem;"
 $remoteScript += " tar -xzf ~/deploy.tar.gz -C ~/honeypot-siem;"
 $remoteScript += " rm ~/deploy.tar.gz;"
 $remoteScript += " cd ~/honeypot-siem;"
-$remoteScript += " if [ ! -f .env ]; then cp .env.example .env; echo '  [WARNING] .env created from template. Edit it then run: cd ~/honeypot-siem && bash nginx/generate-ssl.sh && docker compose up -d --build'; exit 0; fi;"
+$remoteScript += " if [ ! -f .env ]; then cp .env.example .env; cp backend/.env.example backend/.env; echo '  [WARNING] .env created from template. Edit .env and backend/.env then run: cd ~/honeypot-siem && bash nginx/generate-ssl.sh && docker compose up -d --build'; exit 0; fi;"
 $remoteScript += " chmod +x nginx/generate-ssl.sh;"
 $remoteScript += " bash nginx/generate-ssl.sh;"
 $remoteScript += " mkdir -p logs/siem logs/webtrap logs/cowrie honeypots/cowrie/var/lib/cowrie;"
-$remoteScript += " docker compose build --no-cache frontend;"
-$remoteScript += " docker compose up -d --build;"
+$remoteScript += " docker compose build --no-cache;"
+$remoteScript += " docker compose up -d;"
 $remoteScript += " docker compose ps"
 
 ssh "${Username}@${ServerIP}" $remoteScript

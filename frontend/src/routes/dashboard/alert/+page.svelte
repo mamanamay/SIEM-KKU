@@ -45,6 +45,12 @@
     function prevPage() { if (currentPage > 1) currentPage--; }
     function nextPage() { if (currentPage < totalPages) currentPage++; }
 
+    let expandedRows = new Set();
+    function toggleRow(i) {
+      if (expandedRows.has(i)) { expandedRows.delete(i); } else { expandedRows.add(i); }
+      expandedRows = expandedRows;
+    }
+
     function formatDate(ms) {
         if (ms === 0) return "";
         const d = new Date(ms);
@@ -113,6 +119,7 @@
         <table class="ds-table">
           <thead>
             <tr>
+              <th style="width: 36px"></th>
               <th style="width: 15%;">Date &amp; Time</th>
               <th style="width: 15%;">Source IP</th>
               <th style="width: 35%;">Alert Rule</th>
@@ -121,8 +128,9 @@
             </tr>
           </thead>
           <tbody>
-            {#each paginatedAlerts as alert}
-            <tr>
+            {#each paginatedAlerts as alert, i}
+            <tr class="log-row {expandedRows.has(i) ? 'expanded' : ''}" on:click={() => toggleRow(i)} style="cursor:pointer; transition: background 0.15s;">
+              <td class="expand-icon"><i class="ti {expandedRows.has(i) ? 'ti-chevron-down' : 'ti-chevron-right'}" style="color:var(--text-secondary)"></i></td>
               <td class="ds-mono">{alert.time || alert.timeStr}</td>
               <td><span class="ds-mono" style="font-weight:600">{alert.ip}</span></td>
               <td>{alert.type}</td>
@@ -132,14 +140,39 @@
                 </span>
               </td>
               <td style="text-align:right;">
-                <a href="/dashboard/investigate?ip={alert.ip}&time={alert.createdAt || alert.timestamp || alert.time}" class="ds-btn sm">
+                <a href="/dashboard/investigate?ip={alert.ip}&time={alert.createdAt || alert.timestamp || alert.time}" class="ds-btn sm" on:click|stopPropagation>
                   <i class="ti ti-search"></i> Investigate
                 </a>
               </td>
             </tr>
+            {#if expandedRows.has(i)}
+            <tr class="details-row">
+              <td colspan="6" style="padding: 0 !important; border-bottom: 1px solid var(--border);">
+                <div style="padding: 14px 20px 20px; background: var(--bg-panel); box-shadow: inset 0 3px 6px rgba(0,0,0,0.02);">
+                  {#if alert.aiAnalysis}
+                  <div class="ai-panel">
+                    <div class="ai-panel-title">
+                      <span class="ai-badge">🤖 AI</span>
+                      <span>การวิเคราะห์ภัยคุกคามโดย AI</span>
+                    </div>
+                    <div class="ai-panel-body">{alert.aiAnalysis}</div>
+                  </div>
+                  {:else if alert.severity === 'high' || alert.severity === 'critical'}
+                  <div class="ai-panel ai-panel-pending">
+                    <div class="ai-panel-title">
+                      <span class="ai-badge pending">🤖 AI</span>
+                      <span>กำลังวิเคราะห์...</span>
+                    </div>
+                    <div class="ai-panel-body" style="color:var(--text-muted);font-style:italic;">AI กำลังประมวลผลเหตุการณ์นี้อยู่ กรุณารอสักครู่</div>
+                  </div>
+                  {/if}
+                </div>
+              </td>
+            </tr>
+            {/if}
             {/each}
             {#if paginatedAlerts.length === 0}
-            <tr><td colspan="5"><div class="ds-empty"><i class="ti ti-bell-off"></i>No critical / high alerts found</div></td></tr>
+            <tr><td colspan="6"><div class="ds-empty"><i class="ti ti-bell-off"></i>No critical / high alerts found</div></td></tr>
             {/if}
           </tbody>
         </table>
@@ -221,4 +254,16 @@
 }
 .al-range-btn:hover { background: var(--bg-secondary); border-color: var(--green); color: var(--green); }
 .al-range-btn.active { background: var(--green); color: #fff; border-color: var(--green); }
+
+.log-row:hover { background: var(--bg-secondary) !important; }
+.log-row.expanded { background: var(--bg-secondary) !important; border-left: 3px solid var(--green); }
+
+/* AI Analysis Panel */
+.ai-panel { background: rgba(142, 68, 173, 0.05); border: 1px solid rgba(142, 68, 173, 0.2); border-radius: var(--radius-md); overflow: hidden; }
+.ai-panel-pending { background: rgba(100, 116, 139, 0.05); border: 1px dashed rgba(100, 116, 139, 0.3); }
+.ai-panel-title { padding: 10px 14px; background: rgba(142, 68, 173, 0.1); font-size: 12px; font-weight: 700; color: #8e44ad; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(142, 68, 173, 0.1); }
+.ai-panel-pending .ai-panel-title { background: rgba(100, 116, 139, 0.1); color: var(--text-muted); border-bottom: 1px dashed rgba(100, 116, 139, 0.2); }
+.ai-badge { background: #8e44ad; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; }
+.ai-badge.pending { background: var(--text-muted); }
+.ai-panel-body { padding: 14px; font-size: 12px; line-height: 1.6; color: var(--text-primary); white-space: pre-wrap; font-family: var(--font-body); }
 </style>

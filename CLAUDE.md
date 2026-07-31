@@ -1,91 +1,78 @@
-# CLAUDE.md — AI Agent Development Guide for KKUSIEM
+# CLAUDE.md — AI Development Guide
 
-This file provides essential context for AI coding assistants working on the KKUSIEM (Khon Kaen University SIEM) project.
+> คู่มือสำหรับ AI Coding Assistant ที่ทำงานบน KKUSIEM Honeypot Dashboard
 
 ---
 
 ## 🏗️ Tech Stack
 
-| Layer | Technology | Notes |
-|-------|-----------|-------|
-| Frontend | **SvelteKit** (TypeScript) | File-based routing, SSR disabled (SPA mode) |
-| Backend | **NestJS** (TypeScript) | REST API + WebSocket gateway |
-| Database | **PostgreSQL 16** | Persistent attack event storage |
-| Cache | **Redis 7** | Session cache, message broker |
-| Honeypot 1 | **Cowrie** | SSH/Telnet emulator (Docker image: `cowrie/cowrie:latest`) |
-| Honeypot 2 | **WebTrap** | Custom Express.js HTTP honeypot |
-| Proxy | **Nginx 1.25** | Reverse proxy, SSL termination |
-| Containerization | **Docker Compose** | All services run in Docker |
-| Charts | **Chart.js 4.4.1** | Loaded via CDN in dashboard |
-| Maps | **Leaflet + OpenStreetMap** | Threat map visualization |
+| Layer | Technology |
+|-------|-----------|
+| Frontend | **SvelteKit** (TypeScript) — SPA mode, file-based routing |
+| Backend | **NestJS** (TypeScript) — REST API + Socket.IO WebSocket |
+| Database | **PostgreSQL 16** — TypeORM entities |
+| Cache | **Redis 7** — session cache |
+| Honeypot SSH | **Cowrie** — SSH/Telnet emulator |
+| Honeypot HTTP | **WebTrap** — Custom Express.js |
+| Proxy | **Nginx 1.25** — reverse proxy, SSL termination |
+| Charts | **Chart.js 4.4.1** (CDN) |
+| Maps | **Leaflet + OpenStreetMap** |
 
 ---
 
 ## 📁 Key File Locations
 
-### Frontend
+### Frontend (`frontend/src/`)
 ```
-frontend/src/
-  routes/
-    dashboard/
-      +page.svelte              ← Main dashboard (KPI cards, threat map, events table)
-      +layout.svelte            ← Sidebar nav, auth guard, WebSocket init
-      logs/+page.svelte         ← Full threat log table with export
-      investigate/+page.svelte  ← IP deep-dive + investigation tools
-      network-map/+page.svelte  ← KKU IP map with attack overlay
-      mitre/+page.svelte        ← MITRE ATT&CK framework mapping
-      cve/+page.svelte          ← Live CVE lookup (MITRE API)
-      alert/+page.svelte        ← Real-time alert center
-      analytics/+page.svelte    ← Charts and statistics
-      blocked_ip_audit/+page.svelte  ← Blocked IP management
-      settings/+page.svelte     ← Admin system settings
-    api/
-      scorecard/+server.ts      ← Server-side proxy for external Scorecard API
-  stores/
-    events.ts                   ← Svelte store + WebSocket client + eventsStore
-    faculties.ts                ← KKU faculty/CIDR lookup functions
-  lib/
-    data/ip_records.json        ← Static KKU IP subnet database (644+ entries)
-    components/
-      ExportPreviewModal.svelte ← CSV/PDF export modal
-    utils/
-      export.ts                 ← CSV + PDF generation utilities
-      ip.ts                     ← CIDR/IP matching utilities
+routes/
+  +page.svelte                    ← Login page
+  callback/+page.svelte           ← KKU SSO callback handler
+  dashboard/
+    +layout.svelte                ← Sidebar, auth guard, WebSocket init
+    +page.svelte                  ← Main dashboard (KPI, threat map, events)
+    logs/+page.svelte             ← Full threat log table + export
+    investigate/+page.svelte      ← IP deep-dive & investigation
+    network-map/+page.svelte      ← KKU IP map with attack overlay
+    mitre/+page.svelte            ← MITRE ATT&CK framework mapping
+    cve/+page.svelte              ← Live CVE lookup (MITRE API)
+    alert/+page.svelte            ← Real-time alert center
+    analytics/+page.svelte        ← Charts and statistics
+    blocked_ip_audit/+page.svelte ← Blocked IP management
+    settings/+page.svelte         ← Admin: users, audit log, system config
+stores/
+  events.ts                       ← Svelte store + WebSocket client
+  faculties.ts                    ← KKU faculty/CIDR lookup
+lib/
+  data/ip_records.json            ← KKU IP subnet database (644+ entries)
+  components/ExportPreviewModal.svelte
+  utils/export.ts                 ← CSV + PDF generation
+  utils/ip.ts                     ← CIDR/IP matching utilities
 ```
 
-### Backend
+### Backend (`backend/src/`)
 ```
-backend/src/
-  log.service.ts          ← SIEM correlation engine (MOST IMPORTANT FILE)
-  attacks.controller.ts   ← Block IP / Isolate Port / Status endpoints
-  auth.controller.ts      ← Login, user management, session audit
-  events.gateway.ts       ← WebSocket gateway (Socket.IO)
-  entities/
-    attack.entity.ts      ← TypeORM entity for attack events
-    user.entity.ts        ← User accounts
-    login-session.entity.ts ← Login audit log
+log.service.ts          ← SIEM correlation engine (★ MOST IMPORTANT)
+attacks.controller.ts   ← Block IP / Isolate Port / Status endpoints
+auth.controller.ts      ← Login, SSO, user management, session audit
+events.gateway.ts       ← WebSocket gateway (Socket.IO)
+seed.service.ts         ← DB seed: creates admin/guest on startup
+entities/
+  attack.entity.ts      ← TypeORM: attack events
+  user.entity.ts        ← TypeORM: user accounts
+  login-session.entity.ts ← TypeORM: login audit log
 ```
 
 ### Infrastructure
 ```
-honeypots/
-  cowrie/
-    cowrie.cfg            ← Cowrie SSH honeypot configuration
-    userdb.txt            ← Accepted credentials for honeypot
-  webtrap/
-    server.js             ← Express.js HTTP honeypot (attack classifier)
-logs/
-  cowrie/cowrie.json      ← Live SSH attack log (watched by backend)
-  webtrap/webtrap.json    ← Live HTTP attack log (watched by backend)
-  siem/
-    access_layer.log      ← Core switch NetFlow data (correlated)
-    cnc_outbound.log      ← Firewall outbound C&C log (correlated)
-siem-logs/
-  blocked_ips.json        ← Persisted blocked IP list
-  isolated_ports.json     ← Persisted isolated switch ports
-nginx/
-  nginx.conf              ← Nginx reverse proxy config
-  certs/                  ← SSL certificates (cert.pem, key.pem)
+honeypots/cowrie/       ← cowrie.cfg, userdb.txt
+honeypots/webtrap/      ← server.js (HTTP honeypot)
+logs/cowrie/            ← cowrie.json (watched by backend)
+logs/webtrap/           ← webtrap.json (watched by backend)
+logs/siem/              ← access_layer.log, cnc_outbound.log
+nginx/nginx.conf        ← reverse proxy config
+nginx/certs/            ← cert.pem, key.pem
+.env                    ← all secrets (never commit)
+docker-compose.yml      ← all services
 ```
 
 ---
@@ -93,229 +80,211 @@ nginx/
 ## 🔄 Real-Time Data Flow
 
 ```
-1. Attacker → Cowrie/WebTrap honeypot
-2. Honeypot → writes JSON line to log file (cowrie.json or webtrap.json)
-3. Backend (log.service.ts) → fs.watchFile() detects new line (500ms polling)
-4. Backend → parses line, resolves real IP, finds correlated events
-5. Backend → saves to PostgreSQL via TypeORM
-6. Backend → broadcasts via WebSocket: this.eventsGateway.broadcastAttack(enriched)
-7. Frontend (events.ts store) → socket.on('new_attack') updates eventsStore
-8. Dashboard components → $eventsStore reactive update renders new data
+Attacker
+  → Cowrie/WebTrap Honeypot
+  → writes JSON line to log file
+  → log.service.ts detects (500ms polling via fs.watchFile)
+  → parse + correlate (NetFlow ±5s, C&C ±30s)
+  → save to PostgreSQL
+  → broadcast via Socket.IO: eventsGateway.broadcastAttack()
+  → Frontend eventsStore updates
+  → Dashboard re-renders reactively
 ```
 
 ---
 
-## 🧠 SIEM Correlation Engine (log.service.ts)
+## 🧠 SIEM Engine — `log.service.ts`
 
-The heart of the system. Key methods:
+Key methods:
 
-```typescript
-onModuleInit()              // Starts file watchers for all 4 log sources
-watchFile()                 // Generic file watcher with 500ms interval
-processCowrieLine()         // Parses Cowrie SSH events, classifies by eventid
-processWebTrapLine()        // Parses WebTrap HTTP events, maps to MITRE
-processAccessLayerLine()    // Caches NetFlow events for correlation
-processCncOutboundLine()    // Caches outbound C&C events for correlation
-resolveRealIp()             // Time-based correlation to map session → real IP
-findAccessEvent()           // Finds Access Layer event within 5s window
-findCncEvent()              // Finds C&C event within 30s window
-saveAndBroadcast()          // Saves to PostgreSQL + emits WebSocket event
-```
+| Method | Purpose |
+|--------|---------|
+| `onModuleInit()` | Starts file watchers for all 4 log sources |
+| `processCowrieLine()` | Parses SSH events, classifies by eventid |
+| `processWebTrapLine()` | Parses HTTP events, maps to MITRE |
+| `processAccessLayerLine()` | Caches NetFlow for correlation |
+| `processCncOutboundLine()` | Caches outbound C&C for correlation |
+| `resolveRealIp()` | Time-based IP correlation |
+| `saveAndBroadcast()` | Saves to DB + emits WebSocket |
 
-**Correlation time windows:**
-- Access Layer: ±5 seconds (`CORRELATION_WINDOW_MS = 5000`)
-- C&C Outbound: 30 seconds after SSH login
-- IP cache: 100 most recent connections (ring buffer)
+**Correlation windows:**
+- Access Layer: `±5s` (`CORRELATION_WINDOW_MS = 5000`)
+- C&C Outbound: `30s` after SSH login
+- IP cache: 100 most recent (ring buffer)
 
 ---
 
-## 🌐 API Endpoints Reference
+## 🌐 API Endpoints
 
-### Auth (`/api/auth/*`)
-- `POST /api/auth/login` — `{ username, password }` → `{ access_token, role }`
-- `POST /api/auth/register` — `{ username, password, role }` → `{ success }`
-- `GET /api/auth/users` — returns user list (no passwords)
-- `DELETE /api/auth/users/:username` — delete user (cannot delete 'admin')
-- `GET /api/auth/sessions` — login audit log (last 100)
+### Auth — `/api/auth/*`
+```
+POST   /api/auth/login                  { username, password } → { access_token, role }
+POST   /api/auth/register               { username, password, role } → { success }
+GET    /api/auth/users                  → user list (passwordHash exposed for non-SSO)
+PUT    /api/auth/users/:username/password  { newPassword }
+DELETE /api/auth/users/:username
+GET    /api/auth/sessions               → login audit log (last 100)
+GET    /api/auth/sso/login              → redirect to KKU SSO
+POST   /api/auth/sso/callback           { code } → { access_token, role }
+```
 
-### Attacks (`/api/attacks/*`)
-- `POST /api/attacks/block-ip` — `{ ip, reason, attackId?, faculty?, port? }` → writes `blocked_ips.json` + broadcasts
-- `POST /api/attacks/unblock-ip` — `{ ip }` → removes from `blocked_ips.json`
-- `GET /api/attacks/blocked-ips` — reads `blocked_ips.json`
-- `PATCH /api/attacks/:id/status` — `{ status: 'Opened'|'In Progress'|'Closed' }`
-- `POST /api/attacks/isolate-port` — `{ ip, switchPort, building, floor, portNumber }` → writes `isolated_ports.json`
-- `GET /api/attacks/isolated-ports` — reads `isolated_ports.json`
-- `POST /api/attacks/ip-map` — `{ realIp, faculty?, service?, timestamp? }` → registers IP for correlation
+### Attacks — `/api/attacks/*`
+```
+POST   /api/attacks/block-ip            { ip, reason, attackId?, faculty?, port? }
+POST   /api/attacks/unblock-ip          { ip }
+GET    /api/attacks/blocked-ips
+PATCH  /api/attacks/:id/status          { status: 'Opened'|'In Progress'|'Closed' }
+POST   /api/attacks/isolate-port        { ip, switchPort, building, floor, portNumber }
+GET    /api/attacks/isolated-ports
+POST   /api/attacks/ip-map              { realIp, faculty?, service?, timestamp? }
+```
 
 ### WebSocket Events (Socket.IO)
-- Emitted by backend: `new_attack`, `ip_blocked`, `ip_unblocked`, `port_isolated`, `status_updated`
-- Frontend connects in `+layout.svelte` using Socket.IO client
-- Events update `eventsStore` in `stores/events.ts`
-
-### Frontend Internal API
-- `GET /api/scorecard` — server-side proxy to external Scorecard API (bypasses CORS + SSL)
-  - Reads `x-scorecard-url` header for target URL
-  - Reads `x-scorecard-key` header for bearer token
-  - Uses Node.js `https` module with `rejectUnauthorized: false`
+- **Emitted by backend:** `new_attack`, `ip_blocked`, `ip_unblocked`, `port_isolated`, `status_updated`
+- **Frontend connects in:** `+layout.svelte` via Socket.IO client
 
 ---
 
-## 🗄️ Database Schema (TypeORM Entities)
+## 🗄️ Database Schema
 
-### Attack Entity
+### Attack
 ```typescript
-id: number (PK)
-timeStr: string        // Formatted timestamp (Bangkok timezone)
-ip: string             // Source IP address
-type: string           // Attack type (SSH Brute Force, SQL Inject, etc.)
-severity: string       // critical | high | medium | low
-detail: string         // Detailed description with credentials/payload
-mitigation: string     // Recommended mitigation action
-country: string        // Geolocation (prefix-based lookup)
-clientVersion: string  // SSH client version or HTTP User-Agent
-mitreCode: string      // MITRE ATT&CK technique ID (T1110, T1059, etc.)
-threatScore: number    // 0-100 threat score
-sessionId: string      // Cowrie session ID for correlation
-timestampMs: number    // Unix timestamp in milliseconds
-status: string         // Opened | In Progress | Closed (default: Opened)
-createdAt: Date        // Auto-generated
+id, timeStr, ip, type, severity, detail, mitigation,
+country, clientVersion, mitreCode, threatScore,
+sessionId, timestampMs, status, createdAt
 ```
 
-### User Entity
+### User
 ```typescript
-id: number (PK)
-username: string
-passwordHash: string   // Plain text in demo — use bcrypt in production
-role: string           // admin | guest
+id, username, passwordHash, role  // 'admin' | 'guest'
+// SSO accounts: passwordHash = 'SSO_MANAGED'
+// Username for SSO = full email (e.g. user@kkumail.com)
 ```
 
-### LoginSession Entity
+### LoginSession
 ```typescript
-id: number (PK)
-username: string
-role: string
-ipAddress: string
-timestamp: Date        // Auto-generated
+id, username, role, ipAddress, timestamp
 ```
 
 ---
 
-## ⚠️ Known Limitations & TODOs
+## 🔑 Auth Logic
 
-1. **Passwords stored in plain text** — `auth.controller.ts` line 51: `passwordHash: password` — needs bcrypt
-2. **JWT tokens are fake strings** — `auth.controller.ts` line 30: returns `fake-jwt-token-for-${role}` — needs proper JWT implementation
-3. **GeoIP is prefix-based** — `log.service.ts` line 133: `getCountry()` uses simple IP prefix matching, not a real GeoIP database
-4. **Port isolation is simulated** — `attacks.controller.ts` generates the correct Cisco IOS command but does not actually SSH into the switch
-5. **Scorecard API returns HTML** — The target URL `10.101.118.184:4333/dashboard` returns HTML, not JSON. Need the actual JSON API endpoint
-6. **IP Records are static** — `ip_records.json` requires a rebuild to update; Network IP Sync API integration is not yet implemented
+### Local Login
+- `POST /api/auth/login` → compares `username` + `passwordHash` (plain text, PoC)
+- Returns `fake-jwt-token-for-${role}` stored in `localStorage.token`
 
----
+### KKU SSO Flow
+1. Frontend → `/api/auth/sso/login` → Backend redirects to `ssonext.kku.ac.th`
+2. KKU SSO → redirects to `/callback?code=...`
+3. Frontend `/callback` page → `POST /api/auth/sso/callback` with `{ code }`
+4. Backend exchanges code for token → fetches profile email
+5. **Whitelist check:** finds user where `username === email` in DB
+6. If found → returns `access_token`, if not → 401 Unauthorized
 
-## 🛠️ Common Development Patterns
+### Default Accounts (seeded on startup)
+| Username | Password | Role |
+|---------|---------|------|
+| `admin` | `Admin@1234!` | admin |
+| `guest` | `Guest@1234!` | guest |
 
-### Adding a new dashboard page
-
-1. Create `frontend/src/routes/dashboard/your-page/+page.svelte`
-2. Add to sidebar in `frontend/src/routes/dashboard/+layout.svelte` (search for `navItems`)
-3. Page automatically gets auth guard from the layout
-
-### Accessing attack events in a page
-
-```svelte
-<script lang="ts">
-  import { eventsStore } from '../../../stores/events';
-  $: events = $eventsStore;
-  // events is Attack[] — reactive, updates in real-time via WebSocket
-</script>
-```
-
-### Blocking an IP from a page
-
-```javascript
-await fetch('/api/attacks/block-ip', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ ip: '1.2.3.4', reason: 'Manual block', attackId: 123 })
-});
-```
-
-### Settings stored in localStorage
-
-```javascript
-// Read
-const url = localStorage.getItem('cfg_scorecard_url') || '';
-// Write (done in Settings page's saveConfig())
-localStorage.setItem('cfg_scorecard_url', newUrl);
-```
+> `seed.service.ts` force-resets admin password every startup to prevent lockout.
 
 ---
 
-## 🐳 Docker Commands Cheatsheet
+## ⚙️ Environment Variables (`.env`)
 
-```bash
-# Start all services
-docker compose up -d --build
-
-# Stop all services
-docker compose down
-
-# View logs
-docker compose logs -f [service]     # service: nginx, frontend, backend, cowrie, webtrap
-
-# Restart a service
-docker compose restart backend
-
-# Shell into a container
-docker compose exec backend sh
-docker compose exec postgres psql -U admin -d honeypot
-
-# Rebuild only frontend (after code changes)
-docker compose up -d --build frontend
-
-# Remove all data (WARNING: deletes database)
-docker compose down -v
-```
-
----
-
-## 🔧 Environment Variables
-
-Required in `.env` (copy from `.env.example`):
-
-```bash
-POSTGRES_USER=admin
-POSTGRES_PASSWORD=your_secure_password    # CHANGE THIS
+```env
+# Database
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=strong_password
 POSTGRES_DB=honeypot
-JWT_SECRET=your_jwt_secret               # CHANGE THIS
-HTTP_PORT=18080
-HTTPS_PORT=18443
+JWT_SECRET=random_secret_key
+
+# KKU SSO
+SSO_CLIENT_ID=from-kku-admin
+SSO_CLIENT_SECRET=from-kku-admin
+SSO_CALLBACK_URL=https://your-domain/callback
+
+# Ports
+HTTP_PORT=80
+HTTPS_PORT=443
 COWRIE_SSH_PORT=22222
 COWRIE_TELNET_PORT=22223
 WEBTRAP_HTTP_PORT=28081
 WEBTRAP_HTTPS_PORT=28444
+
+# AI (optional)
+GEMINI_API_KEY=your-gemini-api-key
 ```
 
 ---
 
-## 📋 Deployment Checklist
+## 🐳 Docker Commands
 
-Before deploying to production:
+```bash
+# Start all services (rebuild images)
+sudo docker compose up -d --build
 
-- [ ] Change `POSTGRES_PASSWORD` in `.env`
-- [ ] Change `JWT_SECRET` in `.env`
-- [ ] Change default `admin/admin` password via Settings → User Management
-- [ ] Place SSL certificates in `nginx/certs/cert.pem` and `nginx/certs/key.pem`
-- [ ] Set correct firewall rules — expose only ports 80, 443, 22222, 22223, 28081, 28444
-- [ ] Configure Scorecard API URL in Settings if using external scorecard
-- [ ] Implement bcrypt password hashing (`auth.controller.ts`)
-- [ ] Implement real JWT tokens (`auth.controller.ts`)
-- [ ] (Optional) Replace prefix-based GeoIP with MaxMind GeoIP2 database
+# Stop all services
+sudo docker compose down
+
+# Stop + delete all data (volumes)
+sudo docker compose down -v
+
+# View logs
+sudo docker logs honeypot_backend --tail=50
+
+# Restart single service
+sudo docker compose restart backend
+
+# Shell into container
+sudo docker compose exec backend sh
+```
 
 ---
 
-## 🚦 PowerShell Notes (Windows Development)
+## 🛠️ Development Patterns
+
+### Add a new dashboard page
+1. Create `frontend/src/routes/dashboard/your-page/+page.svelte`
+2. Add to `navItems` in `frontend/src/routes/dashboard/+layout.svelte`
+3. Auth guard is inherited automatically from layout
+
+### Access attack events (reactive)
+```svelte
+<script lang="ts">
+  import { eventsStore } from '../../../stores/events';
+  $: events = $eventsStore; // Attack[] — updates via WebSocket
+</script>
+```
+
+### Block an IP
+```javascript
+await fetch('/api/attacks/block-ip', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ ip: '1.2.3.4', reason: 'Manual block' })
+});
+```
+
+---
+
+## ⚠️ Known Limitations (PoC)
+
+| Issue | Location | Fix needed |
+|-------|---------|-----------|
+| Plain text passwords | `auth.controller.ts` | Replace with bcrypt |
+| Fake JWT tokens | `auth.controller.ts` | Implement real JWT |
+| Prefix-based GeoIP | `log.service.ts: getCountry()` | Use MaxMind GeoIP2 |
+| Port isolation simulated | `attacks.controller.ts` | SSH into actual switch |
+| Static IP records | `ip_records.json` | Implement IP Sync API |
+
+---
+
+## 🚦 Windows Development Notes
 
 - Use `Select-Object -Last N` instead of `tail -n N`
-- Use `curl.exe` (not `curl` alias) for HTTP testing: `curl.exe -k https://...`
-- Log files use `\n` line endings on Linux containers but `\r\n` may appear when viewed on Windows
-- Run PowerShell as Administrator for Docker commands if needed
+- Use `curl.exe` (not `curl` alias): `curl.exe -k https://...`
+- Run PowerShell as Administrator if Docker commands fail
+- Log files use `\n` endings (Linux containers)

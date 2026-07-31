@@ -20,6 +20,11 @@ export class SeedService implements OnModuleInit {
     if (!adminUser) {
       await this.userRepository.save({ username: 'admin', passwordHash: 'Admin@1234!', role: 'admin' });
       console.log('[+] Seeded admin user');
+    } else {
+      // Force update admin password to ensure user is never locked out due to db persistence
+      adminUser.passwordHash = 'Admin@1234!';
+      await this.userRepository.save(adminUser);
+      console.log('[+] Forced reset of admin password to Admin@1234!');
     }
 
     const guestUser = await this.userRepository.findOne({ where: { role: 'guest' } });

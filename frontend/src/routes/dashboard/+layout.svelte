@@ -144,7 +144,7 @@
       '/dashboard/cve': 'CVE Database',
       '/dashboard/blocked_ip_audit': 'Blocked IP Audit',
       '/dashboard/settings': 'System Settings',
-      '/dashboard/logs': 'Security Logs',
+      '/dashboard/threats': 'Security Logs',
       '/dashboard/network-map': 'Network Map Management',
       '/dashboard/api-history': 'API History'
     };
@@ -186,7 +186,7 @@
       <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}">
         <i class="ti ti-chart-pie"></i> Analyst Center
       </a>
-      <a href="/dashboard/logs" class="nav-item {$page.url.pathname === '/dashboard/logs' ? 'active' : ''}">
+      <a href="/dashboard/threats" class="nav-item {$page.url.pathname === '/dashboard/threats' ? 'active' : ''}">
         <i class="ti ti-list-search"></i> Security Logs
       </a>
       <a href="/dashboard/alert" class="nav-item {$page.url.pathname === '/dashboard/alert' ? 'active' : ''}">

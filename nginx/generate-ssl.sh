@@ -13,6 +13,6 @@ echo "Generating self-signed SSL certificate..."
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout "$CERTS_DIR/key.pem" \
     -out "$CERTS_DIR/cert.pem" \
-    -subj "/C=TH/ST=Bangkok/L=Bangkok/O=Honeypot/OU=IT/CN=localhost"
+    -subj "/C=TH/ST=Khon Kaen/L=Khon Kaen/O=KKU/OU=IT/CN=odt-siem-uat.kku.ac.th"
 
 echo "SSL Certificate generated successfully in $CERTS_DIR."

@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EventsGateway } from './events.gateway';
+import { AiService } from './ai.service';
 import { Attack } from './entities/attack.entity';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -12,11 +13,9 @@ import * as readline from 'readline';
 const isDocker = process.env.NODE_ENV === 'production' || process.env.IS_DOCKER === 'true';
 const basePath = process.cwd().endsWith('backend') ? path.join(process.cwd(), '..') : process.cwd();
 
-// If running inside docker-compose, use the mounted volume paths
-const COWRIE_LOG   = isDocker ? '/app/logs/cowrie/cowrie.json' : path.join(basePath, 'logs', 'cowrie', 'cowrie.json');
+// Log paths — Docker volumes mount these into the container
+const COWRIE_LOG   = isDocker ? '/app/logs/cowrie/cowrie.json'   : path.join(basePath, 'logs', 'cowrie', 'cowrie.json');
 const WEBTRAP_LOG  = isDocker ? '/app/logs/webtrap/webtrap.json' : path.join(basePath, 'logs', 'webtrap', 'webtrap.json');
-const ACCESS_LOG   = isDocker ? '/app/logs/siem/access_layer.log' : path.join(basePath, 'logs', 'siem', 'access_layer.log');
-const CNC_LOG      = isDocker ? '/app/logs/siem/cnc_outbound.log' : path.join(basePath, 'logs', 'siem', 'cnc_outbound.log');
 
 // ─── Correlation Time Window ─────────────────────────────────────────────────
 const CORRELATION_WINDOW_MS = 5000; // 5 วินาที = ถือว่าเป็นเหตุการณ์เดียวกัน
@@ -29,20 +28,12 @@ export class LogService implements OnModuleInit {
   private recentConnections: { ip: string; faculty: any; service: string; time: number }[] = [];
   private sessionToIpMap = new Map<string, string>();
 
-  // ── Access Layer Event Cache (สำหรับ Correlation) ─────────────────────────
-  private accessEvents: { src_ip: string; faculty: any; timestamp: number; service: string }[] = [];
-
-  // ── C&C Outbound Event Cache (สำหรับ Correlation) ─────────────────────────
-  private cncEvents: { src_ip: string; dst_ip: string; dst_country: string; timestamp: number; command: string }[] = [];
-
-  // ── Brute Force Rate Tracking ─────────────────────────────────────────────
+  // ── Brute Force Rate Tracking ─────────────────────────────────────────
   private ipStats = new Map<string, { count: number; lastTime: number }>();
-
-  // ── Correlated Chain Tracking (ป้องกัน duplicate) ────────────────────────
-  private correlatedSessions = new Set<string>();
 
   constructor(
     private eventsGateway: EventsGateway,
+    private aiService: AiService,
     @InjectRepository(Attack)
     private attackRepository: Repository<Attack>,
   ) {}
@@ -51,8 +42,7 @@ export class LogService implements OnModuleInit {
     this.logger.log('🚀 SIEM Correlation Engine starting...');
     this.watchFile(COWRIE_LOG,  line => this.processCowrieLine(line),  'Cowrie SSH Honeypot');
     this.watchFile(WEBTRAP_LOG, line => this.processWebTrapLine(line), 'WebTrap HTTP Honeypot');
-    this.watchFile(ACCESS_LOG,  line => this.processAccessLayerLine(line), 'Access Layer (Core Switch)');
-    this.watchFile(CNC_LOG,     line => this.processCncOutboundLine(line), 'C&C Outbound (Firewall)');
+    // Wazuh alerts arrive via HTTP POST /api/wazuh (see wazuh.controller.ts)
   }
 
   // ─── IP Map Registration (จาก proxy.js ผ่าน HTTP POST /api/attacks/ip-map) ─
@@ -141,57 +131,7 @@ export class LogService implements OnModuleInit {
     return 'United States';
   }
 
-  // ─── Helper: Find correlated Access Layer event ───────────────────────────
-  private findAccessEvent(srcIp: string, attackTimestamp: number) {
-    const cutoff = attackTimestamp - CORRELATION_WINDOW_MS;
-    return this.accessEvents.find(
-      a => a.src_ip === srcIp && a.timestamp >= cutoff && a.timestamp <= attackTimestamp + CORRELATION_WINDOW_MS
-    ) || null;
-  }
-
-  // ─── Helper: Find correlated C&C Outbound event ───────────────────────────
-  private findCncEvent(srcIp: string, sessionId: string) {
-    const now  = Date.now();
-    const from = now - 30000; // C&C event may come up to 30s after login
-    return this.cncEvents.find(
-      c => (c.src_ip === srcIp) && c.timestamp >= from
-    ) || null;
-  }
-
-  // ─── PROCESSOR 1: Access Layer Log (Core Switch NetFlow) ─────────────────
-  private processAccessLayerLine(line: string) {
-    try {
-      const data = JSON.parse(line);
-      if (!data.src_ip) return;
-      this.accessEvents.push({
-        src_ip:    data.src_ip,
-        faculty:   data.faculty,
-        timestamp: new Date(data.timestamp).getTime(),
-        service:   data.dst_service || '',
-      });
-      // Keep cache bounded
-      if (this.accessEvents.length > 500) this.accessEvents.shift();
-      this.logger.debug(`[Access] ${data.src_ip} → ${data.dst_service} via ${data.faculty?.code}`);
-    } catch (e) { /* ignore parse errors */ }
-  }
-
-  // ─── PROCESSOR 2: C&C Outbound Log (Firewall) ────────────────────────────
-  private processCncOutboundLine(line: string) {
-    try {
-      const data = JSON.parse(line);
-      if (!data.src_ip || !data.dst_ip) return;
-      const entry = {
-        src_ip:      data.src_ip,
-        dst_ip:      data.dst_ip,
-        dst_country: data.dst_country || 'Unknown',
-        timestamp:   new Date(data.timestamp).getTime(),
-        command:     data.command || '',
-      };
-      this.cncEvents.push(entry);
-      if (this.cncEvents.length > 200) this.cncEvents.shift();
-      this.logger.log(`[C&C] Outbound: ${data.src_ip} → ${data.dst_ip} (${data.severity})`);
-    } catch (e) { /* ignore */ }
-  }
+  // (Removed simulated access and CNC helpers for production)
 
   // ─── PROCESSOR 3: Cowrie SSH Honeypot Log ────────────────────────────────
   private processCowrieLine(line: string) {
@@ -215,14 +155,9 @@ export class LogService implements OnModuleInit {
       const timeStr     = this.formatTime(timestamp);
       const attackTs    = new Date(timestamp).getTime();
       const country     = this.getCountry(src_ip);
-      const accessEvent = this.findAccessEvent(src_ip, attackTs);
-      const cncEvent    = this.findCncEvent(src_ip, session);
 
       // ── Build correlation chain ──────────────────────────────────────────
       const chain: string[] = [];
-      if (accessEvent) {
-        chain.push(`[Access] ${src_ip} → Core Switch (${accessEvent.faculty?.code || 'EXT'}) → Server Zone`);
-      }
 
       let payload: any = null;
 
@@ -256,7 +191,7 @@ export class LogService implements OnModuleInit {
           clientVersion: data.version || 'Unknown SSH Client',
           sessionId: session, country,
           correlationChain: chain,
-          accessLayer: accessEvent || null,
+          accessLayer: null,
           cncLayer: null,
         };
 
@@ -273,8 +208,8 @@ export class LogService implements OnModuleInit {
           clientVersion: data.version || 'Unknown SSH Client',
           sessionId: session, country,
           correlationChain: chain,
-          accessLayer: accessEvent || null,
-          cncLayer: cncEvent || null,
+          accessLayer: null,
+          cncLayer: null,
         };
 
       // ── cowrie.command.input ─────────────────────────────────────────────
@@ -282,20 +217,9 @@ export class LogService implements OnModuleInit {
         chain.push(`[Server] Command executed: ${data.input}`);
 
         // Check if command is downloading/calling C&C
-        const isCncCmd = /wget|curl|nc |bash -i|python|perl|/i.test(data.input || '');
+        const isCncCmd = /wget|curl|nc\s|bash\s+-i|python|perl/i.test(data.input || '');
         if (isCncCmd) {
-          // Extract target IP/domain and report to C&C log
-          const urlMatch = (data.input || '').match(/(\d{1,3}(?:\.\d{1,3}){3}|[a-z0-9.-]+\.[a-z]{2,})/i);
-          const dstIp    = urlMatch ? urlMatch[1] : 'unknown-cnc';
-          const cncEntry = {
-            src_ip:      src_ip,
-            dst_ip:      dstIp,
-            dst_country: this.getCountry(dstIp),
-            timestamp:   Date.now(),
-            command:     data.input,
-          };
-          this.cncEvents.push(cncEntry);
-          chain.push(`[C&C] ⚠️ Outbound connection attempted to ${dstIp}`);
+          chain.push(`[C&C] ⚠️ Outbound connection attempted`);
         }
 
         payload = {
@@ -307,8 +231,8 @@ export class LogService implements OnModuleInit {
           clientVersion: 'Interactive Shell',
           sessionId: session, country,
           correlationChain: chain,
-          accessLayer: accessEvent || null,
-          cncLayer: isCncCmd ? this.cncEvents[this.cncEvents.length - 1] : null,
+          accessLayer: null,
+          cncLayer: null,
         };
       }
 
@@ -331,12 +255,8 @@ export class LogService implements OnModuleInit {
 
       const country    = this.getCountry(src_ip);
       const timeStr    = this.formatTime(timestamp);
-      const accessEvent = this.findAccessEvent(src_ip, attackTs);
 
       const chain: string[] = [];
-      if (accessEvent) {
-        chain.push(`[Access] ${src_ip} → Core Switch (${accessEvent.faculty?.code || 'EXT'}) → Server Zone`);
-      }
       chain.push(`[Server] WebTrap HTTP: ${data.type} on ${data.detail}`);
 
       // Map type → MITRE
@@ -361,13 +281,56 @@ export class LogService implements OnModuleInit {
         sessionId: `webtrap-${Date.now()}`,
         country,
         correlationChain: chain,
-        accessLayer: accessEvent || null,
+        accessLayer: null,
         cncLayer: null,
       };
 
       this.saveAndBroadcast(payload);
     } catch (e) { /* ignore */ }
   }
+
+  // ─── PROCESSOR 5: Wazuh Real-time Alerts ──────────────────────────────────
+  public processWazuhAlert(data: any) {
+    try {
+      const ruleId = data.rule?.id || 'Unknown';
+      const description = data.rule?.description || 'Wazuh Alert';
+      const srcIp = data.data?.srcip || data.agent?.ip || '0.0.0.0';
+      const severityNum = data.rule?.level || 0;
+      
+      let severity = 'low';
+      if (severityNum >= 12) severity = 'critical';
+      else if (severityNum >= 8) severity = 'high';
+      else if (severityNum >= 5) severity = 'medium';
+
+      const country = this.getCountry(srcIp);
+      const attackTs = Date.now();
+      const timeStr = this.formatTime(new Date(attackTs).toISOString());
+
+      const payload = {
+        timestamp: attackTs,
+        time: timeStr,
+        ip: srcIp,
+        type: `Wazuh: ${description.substring(0, 30)}...`,
+        severity: severity,
+        detail: description,
+        mitigation: `Review Wazuh Console (Rule ID: ${ruleId})`,
+        mitreCode: data.rule?.mitre?.id?.[0] || 'Unknown',
+        threatScore: severityNum * 8, // scale to 100
+        clientVersion: data.agent?.name || 'Wazuh Agent',
+        sessionId: `wazuh-${Date.now()}`,
+        country,
+        correlationChain: [`[Wazuh] Alert Triggered: Rule ${ruleId} (Level ${severityNum})`],
+        accessLayer: null,
+        cncLayer: null,
+      };
+
+      this.saveAndBroadcast(payload);
+    } catch (e) {
+      this.logger.error(`Error parsing Wazuh alert: ${e.message}`);
+    }
+  }
+
+
 
   // ─── Save to DB + Broadcast via WebSocket ─────────────────────────────────
   private async saveAndBroadcast(payload: any) {
@@ -385,29 +348,41 @@ export class LogService implements OnModuleInit {
         threatScore:   payload.threatScore,
         sessionId:     payload.sessionId,
         timestampMs:   payload.timestamp,
-      });
+      }) as Attack;
 
       // Check if IP is in blocked list
       let isBlockedRepeat = false;
       try {
-        const blockedIpPath = isDocker ? '/app/siem-logs/blocked_ips.json' : path.join(basePath, 'siem-logs', 'blocked_ips.json');
-        const blockedRaw = fs.readFileSync(blockedIpPath, 'utf8');
+        const blockedIpPath = isDocker
+          ? '/app/siem-logs/blocked_ips.json'
+          : path.join(basePath, 'siem-logs', 'blocked_ips.json');
+        const blockedRaw  = fs.readFileSync(blockedIpPath, 'utf8');
         const blockedList = JSON.parse(blockedRaw);
-        isBlockedRepeat = blockedList.some((b: any) => b.ip === payload.ip);
-      } catch(e) {}
+        isBlockedRepeat   = blockedList.some((b: any) => b.ip === payload.ip);
+      } catch { /* file may not exist yet */ }
 
       // Attach correlation data for the frontend
-      const enriched = {
+      const enriched: any = {
         ...saved,
         correlationChain: payload.correlationChain || [],
         accessLayer:      payload.accessLayer      || null,
         cncLayer:         payload.cncLayer         || null,
         is_blocked_repeat: isBlockedRepeat,
+        aiAnalysis: null,
       };
+
+      // 🤖 AI analysis — async, non-blocking, only for HIGH / CRITICAL
+      if (payload.severity === 'high' || payload.severity === 'critical') {
+        this.aiService.analyzeAlert(payload).then(async (analysis) => {
+          if (!analysis) return;
+          await this.attackRepository.update(saved.id, { aiAnalysis: analysis });
+          this.eventsGateway.broadcastAttack({ ...enriched, id: saved.id, aiAnalysis: analysis });
+        }).catch(() => { /* silently ignore */ });
+      }
 
       this.eventsGateway.broadcastAttack(enriched);
       this.logger.log(
-        `[SIEM] ${payload.type} | ${payload.ip} | chain=${payload.correlationChain?.length} steps`
+        `[SIEM] ${payload.type} | ${payload.ip} | severity=${payload.severity} | chain=${payload.correlationChain?.length ?? 0} steps`
       );
     } catch (err) {
       this.logger.error(`[!] Failed to save attack: ${err}`);
