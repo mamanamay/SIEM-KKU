@@ -142,6 +142,7 @@
       '/dashboard/settings': 'System Settings',
       '/dashboard/threats': 'Security Logs',
       '/dashboard/network-map': 'Network Map Management',
+      '/dashboard/outbound-monitor': 'Outbound Threat Monitor',
       '/dashboard/api-history': 'API History'
     };
     return titles[path] || 'Command Center';
@@ -214,6 +215,10 @@
       </a>
       <a href="/dashboard/mitre" class="nav-item {$page.url.pathname === '/dashboard/mitre' ? 'active' : ''}">
         <i class="ti ti-grid-dots"></i> MITRE ATT&CK
+      </a>
+      <a href="/dashboard/outbound-monitor" class="nav-item {$page.url.pathname === '/dashboard/outbound-monitor' ? 'active' : ''}" style="position:relative;">
+        <i class="ti ti-radar-2"></i> Outbound Monitor
+        <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:9px;font-weight:700;background:#ef4444;color:#fff;padding:1px 6px;border-radius:10px;">NEW</span>
       </a>
 
       <div class="nav-group-title mt-2">RESPONSE & INTEL</div>
