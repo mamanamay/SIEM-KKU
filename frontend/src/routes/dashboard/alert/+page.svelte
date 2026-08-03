@@ -51,6 +51,15 @@
       expandedRows = expandedRows;
     }
 
+    let isRefreshing = false;
+    function refreshAlerts() {
+      isRefreshing = true;
+      const prev = selectedRange;
+      selectedRange = '';
+      setTimeout(() => { selectedRange = prev; currentPage = 1; isRefreshing = false; }, 400);
+    }
+
+
     function formatDate(ms) {
         if (ms === 0) return "";
         const d = new Date(ms);
@@ -96,7 +105,10 @@
         <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Showing <strong style="color:var(--text-primary)">{alerts.length}</strong> critical / high severity alerts &bull; {displayTime}</div>
       </div>
       <div style="display: flex; gap: 8px;">
-        <button class="ds-btn" on:click={() => {}}><i class="ti ti-refresh"></i> Refresh</button>
+        <button class="ds-btn" on:click={refreshAlerts} disabled={isRefreshing}>
+          <i class="ti ti-refresh" style={isRefreshing ? 'animation: spin 0.6s linear infinite;' : ''}></i>
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
         <button class="ds-btn primary" on:click={() => showExportModal = true}><i class="ti ti-download"></i> Export Report</button>
       </div>
     </div>

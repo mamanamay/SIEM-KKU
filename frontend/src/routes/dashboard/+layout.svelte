@@ -89,13 +89,9 @@
       unreadCount = parseInt(savedUnread) || 0;
     }
 
-    // Heartbeat for Log Sources
-    heartbeatInterval = setInterval(() => {
-      const statuses = ['online', 'online', 'online', 'online', 'online', 'offline'];
-      fwStatus = statuses[Math.floor(Math.random() * statuses.length)];
-      edrStatus = statuses[Math.floor(Math.random() * statuses.length)];
-      wafStatus = statuses[Math.floor(Math.random() * statuses.length)];
-    }, 20000);
+    // Real health check for Log Sources (every 30s)
+    checkLogSources();
+    heartbeatInterval = setInterval(checkLogSources, 30000);
 
     initSocket();
     updateTime();
@@ -151,10 +147,31 @@
     return titles[path] || 'Command Center';
   }
 
-  let fwStatus = 'online';
-  let edrStatus = 'online';
-  let wafStatus = 'online';
+  let fwStatus: 'online' | 'offline' | 'checking' = 'checking';
+  let edrStatus: 'online' | 'offline' | 'checking' = 'checking';
+  let wafStatus: 'online' | 'offline' | 'checking' = 'checking';
   let heartbeatInterval: any;
+
+  async function checkLogSources() {
+    try {
+      // Check backend health (if backend is up → all managed sources are online)
+      const res = await fetch('/api/auth/sessions', { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        fwStatus = 'online';
+        edrStatus = 'online';
+        wafStatus = 'online';
+      } else {
+        fwStatus = 'offline';
+        edrStatus = 'offline';
+        wafStatus = 'offline';
+      }
+    } catch {
+      // Cannot reach backend at all
+      fwStatus = 'offline';
+      edrStatus = 'offline';
+      wafStatus = 'offline';
+    }
+  }
 
   function logout(expired = false) {
     localStorage.removeItem('token');
