@@ -241,6 +241,13 @@
         <i class="ti ti-api"></i> API History
       </a>
       {/if}
+
+      <!-- SOC Monitor Wall -->
+      <div class="nav-group-title mt-2">MONITOR</div>
+      <a href="/monitor" target="_blank" class="nav-item monitor-wall-btn">
+        <i class="ti ti-device-tv"></i> SOC Monitor Wall
+        <i class="ti ti-external-link" style="margin-left:auto;font-size:11px;opacity:0.5;"></i>
+      </a>
     </nav>
     <div class="sidebar-footer">
       <div class="status-indicator">
@@ -479,6 +486,17 @@
 .nav-item i { font-size: 18px; }
 .nav-item:hover { background: var(--bg-secondary); color: var(--text-primary); }
 .nav-item.active { background: var(--green-bg); color: var(--green); }
+.nav-item.monitor-wall-btn {
+  background: rgba(29,158,117,0.06);
+  border: 1px solid rgba(29,158,117,0.2);
+  color: #1d9e75;
+  margin: 4px 0;
+}
+.nav-item.monitor-wall-btn:hover {
+  background: rgba(29,158,117,0.15);
+  border-color: rgba(29,158,117,0.4);
+  color: #10b981;
+}
 .nav-group-title { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; padding: 10px 14px 4px; letter-spacing: 0.5px; }
 .mt-2 { margin-top: 8px; }
 .sidebar-footer { padding: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
