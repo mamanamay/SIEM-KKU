@@ -143,6 +143,7 @@
       '/dashboard/threats': 'Security Logs',
       '/dashboard/network-map': 'Network Map Management',
       '/dashboard/outbound-monitor': 'Outbound Threat Monitor',
+      '/dashboard/ai-briefing': 'AI Daily Briefing',
       '/dashboard/api-history': 'API History'
     };
     return titles[path] || 'Command Center';
@@ -203,6 +204,9 @@
       <div class="nav-group-title mt-2">DETECTION & ANALYSIS</div>
       <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}">
         <i class="ti ti-chart-pie"></i> Analyst Center
+      </a>
+      <a href="/dashboard/ai-briefing" class="nav-item {$page.url.pathname === '/dashboard/ai-briefing' ? 'active' : ''}">
+        <i class="ti ti-brain"></i> AI Daily Briefing
       </a>
       <a href="/dashboard/threats" class="nav-item {$page.url.pathname === '/dashboard/threats' ? 'active' : ''}">
         <i class="ti ti-list-search"></i> Security Logs

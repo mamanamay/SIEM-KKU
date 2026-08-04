@@ -176,4 +176,69 @@ export class AttacksController {
   getIsolatedPorts() {
     return readJSON(ISOLATED_PORTS_FILE);
   }
+
+  // ── AI Daily Briefing ─────────────────────────────────────────────────────
+  @Post('ai-briefing')
+  async aiBriefing(@Body() body: {
+    total: number; critical: number; high: number; medium: number;
+    uniqueIPs: number; uniqueCountries: number;
+    topTypes: Array<{type: string; count: number}>;
+    topCountries: Array<{country: string; count: number}>;
+    topIPs: Array<{ip: string; count: number}>;
+    date: string;
+  }) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'your-gemini-api-key-here') {
+      // Rule-based fallback briefing (no Gemini needed)
+      const topType = body.topTypes?.[0]?.type || 'SSH Brute Force';
+      const topCountry = body.topCountries?.[0]?.country || 'Unknown';
+      return {
+        briefing: `📋 สรุปภัยคุกคามประจำวัน ${body.date}\n\n` +
+          `🔴 ตรวจพบเหตุการณ์ความปลอดภัยทั้งหมด ${body.total} รายการ ` +
+          `แบ่งเป็น Critical ${body.critical} รายการ High ${body.high} รายการ และ Medium ${body.medium} รายการ\n\n` +
+          `🌍 การโจมตีมาจาก ${body.uniqueIPs} IP ที่ไม่ซ้ำกัน ใน ${body.uniqueCountries} ประเทศ ` +
+          `ประเทศที่โจมตีมากที่สุดคือ ${topCountry}\n\n` +
+          `⚔️ ประเภทการโจมตีที่พบบ่อยที่สุดคือ "${topType}" ` +
+          `${body.critical > 5 ? '⚠️ ระดับความเสี่ยงสูง — แนะนำตรวจสอบ Critical alerts ทันที' : '✅ สถานการณ์โดยรวมอยู่ในระดับปกติ'}\n\n` +
+          `💡 คำแนะนำ: ตรวจสอบ IP ที่โจมตีซ้ำและพิจารณา block IP จาก ${topCountry} หากพบรูปแบบผิดปกติ`,
+        mode: 'rule-based'
+      };
+    }
+
+    // Build Gemini prompt
+    const topTypesStr = (body.topTypes || []).slice(0,5).map(t => `${t.type}(${t.count})`).join(', ');
+    const topCountriesStr = (body.topCountries || []).slice(0,5).map(c => `${c.country}(${c.count})`).join(', ');
+    const topIPsStr = (body.topIPs || []).slice(0,3).map(i => `${i.ip}(${i.count}ครั้ง)`).join(', ');
+
+    const prompt = `คุณคือ SOC Analyst อาวุโสของมหาวิทยาลัยขอนแก่น สรุปสถานการณ์ความปลอดภัยประจำวันเป็นภาษาไทย กระชับ เข้าใจง่าย ใช้ emoji เหมาะสม
+
+ข้อมูลวันที่ ${body.date}:
+- เหตุการณ์ทั้งหมด: ${body.total} (Critical: ${body.critical}, High: ${body.high}, Medium: ${body.medium})
+- แหล่งโจมตี: ${body.uniqueIPs} IP จาก ${body.uniqueCountries} ประเทศ
+- ประเภทโจมตีหลัก: ${topTypesStr}
+- ประเทศผู้โจมตี: ${topCountriesStr}
+- IP โจมตีมากที่สุด: ${topIPsStr}
+
+สรุปเป็น 4 ส่วนสั้นๆ:
+1. สรุปภาพรวม (1-2 ประโยค)
+2. ภัยคุกคามหลักที่น่ากังวล
+3. ประเมินระดับความเสี่ยง (ต่ำ/ปานกลาง/สูง/วิกฤต)
+4. คำแนะนำเร่งด่วน (2-3 ข้อ)`;
+
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        signal: AbortSignal.timeout(15000),
+      } as any);
+      const data = await res.json() as any;
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) return { briefing: text, mode: 'gemini' };
+    } catch (e) {
+      console.error('[AI Briefing] Gemini call failed:', e);
+    }
+
+    return { briefing: `⚠️ ไม่สามารถเชื่อมต่อ Gemini API ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง`, mode: 'error' };
+  }
 }
