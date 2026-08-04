@@ -144,6 +144,7 @@
       '/dashboard/network-map': 'Network Map Management',
       '/dashboard/outbound-monitor': 'Outbound Threat Monitor',
       '/dashboard/ai-briefing': 'AI Daily Briefing',
+      '/dashboard/credential-intel': 'Credential Intelligence',
       '/dashboard/api-history': 'API History'
     };
     return titles[path] || 'Command Center';
@@ -207,6 +208,9 @@
       </a>
       <a href="/dashboard/ai-briefing" class="nav-item {$page.url.pathname === '/dashboard/ai-briefing' ? 'active' : ''}">
         <i class="ti ti-brain"></i> AI Daily Briefing
+      </a>
+      <a href="/dashboard/credential-intel" class="nav-item {$page.url.pathname === '/dashboard/credential-intel' ? 'active' : ''}">
+        <i class="ti ti-key"></i> Credential Intel
       </a>
       <a href="/dashboard/threats" class="nav-item {$page.url.pathname === '/dashboard/threats' ? 'active' : ''}">
         <i class="ti ti-list-search"></i> Security Logs
