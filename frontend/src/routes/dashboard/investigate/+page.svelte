@@ -181,8 +181,15 @@
     return { ip: cncIps[e.type] || '—', country: '', command: '', real: false };
   }
 
+  let customBlockReason = '';
+
   function toggleEvent(e: any) {
-    expandedEvent = expandedEvent === e ? null : e;
+    if (expandedEvent === e) {
+      expandedEvent = null;
+    } else {
+      expandedEvent = e;
+      customBlockReason = `${e.type} — Severity: ${e.severity?.toUpperCase()} — ${e.detail}`;
+    }
   }
 
   // ─── Action: Toggle Block IP ──────────────────────────────────────────────
@@ -210,7 +217,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ip,
-            reason: `${e.type} — Severity: ${e.severity?.toUpperCase()} — ${e.detail}`,
+            reason: customBlockReason || `${e.type} — Severity: ${e.severity?.toUpperCase()} — ${e.detail}`,
             attackId: e.id,
             faculty: getFacultyForIP(ip),
           }),
@@ -623,6 +630,11 @@
                       <div class="action-section">
                         <div class="action-label"><i class="ti ti-bolt"></i> SOAR Playbook: WAF / Firewall Action:</div>
                         {#if $roleStore === 'admin'}
+                          {#if !isBlocked}
+                            <div style="margin-bottom: 10px; margin-top: 5px;">
+                              <input type="text" class="input-field" bind:value={customBlockReason} placeholder="ระบุสาเหตุการบล็อก IP" style="width: 100%; font-size: 13px;" />
+                            </div>
+                          {/if}
                           <button
                             class="btn-action {isBlocked ? 'btn-done' : 'red'} {isActionLoading[e.ip] ? 'btn-loading' : ''}"
                             on:click|stopPropagation={() => toggleBlockIP(e)}

@@ -114,8 +114,11 @@ export class AuthController {
   // ── Create User ─────────────────────────────────────────
   @Post('register')
   async registerUser(@Body() body: any) {
-    const { username, password, role } = body;
-    if (!username || !password) {
+    const { username, password, role, isSso } = body;
+    if (!username) {
+      throw new BadRequestException('กรุณากรอก Username');
+    }
+    if (!isSso && !password) {
       throw new BadRequestException('กรุณากรอก Username และ Password');
     }
     const existing = await this.userRepository.findOne({ where: { username } });
@@ -125,7 +128,7 @@ export class AuthController {
 
     const user = this.userRepository.create({
       username,
-      passwordHash: password,
+      passwordHash: isSso ? 'SSO_MANAGED' : password,
       role: role || 'guest',
     });
     await this.userRepository.save(user);

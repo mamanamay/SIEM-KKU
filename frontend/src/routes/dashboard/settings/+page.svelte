@@ -9,6 +9,7 @@
   let newUsername = '';
   let newPassword = '';
   let newRole = 'guest';
+  let newIsSso = false;
   let showNewPassword = false;
   let userMsg = '';
   let userErr = '';
@@ -58,17 +59,18 @@
 
   async function createUser() {
     userMsg = ''; userErr = '';
-    if (!newUsername.trim() || !newPassword.trim()) { userErr = 'กรุณากรอก Username และ Password'; return; }
+    if (!newUsername.trim()) { userErr = 'กรุณากรอก Username'; return; }
+    if (!newIsSso && !newPassword.trim()) { userErr = 'กรุณากรอก Password'; return; }
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole })
+        body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole, isSso: newIsSso })
       });
       const data = await res.json();
       if (res.ok) {
         userMsg = `✓ สร้างบัญชี "${newUsername}" สำเร็จ`;
-        newUsername = ''; newPassword = ''; newRole = 'guest'; showNewPassword = false;
+        newUsername = ''; newPassword = ''; newRole = 'guest'; showNewPassword = false; newIsSso = false;
         await loadUsers();
       } else {
         userErr = data.message || 'เกิดข้อผิดพลาด';
@@ -254,13 +256,20 @@
           <div class="ds-card-head">
             <div class="ds-card-title"><i class="ti ti-user-plus"></i> Create New Account</div>
           </div>
-          <div class="sso-whitelist-note">
-            <i class="ti ti-shield-lock"></i>
+          <label class="sso-whitelist-note toggle-box" class:active={newIsSso}>
+            <input type="checkbox" bind:checked={newIsSso} style="display:none;" />
+            <div class="sso-icon">
+              <i class="ti {newIsSso ? 'ti-shield-check' : 'ti-shield-lock'}"></i>
+            </div>
             <div>
               <strong>KKU SSO Whitelist</strong><br>
-              <span>KKU SSO กรอกในช่อง username เพียงช่องเดียว</span>
+              <span>{newIsSso ? 'ผูกบัญชีด้วย KKU SSO (ไม่ต้องตั้งรหัสผ่าน)' : 'ใช้งาน KKU SSO เปิดตัวเลือกนี้'}</span>
             </div>
-          </div>
+            <div class="toggle-switch">
+              <div class="switch-track"></div>
+              <div class="switch-thumb"></div>
+            </div>
+          </label>
           {#if userMsg}<div class="msg success">{userMsg}</div>{/if}
           {#if userErr}<div class="msg error">{userErr}</div>{/if}
           <form on:submit|preventDefault={createUser} class="form-stack">
@@ -268,6 +277,7 @@
               <label>Username <span class="label-hint">(Email เต็ม — สำหรับผูกกับ SSO)</span></label>
               <input type="text" bind:value={newUsername} placeholder="e.g. user@anydomain.com" class="input-field" style="padding-right:12px;" />
             </div>
+            {#if !newIsSso}
             <div class="field">
               <label>Password <span class="label-hint">(สำหรับล็อกอินแบบปกติ)</span></label>
               <div class="pw-wrap">
@@ -281,6 +291,7 @@
                 </button>
               </div>
             </div>
+            {/if}
             <div class="field">
               <label>Role</label>
               <select bind:value={newRole} class="ds-select">
@@ -685,11 +696,10 @@
   }
   @media (max-width: 900px) { .about-grid { grid-template-columns: 1fr; } }
 
-  /* ── SSO Whitelist Note ───────────────────────────── */
   .sso-whitelist-note {
     display: flex;
     gap: 10px;
-    align-items: flex-start;
+    align-items: center;
     background: rgba(29,158,117,0.06);
     border: 1px solid rgba(29,158,117,0.2);
     border-radius: 10px;
@@ -698,10 +708,18 @@
     color: var(--text-secondary);
     line-height: 1.5;
     margin-bottom: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
   }
-  .sso-whitelist-note i { color: var(--green); font-size: 18px; flex-shrink: 0; margin-top: 2px; }
-  .sso-whitelist-note strong { display: block; color: var(--green); font-size: 12px; margin-bottom: 2px; }
-  .sso-whitelist-note code { font-family: monospace; background: rgba(29,158,117,0.1); padding: 1px 5px; border-radius: 4px; color: var(--green); }
+  .sso-whitelist-note:hover { background: rgba(29,158,117,0.1); }
+  .sso-whitelist-note.active { background: rgba(29,158,117,0.15); border-color: var(--green); }
+  .sso-whitelist-note .sso-icon i { color: var(--green); font-size: 20px; flex-shrink: 0; transition: all 0.2s; }
+  .sso-whitelist-note strong { display: block; color: var(--green); font-size: 13px; margin-bottom: 2px; transition: all 0.2s; }
+  
+  .toggle-switch { margin-left: auto; position: relative; width: 36px; height: 20px; border-radius: 20px; background: var(--border); transition: all 0.3s; flex-shrink: 0; }
+  .active .toggle-switch { background: var(--green); }
+  .switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: all 0.3s; }
+  .active .switch-thumb { transform: translateX(16px); }
 
   /* ── Form ────────────────────────────────────────── */
   .form-stack { display: flex; flex-direction: column; gap: 14px; }
