@@ -358,12 +358,34 @@
       });
 
       let marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
-      marker.bindTooltip(`<b>${e.ip}</b><br>${e.type || 'Unknown'}`, { direction: 'top', offset: [0, -10] });
+      marker.bindTooltip(`<b>${e.ip}</b><br>${e.type || 'Unknown'}<br><span style="color:#10b981;font-size:10px;">คลิกเพื่อวิเคราะห์ →</span>`, { direction: 'top', offset: [0, -10] });
+      marker.on('click', () => openAnalyzePanel(e.ip));
       markers.push(marker);
     });
   }
 
   function setFilter(sev: string) { activeSev = sev; }
+
+  // ── Click-to-Analyze Panel ─────────────────────────────────────────────
+  let selectedIP: string | null = null;
+  let panelData: { ip: string; country: string; type: string; count: number; severities: Record<string,number>; events: any[] } | null = null;
+
+  function openAnalyzePanel(ip: string) {
+    const ipEvents = events.filter(e => e.ip === ip);
+    const severities: Record<string, number> = {};
+    ipEvents.forEach(e => { severities[e.severity] = (severities[e.severity] || 0) + 1; });
+    panelData = {
+      ip,
+      country: ipEvents[0]?.country || 'Unknown',
+      type: ipEvents[0]?.type || 'Unknown',
+      count: ipEvents.length,
+      severities,
+      events: ipEvents.slice(-5).reverse()
+    };
+    selectedIP = ip;
+  }
+
+  function closePanel() { selectedIP = null; panelData = null; }
 </script>
 
 <div class="db-content">
@@ -564,9 +586,67 @@
       </div>
     </div>
 
-    <!-- Map body — full width map only -->
-    <div class="map-body">
-      <div class="map-container" id="threat-map"></div>
+    <!-- Map body — full width map + sliding analyze panel -->
+    <div class="map-body" style="position:relative; display:flex; gap: 0; overflow:hidden;">
+      <div class="map-container" id="threat-map" style="flex:1; transition: all 0.35s cubic-bezier(.4,0,.2,1); {selectedIP ? 'border-radius:12px 0 0 12px;' : ''}"></div>
+
+      <!-- ── Click-to-Analyze Sliding Panel ───────────────────────────── -->
+      {#if panelData}
+      <div class="analyze-panel" class:open={!!selectedIP}>
+        <div class="ap-header">
+          <div class="ap-title"><i class="ti ti-radar-2"></i> IP Analysis</div>
+          <button class="ap-close" on:click={closePanel}><i class="ti ti-x"></i></button>
+        </div>
+
+        <div class="ap-ip">{panelData.ip}</div>
+        <div class="ap-country">
+          <i class="ti ti-map-pin" style="color:var(--green)"></i>
+          {panelData.country}
+        </div>
+
+        <!-- Attack Count -->
+        <div class="ap-stat-row">
+          <div class="ap-stat red">
+            <div class="ap-stat-num">{panelData.count}</div>
+            <div class="ap-stat-lbl">Total Attacks</div>
+          </div>
+          <div class="ap-stat orange">
+            <div class="ap-stat-num">{panelData.severities['critical'] || 0}</div>
+            <div class="ap-stat-lbl">Critical</div>
+          </div>
+          <div class="ap-stat yellow">
+            <div class="ap-stat-num">{panelData.severities['high'] || 0}</div>
+            <div class="ap-stat-lbl">High</div>
+          </div>
+        </div>
+
+        <!-- Main Attack Type -->
+        <div class="ap-section-title">Primary Threat</div>
+        <div class="ap-type-badge">{panelData.type}</div>
+
+        <!-- Recent Events Mini List -->
+        <div class="ap-section-title">Recent Events</div>
+        <div class="ap-events">
+          {#each panelData.events as e}
+          <div class="ap-event-row">
+            <span class="ap-event-dot" style="background:{e.severity==='critical'?'#ef4444':e.severity==='high'?'#f97316':'#f59e0b'}"></span>
+            <span class="ap-event-time">{e.timeStr || e.time || '-'}</span>
+            <span class="ap-event-type">{e.type}</span>
+          </div>
+          {/each}
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="ap-actions">
+          <a href="/dashboard/investigate?ip={panelData.ip}" class="ap-btn primary">
+            <i class="ti ti-zoom-in"></i> Investigate
+          </a>
+          <a href="/dashboard/threats?q={panelData.ip}" class="ap-btn secondary">
+            <i class="ti ti-list-search"></i> View Logs
+          </a>
+        </div>
+      </div>
+      {/if}
     </div>
   </div>
 
@@ -1174,4 +1254,117 @@
   transition: background 0.15s, border-color 0.15s;
 }
 .sc-close-btn:hover { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+
+/* ── Click-to-Analyze Panel ──────────────────────────────────────────────── */
+.analyze-panel {
+  width: 0;
+  overflow: hidden;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  border-radius: 0 12px 12px 0;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.35s cubic-bezier(.4,0,.2,1);
+  flex-shrink: 0;
+}
+.analyze-panel.open {
+  width: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.ap-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: sticky; top: 0;
+  background: var(--bg-panel);
+  z-index: 1;
+}
+.ap-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--green);
+  display: flex; align-items: center; gap: 6px;
+}
+.ap-close {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 14px;
+  padding: 2px 4px; border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.ap-close:hover { color: var(--red); background: var(--red-bg); }
+
+.ap-ip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px; font-weight: 800;
+  color: var(--text-primary);
+  padding: 12px 14px 4px;
+  word-break: break-all;
+}
+.ap-country {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--text-secondary);
+  padding: 0 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ap-stat-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px; padding: 10px 14px;
+}
+.ap-stat {
+  text-align: center; padding: 8px 4px;
+  border-radius: 8px; border: 1px solid var(--border);
+}
+.ap-stat.red    { background: rgba(239,68,68,0.06); }
+.ap-stat.orange { background: rgba(249,115,22,0.06); }
+.ap-stat.yellow { background: rgba(245,158,11,0.06); }
+.ap-stat-num { font-size: 18px; font-weight: 800; color: var(--text-primary); line-height: 1; }
+.ap-stat.red    .ap-stat-num { color: #ef4444; }
+.ap-stat.orange .ap-stat-num { color: #f97316; }
+.ap-stat.yellow .ap-stat-num { color: #f59e0b; }
+.ap-stat-lbl { font-size: 9px; color: var(--text-muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.ap-section-title {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-muted);
+  padding: 4px 14px 6px;
+}
+.ap-type-badge {
+  font-size: 11px; font-weight: 600; color: #ef4444;
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 6px;
+  padding: 5px 10px;
+  margin: 0 14px 10px;
+}
+
+.ap-events { padding: 0 14px; display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+.ap-event-row { display: flex; align-items: center; gap: 6px; font-size: 10px; }
+.ap-event-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.ap-event-time { color: var(--text-muted); min-width: 50px; font-family: monospace; }
+.ap-event-type { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ap-actions {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+.ap-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 12px; border-radius: 8px;
+  font-size: 12px; font-weight: 600;
+  text-decoration: none; transition: all 0.2s;
+}
+.ap-btn.primary {
+  background: var(--green); color: #fff;
+}
+.ap-btn.primary:hover { filter: brightness(1.1); }
+.ap-btn.secondary {
+  background: var(--bg-secondary); color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+.ap-btn.secondary:hover { border-color: var(--green); color: var(--green); }
 </style>
+
