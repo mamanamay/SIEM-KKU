@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 
 export default defineConfig({
-	plugins: [sveltekit()],
+	plugins: [sveltekit(), basicSsl()],
 	server: {
 		port: 3000,
 		strictPort: false,
@@ -12,11 +12,11 @@ export default defineConfig({
 		},
 		proxy: {
 			'/api': {
-				target: 'http://localhost:5000',
+				target: 'http://backend:5000',
 				changeOrigin: true
 			},
 			'/socket.io': {
-				target: 'http://localhost:5000',
+				target: 'http://backend:5000',
 				changeOrigin: true,
 				ws: true
 			}
