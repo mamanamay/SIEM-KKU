@@ -468,7 +468,7 @@
       <!-- Top Threat Types -->
       <div class="stat-card">
         <div class="stat-card-title"><i class="ti ti-target"></i> Top Threat Types</div>
-        {#each (() => { const c: Record<string,number>={};displayEvents.forEach(e=>c[e.type]=(c[e.type]||0)+1);return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,5); })() as [type, count]}
+        {#each (() => { const c: any={};displayEvents.forEach(e=>c[e.type]=(c[e.type]||0)+1);return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,5); })() as [type, count]}
           <div class="type-row">
             <span class="type-name">{type}</span>
             <span class="type-cnt">{count}</span>
