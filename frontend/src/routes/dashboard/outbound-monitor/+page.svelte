@@ -79,6 +79,15 @@
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
   })();
 
+  // Top Threat Types
+  $: topThreatTypes = (() => {
+    const counts: Record<string, number> = {};
+    displayEvents.forEach(e => {
+      counts[e.type] = (counts[e.type] || 0) + 1;
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  })();
+
   // Top threats (last 20)
   $: recentThreats = displayEvents.slice(-20).reverse();
 
@@ -468,7 +477,7 @@
       <!-- Top Threat Types -->
       <div class="stat-card">
         <div class="stat-card-title"><i class="ti ti-target"></i> Top Threat Types</div>
-        {#each (() => { const c: any={};displayEvents.forEach(e=>c[e.type]=(c[e.type]||0)+1);return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,5); })() as [type, count]}
+        {#each topThreatTypes as [type, count]}
           <div class="type-row">
             <span class="type-name">{type}</span>
             <span class="type-cnt">{count}</span>
