@@ -1,0 +1,19 @@
+[
+  {
+    "ip": "141.11.33.140",
+    "blockedAt": "2026-08-04T08:20:29.340Z",
+    "reason": "Path Traversal — Severity: CRITICAL — GET /server/../../../../package.json HTTP/1.1",
+    "attackId": 5482,
+    "faculty": null,
+    "switchPort": null,
+    "blockedBy": "SIEM Dashboard (Auto)",
+    "attackData": {
+      "type": "Path Traversal",
+      "severity": "critical",
+      "country": "United States",
+      "mitreCode": "T1190",
+      "threatScore": 80,
+      "detail": "GET /server/../../../../package.json HTTP/1.1"
+    }
+  }
+]

@@ -1,4 +1,4 @@
-import { Controller, Patch, Post, Param, Body, HttpException, HttpStatus, Get } from '@nestjs/common';
+import { Controller, Patch, Post, Param, Body, HttpException, HttpStatus, Get, Headers } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Attack } from './entities/attack.entity';
@@ -179,15 +179,18 @@ export class AttacksController {
 
   // ── AI Daily Briefing ─────────────────────────────────────────────────────
   @Post('ai-briefing')
-  async aiBriefing(@Body() body: {
-    total: number; critical: number; high: number; medium: number;
-    uniqueIPs: number; uniqueCountries: number;
-    topTypes: Array<{type: string; count: number}>;
-    topCountries: Array<{country: string; count: number}>;
-    topIPs: Array<{ip: string; count: number}>;
-    date: string;
-  }) {
-    const apiKey = process.env.GEMINI_API_KEY;
+  async aiBriefing(
+    @Body() body: {
+      total: number; critical: number; high: number; medium: number;
+      uniqueIPs: number; uniqueCountries: number;
+      topTypes: Array<{type: string; count: number}>;
+      topCountries: Array<{country: string; count: number}>;
+      topIPs: Array<{ip: string; count: number}>;
+      date: string;
+    },
+    @Headers('x-gemini-key') headerKey?: string
+  ) {
+    const apiKey = headerKey || process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === 'your-gemini-api-key-here') {
       // Rule-based fallback briefing (no Gemini needed)
       const topType = body.topTypes?.[0]?.type || 'SSH Brute Force';
@@ -240,5 +243,52 @@ export class AttacksController {
     }
 
     return { briefing: `⚠️ ไม่สามารถเชื่อมต่อ Gemini API ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง`, mode: 'error' };
+  }
+
+  // ── AI Event Analysis (On-Demand) ─────────────────────────────────────────
+  @Post('analyze-event')
+  async analyzeEvent(@Body() event: any, @Headers('x-gemini-key') headerKey?: string) {
+    const apiKey = headerKey || process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'your-gemini-api-key-here') {
+      return { analysis: `⚠️ ไม่พบ Gemini API Key ในระบบ\nไม่สามารถวิเคราะห์แบบลึกได้ โปรดตรวจสอบการตั้งค่า environment` };
+    }
+
+    const payloadText = event.payload || event.detail || 'ไม่พบ payload';
+    const prompt = `คุณคือผู้เชี่ยวชาญ Cyber Security (SOC Analyst อาวุโส)
+กรุณาวิเคราะห์ Log เหตุการณ์นี้สั้นๆ เป็นภาษาไทย แบบมืออาชีพและเข้าใจง่าย
+
+ข้อมูลเหตุการณ์:
+- IP ต้นทาง: ${event.sourceIp || event.ip || 'Unknown'}
+- ประเภทการโจมตี: ${event.type || 'Unknown'}
+- ความรุนแรง: ${event.severity?.toUpperCase() || 'UNKNOWN'}
+- ข้อมูล/Payload: ${payloadText}
+
+รูปแบบคำตอบ:
+1. 🎯 เป้าหมายของแฮกเกอร์: (พยายามทำอะไร?)
+2. 🔬 วิเคราะห์เชิงลึก: (อธิบาย Payload หรือพฤติกรรมนี้)
+3. 🛡️ ข้อเสนอแนะเร่งด่วน: (ควรทำอย่างไร?)
+`;
+
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        signal: AbortSignal.timeout(15000),
+      } as any);
+      
+      const data = await res.json() as any;
+      
+      if (data.error) {
+        console.error('[AI Analysis] Gemini API Error:', data.error.message);
+        return { analysis: `⚠️ **เกิดข้อผิดพลาดจาก Google Gemini API**\n\nสาเหตุ: ${data.error.message}\n\n*ข้อเสนอแนะ: โปรดตรวจสอบว่า API Key ของคุณถูกต้อง (API Key ของ Gemini มักจะขึ้นต้นด้วย \`AIzaSy\`)*` };
+      }
+
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) return { analysis: text };
+    } catch (e) {
+      console.error('[AI Analysis] Gemini call failed:', e);
+    }
+    return { analysis: `⚠️ AI วิเคราะห์ขัดข้อง ชั่วคราว (Timeout or ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ Google ได้)` };
   }
 }

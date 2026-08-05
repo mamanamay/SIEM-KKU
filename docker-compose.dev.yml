@@ -21,7 +21,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: honeypot_frontend_dev
-    command: npm run dev
+    command: sh -c "npm install --legacy-peer-deps && npm run dev"
     environment:
       - NODE_ENV=development
     ports:
@@ -36,7 +36,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: honeypot_backend_dev
-    command: npm run start:dev
+    command: sh -c "npm install --legacy-peer-deps && npm run start:dev"
     environment:
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/honeypot
       - REDIS_URL=redis://redis:6379

@@ -33,33 +33,6 @@ export class SeedService implements OnModuleInit {
       console.log('[+] Seeded guest user');
     }
 
-    const attackCount = await this.attackRepository.count();
-    if (attackCount === 0) {
-      const now = new Date();
-      const timeOpts = { timeZone: 'Asia/Bangkok', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' } as const;
-      
-      const timeStr1 = new Date(now.getTime() - 5000).toLocaleTimeString('en-US', timeOpts);
-      const timeStr2 = new Date(now.getTime() - 15000).toLocaleTimeString('en-US', timeOpts);
-      const timeStr3 = new Date(now.getTime() - 45000).toLocaleTimeString('en-US', timeOpts);
-
-      await this.attackRepository.save([
-        { 
-          timeStr: timeStr1, ip: '185.220.101.4', type: 'SSH Brute Force', severity: 'critical', 
-          detail: '320 attempts / 5 min', mitigation: 'Block IP (Immediate) | Disable Password Auth (Long-term)',
-          country: 'Russia', clientVersion: 'SSH-2.0-libssh-0.9.3', mitreCode: 'T1110', threatScore: 85
-        },
-        { 
-          timeStr: timeStr2, ip: '91.196.241.88', type: 'SQL Inject', severity: 'high', 
-          detail: 'UNION SELECT payload', mitigation: 'Block IP (Immediate) | Use Prepared Statements (Long-term)',
-          country: 'China', clientVersion: 'Nmap/7.92', mitreCode: 'T1190', threatScore: 75
-        },
-        { 
-          timeStr: timeStr3, ip: '194.165.16.65', type: 'Web Scan', severity: 'medium', 
-          detail: '/wp-login.php, /admin', mitigation: 'Block User-Agent (Immediate) | Hide Admin Paths (Long-term)',
-          country: 'Brazil', clientVersion: 'Mozilla/5.0 ZmEu', mitreCode: 'T1595', threatScore: 40
-        }
-      ]);
-      console.log('[+] Seeded 3 mock attacks for demonstration');
-    }
+    // Mock data seeding has been removed to prepare for production/real data
   }
 }
