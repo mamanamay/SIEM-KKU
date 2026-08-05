@@ -1,199 +1,107 @@
 <div align="center">
 
-# 🛡️ KKUSIEM Honeypot Dashboard
+# 🛡️ KKUSIEM Honeypot Command Center
 
-**Enterprise-grade Honeypot & SIEM Dashboard for Khon Kaen University**
+**Enterprise-Grade Honeypot & SIEM Dashboard for Khon Kaen University**
 
 [![SvelteKit](https://img.shields.io/badge/Frontend-SvelteKit-ff3e00?style=flat-square&logo=svelte)](https://kit.svelte.dev)
 [![NestJS](https://img.shields.io/badge/Backend-NestJS-e0234e?style=flat-square&logo=nestjs)](https://nestjs.com)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL_16-336791?style=flat-square&logo=postgresql)](https://postgresql.org)
-[![Docker](https://img.shields.io/badge/Deploy-Docker_Compose-2496ed?style=flat-square&logo=docker)](https://docs.docker.com/compose)
+[![WebSocket](https://img.shields.io/badge/Realtime-Socket.io-010101?style=flat-square&logo=socket.io)](https://socket.io)
 
-*Real-time threat detection · MITRE ATT&CK mapping · KKU SSO integration*
+*Real-time threat detection • MITRE ATT&CK mapping • AI-Driven Analysis*
 
 </div>
 
 ---
 
-## 📖 ภาพรวมระบบ
+## 🎯 System Overview
 
-KKUSIEM คือระบบ Honeypot & Security Dashboard สำหรับมหาวิทยาลัยขอนแก่น ออกแบบมาเพื่อ **ดักจับ ตรวจจับ และวิเคราะห์การโจมตีทางไซเบอร์** แบบ Real-time พร้อม Dashboard สำหรับทีม SOC (Security Operations Center)
+KKUSIEM is a specialized **Honeypot & Security Dashboard** designed to visualize, analyze, and act upon cybersecurity threats in real-time. By acting as a decoy system (Honeypot), it captures malicious inbound traffic and visualizes these attacks for the Security Operations Center (SOC) team.
 
-```
-Attacker ──► Honeypot (SSH/HTTP) ──► Log File ──► SIEM Engine ──► Dashboard
-                                                        │
-                                               PostgreSQL + WebSocket
-```
+The system is split into a robust **NestJS backend** that handles high-throughput log ingestion and a **SvelteKit frontend** that provides a seamless, real-time command center interface.
 
----
+## 🏗️ Architecture & Workflow
 
-## ✨ ฟีเจอร์หลัก
+1. **Threat Ingestion (Backend)**
+   - External honeypot sensors capture malicious payloads and activities.
+   - Logs are pushed to the **NestJS Backend** via a secure API endpoint.
+   - The backend validates, processes, and enriches the data (e.g., mapping IPs to geolocation or determining MITRE ATT&CK tactics).
+   - Data is stored securely in a **PostgreSQL** database.
 
-| หมวด | รายละเอียด |
-|------|-----------|
-| 🎯 **Real-time Dashboard** | แสดงการโจมตีแบบ Live ผ่าน WebSocket |
-| 🗺️ **Threat Map** | แผนที่แสดงจุดกำเนิดการโจมตีบนเครือข่าย KKU |
-| 🔬 **IP Investigation** | วิเคราะห์ IP เชิงลึก — reputation, location, history |
-| 🛡️ **MITRE ATT&CK** | แมป Technique จากการโจมตีจริงสู่ Framework |
-| 🚫 **Block & Isolate** | บล็อก IP และ Isolate Switch Port ผ่าน UI |
-| 📊 **Analytics** | กราฟสถิติ ช่วงเวลา ประเภทการโจมตี |
-| 🔑 **KKU SSO** | เข้าสู่ระบบผ่าน KKU Single Sign-On |
-| 👥 **User Management** | จัดการบัญชีผู้ใช้ Admin / Guest พร้อม Whitelist |
-| 📋 **Login Audit** | บันทึกประวัติการเข้าสู่ระบบทุกครั้ง |
-| 🤖 **AI Analysis** | วิเคราะห์การโจมตีด้วย Google Gemini AI |
+2. **Real-time Distribution (WebSocket)**
+   - The backend utilizes **Socket.IO** to instantly broadcast newly ingested threats to all connected and authenticated frontend clients.
+   - This ensures the SOC dashboard operates with zero-delay monitoring.
 
----
+3. **Command Center (Frontend)**
+   - Built with **SvelteKit**, the frontend receives realtime WebSocket events and updates the global `eventsStore`.
+   - The UI visualizes data dynamically across various modules: Global Threat Maps, Attack Analytics, and SOC Monitor Walls.
+   - Authorized admins can configure network routes, manage AI API keys, and block malicious IPs directly from the interface.
 
-## 🏗️ Tech Stack
+4. **AI-Driven Intelligence (Generative AI)**
+   - Integrated with Large Language Models (LLMs) to automatically generate **AI Daily Briefings**.
+   - The AI summarizes complex threat data, identifying key attack vectors, critical IPs, and behavioral anomalies, outputting an executive-friendly daily report.
 
-```
-┌─────────────────────────────────────────────────┐
-│                    Nginx (SSL)                   │
-├──────────────────┬──────────────────────────────┤
-│  SvelteKit (SPA) │     NestJS REST + WebSocket   │
-│  TypeScript      │     TypeScript                │
-├──────────────────┴──────────────────────────────┤
-│         PostgreSQL 16  │  Redis 7                │
-├─────────────────────────────────────────────────┤
-│   Cowrie (SSH/Telnet)  │  WebTrap (HTTP)         │
-└─────────────────────────────────────────────────┘
-```
-
----
-
-## 🚀 การติดตั้ง
-
-### ข้อกำหนดเบื้องต้น
-- Docker & Docker Compose
-- SSL Certificate (สำหรับ HTTPS)
-- KKU SSO Client ID & Secret (ถ้าใช้ SSO)
-
-### 1. Clone & ตั้งค่า
+## 📂 Project Structure
 
 ```bash
-git clone <repo-url>
-cd honeypot-siem
-cp .env.example .env
-nano .env   # แก้ไขค่าให้ครบ
+📦 KKUSIEM
+ ┣ 📂 backend/         # NestJS Server (Port 3000)
+ ┃ ┣ 📂 src/
+ ┃ ┃ ┣ 📂 attacks/     # Ingestion & AI AI Briefing Logic
+ ┃ ┃ ┣ 📂 auth/        # JWT & Role-based authentication
+ ┃ ┃ ┗ 📜 main.ts      # Backend Entrypoint
+ ┃ ┗ 📜 .env           # Environment configurations (Masked)
+ ┗ 📂 frontend/        # SvelteKit Application (Port 5173)
+   ┣ 📂 src/
+   ┃ ┣ 📂 lib/         # Reusable Svelte components & Utils
+   ┃ ┣ 📂 routes/      # Application Pages (Dashboard, Monitor, AI Briefing)
+   ┃ ┗ 📂 stores/      # Svelte Stores (WebSocket, Event State)
+   ┗ 📜 package.json
 ```
 
-### 2. ตั้งค่า SSL
+## 🚀 Getting Started
 
+### Prerequisites
+- Node.js (v18+)
+- PostgreSQL (v16+)
+- API Key for AI Integration (e.g., Google Gemini / OpenAI)
+
+### 1. Backend Setup
 ```bash
-bash nginx/generate-ssl.sh
+cd backend
+npm install
 ```
-
-### 3. รันระบบ
-
-```bash
-docker compose up -d --build
-```
-
-### 4. เข้าใช้งาน
-
-```
-Dashboard  →  https://your-server
-SSH Trap   →  :22222
-Web Trap   →  :28081
-```
-
----
-
-## 🔐 บัญชีเริ่มต้น
-
-| Username | Password | Role |
-|---------|---------|------|
-| `admin` | `Admin@1234!` | Admin — จัดการระบบได้ทั้งหมด |
-| `guest` | `Guest@1234!` | Guest — ดูข้อมูลเท่านั้น |
-
-> ⚠️ **เปลี่ยนรหัสผ่านทันทีหลังติดตั้ง** ผ่าน Settings → User Management
-
----
-
-## ⚙️ Environment Variables
-
-แก้ไขในไฟล์ `.env` ที่ root directory:
-
+Create a `.env` file in the `backend` directory:
 ```env
-# Database
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=your_strong_password
-POSTGRES_DB=honeypot
-JWT_SECRET=your_random_secret_key
-
-# KKU SSO (ขอ Client ID จากผู้ดูแล KKU SSO)
-SSO_CLIENT_ID=your-client-id
-SSO_CLIENT_SECRET=your-client-secret
-SSO_CALLBACK_URL=https://your-domain/callback
-
-# Ports
-HTTP_PORT=80
-HTTPS_PORT=443
-COWRIE_SSH_PORT=22222
-WEBTRAP_HTTP_PORT=28081
-
-# AI (optional)
-GEMINI_API_KEY=your-gemini-key
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=<YOUR_DB_USER>
+DB_PASSWORD=<YOUR_DB_PASSWORD>
+DB_NAME=honeypot_db
+JWT_SECRET=<YOUR_JWT_SECRET>
+GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
 ```
-
----
-
-## 🐳 Docker Commands
-
+Run the backend server:
 ```bash
-# รันระบบ
-sudo docker compose up -d --build
-
-# ดู Logs
-sudo docker logs honeypot_backend --tail=50
-
-# Restart บริการเดียว
-sudo docker compose restart backend
-
-# หยุดและลบข้อมูลทั้งหมด
-sudo docker compose down -v
+npm run start:dev
 ```
+
+### 2. Frontend Setup
+```bash
+cd frontend
+npm install
+```
+Start the frontend development server:
+```bash
+npm run dev
+```
+
+### 3. Access the System
+Navigate to `http://localhost:5173` in your browser. 
+*(If running on HTTPS locally, Vite basic-ssl will apply, and you may need to accept the self-signed certificate).*
 
 ---
-
-## 📂 โครงสร้างโปรเจกต์
-
-```
-honeypot-siem/
-├── frontend/          # SvelteKit Dashboard UI
-│   └── src/routes/    # Pages: dashboard, logs, investigate, mitre, ...
-├── backend/           # NestJS API + WebSocket + SIEM Engine
-│   └── src/           # log.service.ts = SIEM core
-├── honeypots/
-│   ├── cowrie/        # SSH/Telnet honeypot config
-│   └── webtrap/       # HTTP honeypot (Express.js)
-├── nginx/             # Reverse proxy + SSL certs
-├── logs/              # Runtime logs (cowrie, webtrap, siem)
-├── .env               # Environment config (ไม่ commit)
-└── docker-compose.yml
-```
-
----
-
-## 🔄 Data Flow
-
-```
-1. ผู้โจมตี เชื่อมต่อ Cowrie/WebTrap
-2. Honeypot เขียน JSON log ลงไฟล์
-3. SIEM Engine (log.service.ts) ตรวจจับและ parse
-4. Backend correlate กับ NetFlow และ Firewall logs
-5. บันทึกลง PostgreSQL + Broadcast WebSocket
-6. Dashboard อัปเดตแบบ Real-time
-```
-
----
-
-## 📝 License
-
-Copyright © 2025 Khon Kaen University — Security Operations Center
-
----
-
 <div align="center">
-<sub>Built with ❤️ for KKU SOC Team</sub>
+  <p><i>Developed for Khon Kaen University Security Infrastructure.</i></p>
 </div>
