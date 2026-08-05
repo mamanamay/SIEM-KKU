@@ -155,7 +155,6 @@
         {isLoading ? 'กำลังสรุป...' : 'สร้างสรุปใหม่'}
       </button>
     </div>
-    </div>
   </div>
 
   <ExportPreviewModal 
