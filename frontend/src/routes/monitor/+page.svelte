@@ -349,8 +349,6 @@
         </div>
       </div>
 
-      </div>
-
       <!-- Live Map (Central Focal Point) -->
       <div class="panel center-mid map-panel" style="flex: 1.8; min-height: 450px; margin-top: 12px; margin-bottom: 12px; position: relative; box-shadow: 0 0 40px rgba(0,212,255,0.15);">
         <div class="panel-head">
@@ -448,7 +446,7 @@
       </div>
 
     </div>
-
+  </div>
 
   <!-- ═══ BOTTOM BAR ═══════════════════════════════════════════════════════ -->
   <div class="bottom-bar">
