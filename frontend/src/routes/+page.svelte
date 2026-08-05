@@ -61,7 +61,7 @@
 </script>
 
 <svelte:head>
-  <title>เข้าสู่ระบบ | KKUSIEM KKUSIEM</title>
+  <title>KKUSIEM</title>
 </svelte:head>
 
 <div class="theme-toggle" on:click={toggleTheme} title={currentTheme === 'dark' ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}>

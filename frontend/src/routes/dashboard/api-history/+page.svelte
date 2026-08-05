@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import ExportPreviewModal from '$lib/components/ExportPreviewModal.svelte';
+  import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
 
   // ── State ────────────────────────────────────────────────────────────────────
   let logs: any[] = [];
@@ -74,7 +74,7 @@
     fetchLogs(1);
   }
   
-  import { downloadCSV, downloadPDF } from '$lib/utils/export';
+  import { downloadCSV, downloadPDF } from '../../../lib/utils/export';
   let showExportModal = false;
   let showToast = false;
   function handleExport(e: CustomEvent) {

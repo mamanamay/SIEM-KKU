@@ -60,7 +60,7 @@
 </script>
 
 <svelte:head>
-  <title>Authenticating... | KKUSIEM</title>
+  <title>KKUSIEM</title>
 </svelte:head>
 
 <div class="cb-wrap">

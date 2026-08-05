@@ -39,6 +39,7 @@
   let cfgScorecardKey = '';
   let cfgIpSyncUrl = '';
   let cfgIpSyncKey = '';
+  let cfgGeminiKey = '';
 
   onMount(() => {
     if ($roleStore !== 'admin') return;
@@ -153,6 +154,7 @@
     cfgScorecardKey = localStorage.getItem('cfg_scorecard_key') || '4c25eebe1323386cca6319b3b4516d3f';
     cfgIpSyncUrl = localStorage.getItem('cfg_ip_sync_url') || '';
     cfgIpSyncKey = localStorage.getItem('cfg_ip_sync_key') || '';
+    cfgGeminiKey = localStorage.getItem('cfg_gemini_key') || '';
   }
   function saveConfig() {
     localStorage.setItem('cfg_session_timeout', sessionTimeout.toString());
@@ -162,6 +164,7 @@
     localStorage.setItem('cfg_scorecard_key', cfgScorecardKey);
     localStorage.setItem('cfg_ip_sync_url', cfgIpSyncUrl);
     localStorage.setItem('cfg_ip_sync_key', cfgIpSyncKey);
+    localStorage.setItem('cfg_gemini_key', cfgGeminiKey);
     configSaved = true;
     setTimeout(() => configSaved = false, 3000);
   }
@@ -175,7 +178,7 @@
 </script>
 
 <svelte:head>
-  <title>Settings - KKUSIEM Command Center</title>
+  <title>KKUSIEM</title>
 </svelte:head>
 
 <div class="ds-page">
@@ -535,6 +538,14 @@
                 <div class="config-desc">Token หรือ Key สำหรับยืนยันตัวตนกับ API (ถ้ามี)</div>
               </div>
               <input type="password" bind:value={cfgScorecardKey} class="input-field" placeholder="API Key" />
+            </div>
+            <hr class="ds-divider" />
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div class="config-label">
+                <div class="config-name">Google Gemini AI API Key</div>
+                <div class="config-desc">API Key สำหรับใช้งาน SOC AI Analyst (เช่น AIzaSy...)</div>
+              </div>
+              <input type="password" bind:value={cfgGeminiKey} class="input-field" placeholder="Gemini API Key" />
             </div>
           </div>
         </div>

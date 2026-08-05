@@ -1,10 +1,11 @@
+<svelte:head><title>Incident & SOAR - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { onMount } from 'svelte';
   import { eventsStore, roleStore } from '../../../stores/events';
   import { getFacultyForIP } from '../../../stores/faculties';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import ExportPreviewModal from '$lib/components/ExportPreviewModal.svelte';
+  import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
 
   $: events = $eventsStore;
   let searchIp = $page.url.searchParams.get('ip') || '';
@@ -192,45 +193,79 @@
     }
   }
 
+  // ─── Modal State ──────────────────────────────────────────────────────────
+  let showBlockModal = false;
+  let showUnblockModal = false;
+  let blockModalReason = '';
+  let pendingBlockEvent: any = null;
+  let pendingBlockIp = '';
+
+  function openBlockModal(e: any) {
+    pendingBlockEvent = e;
+    pendingBlockIp = e.ip;
+    blockModalReason = `${e.type} — Severity: ${e.severity?.toUpperCase()} — ${e.detail}`;
+    showBlockModal = true;
+  }
+
+  function openUnblockModal(e: any) {
+    pendingBlockEvent = e;
+    pendingBlockIp = e.ip;
+    showUnblockModal = true;
+  }
+
   // ─── Action: Toggle Block IP ──────────────────────────────────────────────
-  async function toggleBlockIP(e: any) {
-    const ip = e.ip;
-    if (isActionLoading[ip]) return;
+  async function executeBlockIP() {
+    if (!pendingBlockEvent) return;
+    const ip = pendingBlockIp;
+    const reason = blockModalReason.trim();
+    
     isActionLoading = { ...isActionLoading, [ip]: true };
+    showBlockModal = false;
 
     try {
-      if (blockedIPs.has(ip)) {
-        // Unblock
-        const res = await fetch('/api/attacks/unblock-ip', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ip }),
-        });
-        if (res.ok) {
-          blockedIPs.delete(ip);
-          blockedIPs = blockedIPs; // trigger reactivity
-        }
-      } else {
-        // Block
-        const res = await fetch('/api/attacks/block-ip', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ip,
-            reason: customBlockReason || `${e.type} — Severity: ${e.severity?.toUpperCase()} — ${e.detail}`,
-            attackId: e.id,
-            faculty: getFacultyForIP(ip),
-          }),
-        });
-        if (res.ok) {
-          blockedIPs.add(ip);
-          blockedIPs = blockedIPs;
-        }
+      const res = await fetch('/api/attacks/block-ip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ip,
+          reason,
+          attackId: pendingBlockEvent.id,
+          faculty: getFacultyForIP(ip),
+        }),
+      });
+      if (res.ok) {
+        blockedIPs.add(ip);
+        blockedIPs = blockedIPs;
       }
     } catch (err) {
       console.error('Block toggle failed:', err);
     }
     isActionLoading = { ...isActionLoading, [ip]: false };
+    pendingBlockEvent = null;
+  }
+
+  async function executeUnblockIP() {
+    if (!pendingBlockEvent) return;
+    const ip = pendingBlockIp;
+
+    isActionLoading = { ...isActionLoading, [ip]: true };
+    showUnblockModal = false;
+
+    try {
+      const res = await fetch('/api/attacks/unblock-ip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip }),
+      });
+      if (res.ok) {
+        blockedIPs.delete(ip);
+        blockedIPs = blockedIPs; // trigger reactivity
+      }
+    } catch (err) {
+      console.error('Block toggle failed:', err);
+    }
+    isActionLoading = { ...isActionLoading, [ip]: false };
+    pendingBlockEvent = null;
   }
 
   // ─── Action: Isolate Switch Port ──────────────────────────────────────────
@@ -280,7 +315,7 @@
     return map[code] || 'Unknown Tactic';
   }
 
-  import { downloadCSV, downloadPDF } from '$lib/utils/export';
+  import { downloadCSV, downloadPDF } from '../../../lib/utils/export';
   let showExportModal = false;
   let showToast = false;
 
@@ -630,14 +665,9 @@
                       <div class="action-section">
                         <div class="action-label"><i class="ti ti-bolt"></i> SOAR Playbook: WAF / Firewall Action:</div>
                         {#if $roleStore === 'admin'}
-                          {#if !isBlocked}
-                            <div style="margin-bottom: 10px; margin-top: 5px;">
-                              <input type="text" class="input-field" bind:value={customBlockReason} placeholder="ระบุสาเหตุการบล็อก IP" style="width: 100%; font-size: 13px;" />
-                            </div>
-                          {/if}
                           <button
                             class="btn-action {isBlocked ? 'btn-done' : 'red'} {isActionLoading[e.ip] ? 'btn-loading' : ''}"
-                            on:click|stopPropagation={() => toggleBlockIP(e)}
+                            on:click|stopPropagation={() => isBlocked ? openUnblockModal(e) : openBlockModal(e)}
                             disabled={isActionLoading[e.ip]}
                           >
                             {#if isActionLoading[e.ip]}
@@ -763,6 +793,43 @@
   <span>Export Successful</span>
 </div>
 
+{#if showUnblockModal}
+<div class="custom-modal-overlay" on:click={() => showUnblockModal = false}>
+  <div class="custom-modal-content" on:click|stopPropagation>
+    <div class="modal-icon-top warning"><i class="ti ti-alert-triangle"></i></div>
+    <div class="modal-title">ยืนยันการ Unblock IP</div>
+    <div class="modal-desc">
+      คุณต้องการ Unblock <strong>{pendingBlockIp}</strong> ใช่หรือไม่?<br>
+      IP นี้จะสามารถเชื่อมต่อระบบได้อีกครั้ง
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" on:click={() => showUnblockModal = false}>ยกเลิก</button>
+      <button class="modal-btn confirm-unblock" on:click={executeUnblockIP}>ยืนยัน Unblock</button>
+    </div>
+  </div>
+</div>
+{/if}
+
+{#if showBlockModal}
+<!-- svelte-ignore a11y-click-events-have-key-events -->
+<!-- svelte-ignore a11y-no-static-element-interactions -->
+<div class="custom-modal-overlay" on:click={() => showBlockModal = false}>
+  <div class="custom-modal-content" on:click|stopPropagation>
+    <div class="modal-icon-top danger"><i class="ti ti-shield-x"></i></div>
+    <div class="modal-title">ยืนยันการ Block IP</div>
+    <div class="modal-desc" style="text-align: left; margin-bottom: 15px;">
+      คุณกำลังจะ Block IP <strong>{pendingBlockIp}</strong><br>
+      <label style="display:block; margin-top:10px; font-size:12px; font-weight:bold; color:var(--text-muted);">เหตุผลในการบล็อก:</label>
+      <input type="text" class="modal-input" bind:value={blockModalReason} placeholder="ระบุเหตุผล..." />
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" on:click={() => showBlockModal = false}>ยกเลิก</button>
+      <button class="modal-btn confirm-block" on:click={executeBlockIP}>ยืนยัน Block</button>
+    </div>
+  </div>
+</div>
+{/if}
+
 <style>
   /* ─── Page Layout ────────────────────────────────────────────────────────── */
   
@@ -773,11 +840,13 @@
 
   /* ─── Log Sources Bar ────────────────────────────────────────────────────── */
   .log-sources-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-  .log-src { font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; display: flex; align-items: center; gap: 5px; }
-  .log-src.access { background: rgba(0,200,255,0.12); color: #00c8ff; border: 1px solid rgba(0,200,255,0.3); }
-  .log-src.server { background: rgba(46,204,113,0.12); color: #2ecc71; border: 1px solid rgba(46,204,113,0.3); }
-  .log-src.cnc    { background: rgba(255,51,51,0.12);  color: #ff3333; border: 1px solid rgba(255,51,51,0.3); }
-  .log-src.siem   { background: rgba(255,200,0,0.12);  color: #ffc800; border: 1px solid rgba(255,200,0,0.3); }
+  .log-src { font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; display: flex; align-items: center; gap: 8px; }
+  .log-src.access { background: rgba(0,200,255,0.15); color: #00c8ff; border: 1px solid rgba(0,200,255,0.4); }
+  .log-src.server { background: rgba(46,204,113,0.15); color: #2ecc71; border: 1px solid rgba(46,204,113,0.4); }
+  .log-src.cnc    { background: rgba(255,51,51,0.15);  color: #ff3333; border: 1px solid rgba(255,51,51,0.4); }
+  .log-src.siem   { background: rgba(255,200,0,0.15);  color: #ffc800; border: 1px solid rgba(255,200,0,0.4); }
+  
+  .log-src i.ti-server { background: #2ecc71; color: #000; padding: 2px; border-radius: 4px; font-size: 12px; }
   .src-sep { color: var(--text-muted); font-weight: 700; font-size: 14px; }
 
   /* ─── Table ──────────────────────────────────────────────────────────────── */
@@ -803,12 +872,12 @@
   .mitre-tag { font-size: 10px; color: var(--text-muted); font-family: monospace; }
 
   /* Log Source Dots */
-  .log-dots { display: flex; gap: 4px; }
-  .dot { width: 20px; height: 20px; border-radius: 4px; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-  .dot-access { background: rgba(0,200,255,0.2); color: #00c8ff; border: 1px solid rgba(0,200,255,0.5); }
-  .dot-server { background: rgba(46,204,113,0.2); color: #2ecc71; border: 1px solid rgba(46,204,113,0.5); }
-  .dot-cnc    { background: rgba(255,51,51,0.2);  color: #ff3333; border: 1px solid rgba(255,51,51,0.5); }
-  .dot-off    { background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); opacity: 0.4; }
+  .log-dots { display: flex; gap: 6px; }
+  .dot { width: 28px; height: 22px; border-radius: 4px; font-size: 11px; font-weight: 900; letter-spacing: 0.05em; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 8px rgba(0,0,0,0.5); }
+  .dot-access { background: #00d4ff; color: #000; border: 1px solid #00d4ff; text-shadow: none; }
+  .dot-server { background: #2ecc71; color: #000; border: 1px solid #2ecc71; text-shadow: none; }
+  .dot-cnc    { background: #ff3333; color: #fff; border: 1px solid #ff3333; text-shadow: none; }
+  .dot-off    { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px dashed rgba(255,255,255,0.2); opacity: 0.5; }
 
   .badge { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 700; }
   .b-red    { background: rgba(255,51,51,0.15);  color: #ff3333; border: 1px solid rgba(255,51,51,0.4); }
@@ -836,12 +905,12 @@
   .card-active-cnc    { border-color: rgba(255,51,51,0.4);  background: rgba(255,51,51,0.04); }
   .card-dim { opacity: 0.6; }
 
-  .log-card-header { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); flex-wrap: wrap; }
+  .log-card-header { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); flex-wrap: wrap; }
   .log-card-src { margin-left: auto; font-family: monospace; font-size: 10px; color: var(--text-muted); }
-  .log-badge { width: 18px; height: 18px; border-radius: 3px; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
-  .badge-access { background: rgba(0,200,255,0.2); color: #00c8ff; }
-  .badge-server { background: rgba(46,204,113,0.2); color: #2ecc71; }
-  .badge-cnc    { background: rgba(255,51,51,0.2);  color: #ff3333; }
+  .log-badge { width: 32px; height: 24px; border-radius: 4px; font-size: 12px; font-weight: 900; letter-spacing: 0.05em; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+  .badge-access { background: #00d4ff; color: #000; }
+  .badge-server { background: #2ecc71; color: #000; }
+  .badge-cnc    { background: #ff3333; color: #fff; }
 
   .log-card-icon { text-align: center; font-size: 30px; color: var(--text-muted); margin: 5px 0; }
   .server-icon { color: #2ecc71; }
@@ -1052,5 +1121,95 @@
     background: var(--bg-secondary);
   }
   .timeline-summary strong { color: var(--text-primary); }
+
+  /* Custom Modal Styles */
+  .custom-modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    backdrop-filter: blur(2px);
+  }
+  .custom-modal-content {
+    background: var(--bg-panel);
+    border-radius: 12px;
+    padding: 30px;
+    width: 380px;
+    max-width: 90vw;
+    text-align: center;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    animation: modalPop 0.2s ease-out;
+  }
+  @keyframes modalPop {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .modal-icon-top {
+    font-size: 32px;
+    margin-bottom: 15px;
+  }
+  .modal-icon-top.warning { color: #b45309; }
+  .modal-icon-top.danger { color: #dc2626; }
+  .modal-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+  }
+  .modal-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 25px;
+    line-height: 1.5;
+  }
+  .modal-input {
+    width: 100%;
+    padding: 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: 8px;
+    margin-top: 5px;
+    font-size: 13px;
+  }
+  .modal-input:focus {
+    outline: none;
+    border-color: var(--green);
+    box-shadow: 0 0 0 2px rgba(16,185,129,0.1);
+  }
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+  .modal-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .modal-btn.cancel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .modal-btn.cancel:hover { background: var(--bg-secondary); }
+  .modal-btn.confirm-unblock {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid var(--green);
+    color: var(--green);
+  }
+  .modal-btn.confirm-unblock:hover { background: rgba(16, 185, 129, 0.2); }
+  .modal-btn.confirm-block {
+    background: rgba(220, 38, 38, 0.1);
+    border: 1px solid var(--red);
+    color: var(--red);
+  }
+  .modal-btn.confirm-block:hover { background: rgba(220, 38, 38, 0.2); }
 </style>
 

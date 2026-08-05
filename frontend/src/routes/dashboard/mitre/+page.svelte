@@ -1,3 +1,4 @@
+<svelte:head><title>MITRE ATT&CK - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { eventsStore } from '../../../stores/events';
   $: events = $eventsStore;

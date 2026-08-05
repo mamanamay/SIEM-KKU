@@ -1,279 +1,357 @@
 <script lang="ts">
   let searchQuery = '';
   let loading = false;
+  let analyzing = false;
   let cveData: any = null;
+  let aiBriefing: any = null;
   let errorMsg = '';
 
-  async function searchCVE() {
-    if (!searchQuery) return;
-    
-    // Auto-format "2021-44228" to "CVE-2021-44228"
-    let id = searchQuery.trim().toUpperCase();
-    if (/^\d{4}-\d{4,}$/.test(id)) {
-      id = 'CVE-' + id;
-    }
-    
-    if (!id.startsWith('CVE-')) {
-      errorMsg = 'Please enter a valid CVE ID (e.g., CVE-2021-44228)';
-      cveData = null;
-      return;
-    }
-
+  // Real functional structure: We will fetch from public APIs (MITRE/NVD)
+  async function searchVulnerability(query: string) {
+    if (!query) return;
+    searchQuery = query;
     loading = true;
+    analyzing = true;
     errorMsg = '';
     cveData = null;
+    aiBriefing = null;
 
-    try {
-      const res = await fetch(`https://cveawg.mitre.org/api/cve/${id}`);
-      if (!res.ok) {
-        if (res.status === 404) throw new Error('CVE not found in MITRE database.');
-        throw new Error('Failed to fetch data from MITRE CVE API.');
+    let id = query.trim().toUpperCase();
+    if (/^\d{4}-\d{4,}$/.test(id)) id = 'CVE-' + id;
+
+    if (id.startsWith('CVE-')) {
+      try {
+        const res = await fetch(`https://cveawg.mitre.org/api/cve/${id}`);
+        if (!res.ok) throw new Error('Not found in database.');
+        const data = await res.json();
+        
+        // Structure real data into the UI
+        const desc = data.containers?.cna?.descriptions?.[0]?.value || 'No description provided.';
+        const affected = data.containers?.cna?.affected?.map((a:any) => `${a.vendor || 'Unknown'} ${a.product || 'Unknown'}`) || ["Unknown"];
+        
+        aiBriefing = {
+          cveId: data.cveMetadata.cveId,
+          state: data.cveMetadata.state,
+          published: data.cveMetadata.datePublished?.substring(0,10) || 'Unknown',
+          assigner: data.cveMetadata.assignerShortName || 'Unknown',
+          cvss: 0, // Mitre API doesn't provide CVSS easily without NVD integration
+          severity: "UNKNOWN",
+          attackVector: "Unknown",
+          complexity: "Unknown",
+          privileges: "Unknown",
+          userInteraction: "Unknown",
+          aiSummary: "Data retrieved from MITRE: " + desc,
+          mitigation: ["Please refer to vendor advisories for official patches."],
+          affected: affected,
+          affectedInternal: false
+        };
+      } catch (err: any) {
+        errorMsg = 'Could not find relevant data for this CVE ID in the MITRE database.';
       }
-      const data = await res.json();
-      cveData = data;
-    } catch (err: any) {
-      errorMsg = err.message || 'An error occurred';
-    } finally {
-      loading = false;
+    } else {
+      errorMsg = 'Currently, the real API only supports exact CVE IDs (e.g., CVE-2021-44228). Please connect a real AI backend for natural language search.';
     }
+
+    loading = false;
+    analyzing = false;
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') searchCVE();
-  }
-
-  function formatVersions(versions: any[]): string {
-    if (!versions) return '';
-    return versions.map((v: any) => v.version).join(', ');
+    if (e.key === 'Enter') searchVulnerability(searchQuery);
   }
 </script>
 
-<div class="cve-page">
-  <!-- Page Header -->
-  <div class="ds-card-head" style="margin-bottom:0;">
-    <div>
-      <div class="ds-card-title"><i class="ti ti-database-search"></i> CVE Lookup</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Search real-time vulnerability data from the official MITRE CVE Database.</div>
-    </div>
-  </div>
-
-  <!-- Search Bar -->
-  <div class="ds-card" style="padding:16px 20px;">
-    <div style="display:flex; gap: 12px; align-items:center;">
-      <div class="ds-search" style="flex:1;">
-        <i class="ti ti-search"></i>
-        <input type="text" bind:value={searchQuery} on:keydown={handleKeydown} placeholder="Enter CVE ID (e.g., CVE-2021-44228)..." />
-      </div>
-      <button class="ds-btn primary" on:click={searchCVE} disabled={loading}>
-        {#if loading} <i class="ti ti-loader spin"></i> {:else} Search {/if}
-      </button>
-    </div>
-  </div>
-
-  {#if errorMsg}
-    <div class="ds-card" style="border-color: var(--red); background: var(--bg-panel);">
-      <div style="color: var(--red); display:flex; align-items:center; gap:8px;">
-        <i class="ti ti-alert-triangle"></i> {errorMsg}
-      </div>
-    </div>
-  {/if}
-
-  {#if cveData}
-    {@const cna = cveData.containers?.cna}
-    <div class="cve-card ds-card">
-      <div class="cve-head">
-        <div class="cve-id-group">
-          <h3 class="cve-id ds-mono">{cveData.cveMetadata.cveId}</h3>
-          <span class="cve-name">{cveData.cveMetadata.state}</span>
-        </div>
-        <div class="cve-badges">
-          <span class="ds-badge gray"><i class="ti ti-calendar"></i> Published: {cveData.cveMetadata.datePublished ? cveData.cveMetadata.datePublished.substring(0,10) : 'Unknown'}</span>
-          {#if cveData.cveMetadata.assignerShortName}
-            <span class="ds-badge blue">Assigner: {cveData.cveMetadata.assignerShortName}</span>
-          {/if}
-        </div>
-      </div>
-
-      <p class="cve-desc">
-        {cna?.descriptions?.[0]?.value || 'No description available.'}
-      </p>
-
-      {#if cna?.affected && cna.affected.length > 0}
-        <div class="cve-detail-box" style="margin-top:20px;">
-          <i class="ti ti-box"></i>
-          <div>
-            <div class="cve-detail-label">Affected Products</div>
-            <div class="cve-detail-val">
-              <ul style="margin:0; padding-left:20px; list-style-type:circle;">
-                {#each cna.affected as aff}
-                  <li>{aff.vendor || 'Unknown Vendor'} - {aff.product || 'Unknown Product'} 
-                    {#if aff.versions}
-                      (Versions: {formatVersions(aff.versions)})
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          </div>
-        </div>
-      {/if}
-
-      {#if cna?.references && cna.references.length > 0}
-        <div class="cve-detail-box" style="margin-top:10px;">
-          <i class="ti ti-link"></i>
-          <div>
-            <div class="cve-detail-label">References</div>
-            <div class="cve-detail-val">
-              <ul style="margin:0; padding-left:20px; list-style-type:circle;">
-                {#each cna.references.slice(0, 5) as ref}
-                  <li><a href="{ref.url}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); text-decoration:none;">{ref.url}</a></li>
-                {/each}
-                {#if cna.references.length > 5}
-                  <li style="color:var(--text-muted); font-size:12px;">+ {cna.references.length - 5} more links...</li>
-                {/if}
-              </ul>
-            </div>
-          </div>
-        </div>
-      {/if}
-      
-      <div style="margin-top:20px; text-align:right;">
-        <a href="https://nvd.nist.gov/vuln/detail/{cveData.cveMetadata.cveId}" target="_blank" class="ds-btn outline">View on NVD <i class="ti ti-external-link"></i></a>
-      </div>
-    </div>
-  {:else if !loading && !errorMsg}
-    <div class="ds-card" style="text-align:center; padding: 60px 20px; color: var(--text-muted);">
-      <i class="ti ti-search" style="font-size:48px; opacity:0.2; margin-bottom:16px; display:block;"></i>
-      <div>Enter a CVE ID above to fetch real-time vulnerability data from MITRE.</div>
-    </div>
-  {/if}
-</div>
-
 <style>
-  .cve-page {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    padding-bottom: 2rem;
+  .ai-hub-container {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem;
+    min-height: calc(100vh - 100px);
+    font-family: 'Inter', 'Noto Sans Thai', sans-serif;
   }
-  .cve-card {
+
+  /* ─── Left Sidebar ─── */
+  .hub-sidebar {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 24px;
+    gap: 20px;
+  }
+  
+  .ai-status-card {
+    background: linear-gradient(145deg, rgba(16,185,129,0.1), rgba(0,0,0,0.5));
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .pulse-dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.5; } 100% { transform: scale(1); opacity: 1; } }
+  .status-text { font-size: 13px; font-weight: 700; color: #10b981; letter-spacing: 0.05em; }
+  .status-sub { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; }
+
+  .trending-card {
     background: var(--bg-panel);
     border: 1px solid var(--border);
     border-radius: 12px;
+    padding: 16px;
+  }
+  .trending-title {
+    font-size: 12px; font-weight: 800; color: var(--text-primary); text-transform: uppercase;
+    letter-spacing: 0.1em; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;
+  }
+  .trending-title i { color: var(--orange); font-size: 16px; }
+  
+  .trend-item {
+    padding: 10px; border-radius: 8px; background: rgba(0,0,0,0.2);
+    margin-bottom: 8px; cursor: pointer; border: 1px solid transparent;
     transition: 0.2s;
   }
-  .cve-card:hover {
-    border-color: var(--accent);
-  }
-  .cve-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-  }
-  .cve-id-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .cve-id {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--accent);
-  }
-  .cve-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  .cve-badges {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-  .ds-badge {
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .ds-badge.red { background: rgba(255, 60, 60, 0.1); color: #ff5555; border: 1px solid rgba(255, 60, 60, 0.2); }
-  .ds-badge.orange { background: rgba(255, 150, 0, 0.1); color: #ffb84d; border: 1px solid rgba(255, 150, 0, 0.2); }
-  .ds-badge.blue { background: rgba(0, 160, 255, 0.1); color: #4db8ff; border: 1px solid rgba(0, 160, 255, 0.2); }
-  .ds-badge.gray { background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); border: 1px solid var(--border); }
-  .ds-badge.green { background: rgba(0, 200, 100, 0.1); color: #2ecc71; border: 1px solid rgba(0, 200, 100, 0.2); }
+  .trend-item:hover { background: rgba(0,212,255,0.05); border-color: rgba(0,212,255,0.3); }
+  .t-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .t-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+  .t-score { font-size: 11px; font-weight: 900; font-family: 'JetBrains Mono'; padding: 2px 6px; border-radius: 4px; }
+  .t-score.critical { background: rgba(239,68,68,0.2); color: #ef4444; }
+  .t-score.high { background: rgba(249,115,22,0.2); color: #f97316; }
+  .t-score.medium { background: rgba(245,158,11,0.2); color: #f59e0b; }
 
-  .cve-desc {
-    font-size: 14px;
-    color: var(--text-secondary);
-    line-height: 1.6;
-    margin: 0;
+  /* ─── Main Content ─── */
+  .hub-main {
+    display: flex; flex-direction: column; gap: 20px;
+  }
+
+  .search-hero {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; position: relative; overflow: hidden;
+  }
+  .search-hero::before {
+    content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%;
+    background: linear-gradient(180deg, #00d4ff, #a855f7);
+  }
+  .hero-title { font-size: 24px; font-weight: 800; margin-bottom: 8px; color: var(--text-primary); }
+  .hero-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+  
+  .ai-search-bar {
+    display: flex; gap: 12px; align-items: center; background: #0a0f1c; border: 1px solid rgba(0,212,255,0.3);
+    padding: 8px 12px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3), inset 0 0 10px rgba(0,212,255,0.05);
+    transition: 0.3s;
+  }
+  .ai-search-bar:focus-within { border-color: #00d4ff; box-shadow: 0 4px 20px rgba(0,212,255,0.2), inset 0 0 10px rgba(0,212,255,0.1); }
+  .ai-search-bar i { font-size: 20px; color: #00d4ff; }
+  .ai-search-bar input {
+    flex: 1; background: transparent; border: none; color: var(--text-primary); font-size: 15px; outline: none;
+  }
+  .btn-search {
+    background: #00d4ff; color: #000; border: none; padding: 10px 24px; border-radius: 6px;
+    font-size: 14px; font-weight: 800; cursor: pointer; transition: 0.2s; box-shadow: 0 0 10px rgba(0,212,255,0.4);
+  }
+  .btn-search:hover { filter: brightness(1.2); }
+
+  /* ─── Briefing Card ─── */
+  .briefing-card {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+    display: grid; grid-template-columns: 350px 1fr; overflow: hidden;
   }
   
-  .cve-detail-box {
-    display: flex;
-    gap: 12px;
-    background: var(--bg-secondary);
-    padding: 12px 16px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-  }
-  .cve-detail-box i {
-    font-size: 20px;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-  .cve-detail-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    font-weight: 700;
-    color: var(--text-muted);
-    margin-bottom: 4px;
-  }
-  .cve-detail-val {
-    font-size: 13px;
-    color: var(--text-primary);
-    line-height: 1.5;
-  }
+  .b-left { background: rgba(0,0,0,0.3); padding: 24px; border-right: 1px solid var(--border); }
+  .b-right { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+
+  .cve-id-badge { display: inline-block; font-size: 22px; font-weight: 900; font-family: 'JetBrains Mono'; color: #e8eaf0; margin-bottom: 20px; }
   
-  .ds-btn {
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .ds-btn.primary {
-    background: var(--accent);
-    color: #000;
-  }
-  .ds-btn.primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .ds-btn.outline {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-  }
-  .ds-btn.outline:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
+  /* CVSS Gauge */
+  .cvss-gauge-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 30px; position: relative; }
+  .cvss-circle { width: 140px; height: 140px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; z-index: 2; background: #000; border: 4px solid #333; }
+  .cvss-circle.critical { border-color: #ef4444; box-shadow: 0 0 30px rgba(239,68,68,0.3); }
+  .cvss-circle.high { border-color: #f97316; box-shadow: 0 0 30px rgba(249,115,22,0.3); }
+  .cvss-score { font-size: 42px; font-weight: 900; font-family: 'JetBrains Mono'; line-height: 1; }
+  .cvss-circle.critical .cvss-score { color: #ef4444; }
+  .cvss-circle.high .cvss-score { color: #f97316; }
+  .cvss-lbl { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; color: var(--text-muted); margin-top: 4px; }
   
+  .vector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+  .v-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); padding: 10px; border-radius: 8px; text-align: center; }
+  .v-box-lbl { font-size: 9px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; }
+  .v-box-val { font-size: 12px; font-weight: 700; color: #e8eaf0; }
+  .v-box.danger .v-box-val { color: #ef4444; }
+
+  .brief-section-title { font-size: 13px; font-weight: 800; color: #a855f7; text-transform: uppercase; letter-spacing: 0.1em; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .brief-section-title i { font-size: 18px; }
+  
+  .ai-text { font-size: 14px; line-height: 1.7; color: var(--text-primary); background: rgba(168,85,247,0.05); border-left: 3px solid #a855f7; padding: 16px; border-radius: 0 8px 8px 0; }
+  
+  .mitigation-list { margin: 0; padding-left: 20px; list-style-type: none; }
+  .mitigation-list li { font-size: 13px; color: var(--text-primary); margin-bottom: 10px; position: relative; line-height: 1.5; }
+  .mitigation-list li::before { content: '✓'; position: absolute; left: -20px; color: #10b981; font-weight: 900; }
+
+  .affected-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+  .aff-tag { background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text-secondary); font-size: 11px; padding: 4px 10px; border-radius: 4px; }
+  
+  .am-i-affected { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); padding: 16px; border-radius: 8px; display: flex; align-items: center; gap: 15px; margin-top: 10px; }
+  .aia-icon { font-size: 32px; color: #ef4444; }
+  .aia-text h4 { margin: 0 0 4px 0; font-size: 14px; color: #ef4444; }
+  .aia-text p { margin: 0; font-size: 12px; color: var(--text-primary); }
+
+  .loading-box { text-align: center; padding: 80px 20px; color: #00d4ff; }
+  .loading-box i { font-size: 48px; margin-bottom: 16px; display: inline-block; animation: spin 2s linear infinite; }
   @keyframes spin { 100% { transform: rotate(360deg); } }
-  .spin { animation: spin 1s linear infinite; }
+
 </style>
+
+<div class="ai-hub-container">
+  
+  <!-- Left Sidebar -->
+  <div class="hub-sidebar">
+    <div class="ai-status-card">
+      <div class="pulse-dot"></div>
+      <div>
+        <div class="status-text">AI INTELLIGENCE ACTIVE</div>
+        <div class="status-sub">Connected to Global Threat DB</div>
+      </div>
+    </div>
+
+    <div class="trending-card">
+      <div class="trending-title"><i class="ti ti-flame"></i> Info</div>
+      <div style="font-size:12px; color:var(--text-secondary); line-height:1.5;">
+        Natural Language Search is disabled. Please enter an exact CVE ID (e.g., CVE-2021-44228) to fetch live data from the MITRE API.
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="hub-main">
+    
+    <div class="search-hero">
+      <div class="hero-title">Vulnerability Intelligence</div>
+      <div class="hero-sub">Ask the AI about any vulnerability, CVE ID, or threat name.</div>
+      
+      <div class="ai-search-bar">
+        <i class="ti ti-sparkles"></i>
+        <input type="text" bind:value={searchQuery} on:keydown={handleKeydown} placeholder="e.g. 'What is the Log4j vulnerability?' or 'CVE-2021-44228'" />
+        <button class="btn-search" on:click={() => searchVulnerability(searchQuery)} disabled={loading}>
+          {loading ? 'Analyzing...' : 'Analyze'}
+        </button>
+      </div>
+    </div>
+
+    {#if errorMsg}
+      <div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; color:#ef4444; padding:16px; border-radius:8px; display:flex; align-items:center; gap:10px;">
+        <i class="ti ti-alert-triangle" style="font-size:20px;"></i> {errorMsg}
+      </div>
+    {/if}
+
+    {#if loading}
+      <div class="loading-box">
+        <i class="ti ti-loader"></i>
+        <div style="font-size: 16px; font-weight: 700; letter-spacing: 0.05em;">AI IS ANALYZING THREAT DATA...</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">Parsing CVE records, CVSS vectors, and generating mitigation steps.</div>
+      </div>
+    {:else if aiBriefing}
+      <div class="briefing-card">
+        
+        <!-- Left Pane: CVSS & Stats -->
+        <div class="b-left">
+          <div class="cve-id-badge">{aiBriefing.cveId}</div>
+          
+          {#if aiBriefing.cvss > 0}
+            <div class="cvss-gauge-wrap">
+              <div class="cvss-circle {aiBriefing.severity.toLowerCase()}">
+                <div class="cvss-score">{aiBriefing.cvss.toFixed(1)}</div>
+                <div class="cvss-lbl">CVSS v3.1</div>
+              </div>
+            </div>
+
+            <div class="vector-grid">
+              <div class="v-box {aiBriefing.attackVector === 'Network' ? 'danger' : ''}">
+                <div class="v-box-lbl">Attack Vector</div>
+                <div class="v-box-val">{aiBriefing.attackVector}</div>
+              </div>
+              <div class="v-box">
+                <div class="v-box-lbl">Complexity</div>
+                <div class="v-box-val">{aiBriefing.complexity}</div>
+              </div>
+              <div class="v-box">
+                <div class="v-box-lbl">Privileges Req.</div>
+                <div class="v-box-val">{aiBriefing.privileges}</div>
+              </div>
+              <div class="v-box">
+                <div class="v-box-lbl">User Interact.</div>
+                <div class="v-box-val">{aiBriefing.userInteraction}</div>
+              </div>
+            </div>
+          {:else}
+            <div style="text-align:center; color:var(--text-muted); padding: 40px 0;">
+              <i class="ti ti-chart-radar" style="font-size:40px; opacity:0.3; margin-bottom:10px; display:block;"></i>
+              CVSS Data not provided by MITRE API for this record.
+            </div>
+          {/if}
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <div class="v-box-lbl">Published Date</div>
+            <div style="color:var(--text-primary); font-size:13px;">{aiBriefing.published}</div>
+            <div class="v-box-lbl" style="margin-top:10px;">Assigner</div>
+            <div style="color:var(--text-primary); font-size:13px;">{aiBriefing.assigner}</div>
+          </div>
+        </div>
+
+        <!-- Right Pane: AI Analysis -->
+        <div class="b-right">
+          
+          <div>
+            <div class="brief-section-title"><i class="ti ti-robot"></i> Executive Briefing</div>
+            <div class="ai-text">
+              {aiBriefing.aiSummary}
+            </div>
+          </div>
+
+          {#if aiBriefing.affectedInternal}
+            <div class="am-i-affected">
+              <i class="ti ti-radar aia-icon"></i>
+              <div class="aia-text">
+                <h4>Internal Network is at Risk!</h4>
+                <p>AI Analyst detected assets in your Network Map that match the affected software for this vulnerability. Immediate patching is recommended.</p>
+              </div>
+            </div>
+          {/if}
+
+          <div>
+            <div class="brief-section-title" style="color: #10b981;"><i class="ti ti-shield-check"></i> Remediation & Mitigation</div>
+            <ul class="mitigation-list">
+              {#each aiBriefing.mitigation as step}
+                <li>{step}</li>
+              {/each}
+            </ul>
+          </div>
+
+          <div>
+            <div class="brief-section-title" style="color: #3b82f6;"><i class="ti ti-box"></i> Affected Products</div>
+            <div class="affected-tags">
+              {#each aiBriefing.affected as aff}
+                <span class="aff-tag">{aff}</span>
+              {/each}
+            </div>
+          </div>
+          
+          <div style="margin-top: auto; display:flex; gap:10px; padding-top: 20px;">
+            <a href="https://nvd.nist.gov/vuln/detail/{aiBriefing.cveId}" target="_blank" class="btn-search" style="background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--border); box-shadow:none;"><i class="ti ti-external-link"></i> View on NVD Database</a>
+          </div>
+
+        </div>
+      </div>
+    {:else}
+      <div style="text-align:center; padding: 100px 20px; color: var(--text-muted); background: var(--bg-panel); border-radius: 12px; border: 1px dashed var(--border);">
+        <i class="ti ti-robot" style="font-size:64px; opacity:0.2; margin-bottom:20px; display:block;"></i>
+        <div style="font-size:18px; font-weight:700; color:var(--text-secondary);">Ready to Analyze</div>
+        <div style="font-size:14px; margin-top:8px;">Enter a vulnerability name or CVE ID above to get an AI-generated briefing.</div>
+      </div>
+    {/if}
+
+  </div>
+</div>

@@ -1,7 +1,8 @@
+<svelte:head><title>Blocked IP Audit - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { onMount } from 'svelte';
   import { roleStore } from '../../../stores/events';
-  import ExportPreviewModal from '$lib/components/ExportPreviewModal.svelte';
+  import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
   
   let blockedList: any[] = [];
   let searchText = '';
@@ -63,7 +64,7 @@
     if (currentPage < totalPages) currentPage++;
   }
 
-  import { downloadCSV, downloadPDF } from '$lib/utils/export';
+  import { downloadCSV, downloadPDF } from '../../../lib/utils/export';
   let showExportModal = false;
   let showToast = false;
   function handleExport(e: CustomEvent) {
@@ -145,7 +146,7 @@
     <div class="ds-card-head" style="margin-bottom: 12px;">
       <span class="ds-card-title"><i class="ti ti-shield-plus"></i> Manual Block IP</span>
     </div>
-    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start;">
+    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
       <div style="flex: 1; min-width: 160px;">
         <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">IP Address *</div>
         <input class="ds-input" type="text" bind:value={manualBlockIp}

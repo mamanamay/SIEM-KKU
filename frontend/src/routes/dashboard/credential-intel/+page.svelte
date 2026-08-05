@@ -1,3 +1,4 @@
+<svelte:head><title>Credential Intel - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { eventsStore } from '../../../stores/events';
 
@@ -91,9 +92,7 @@
   }
 </script>
 
-<svelte:head>
-  <title>Credential Intelligence | KKUSIEM</title>
-</svelte:head>
+
 
 <div class="ci-wrap">
 

@@ -1,6 +1,9 @@
+<svelte:head><title>AI Daily Briefing - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { onMount } from 'svelte';
   import { eventsStore } from '../../../stores/events';
+  import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
+  import { downloadCSV, downloadPDF } from '../../../lib/utils/export';
 
   $: events = $eventsStore;
 
@@ -53,11 +56,13 @@
     const date = new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     try {
+      const geminiKey = localStorage.getItem('cfg_gemini_key') || '';
       const res = await fetch('/api/attacks/ai-briefing', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'x-gemini-key': geminiKey
         },
         body: JSON.stringify({ ...stats, date }),
       });
@@ -95,11 +100,37 @@
     // Auto-generate if events exist
     if ($eventsStore.length > 0) generateBriefing();
   });
-</script>
 
-<svelte:head>
-  <title>AI Daily Briefing | KKUSIEM</title>
-</svelte:head>
+  // Export Logic
+  let showExportModal = false;
+  let showToast = false;
+  $: fullExportData = (events || []).map(e => ({
+    'Time': e.timeStr || new Date(e.timestampMs || e.createdAt).toLocaleTimeString(),
+    'Source IP': e.ip,
+    'Country': e.country || 'Unknown',
+    'Event Type': e.type,
+    'Severity': e.severity,
+    'Target/Destination': e.mitreCode || '—'
+  }));
+
+  function handleExport(e: CustomEvent) {
+    const { format, selectedColumns, filteredData } = e.detail;
+    const title = 'AI Briefing Source Data';
+    const filename = 'ai_briefing_data';
+
+    if (format === 'csv') {
+      downloadCSV(filteredData, selectedColumns, `${filename}.csv`);
+    } else if (format === 'pdf') {
+      // Still keep window.print() as an option if they prefer the visual report,
+      // but here we export the tabular data for consistency
+      downloadPDF(filteredData, selectedColumns, `${filename}.pdf`, `KKUSIEM - ${title}`);
+    }
+    
+    showExportModal = false;
+    showToast = true;
+    setTimeout(() => showToast = false, 3000);
+  }
+</script>
 
 <div class="brief-wrap">
 
@@ -114,13 +145,32 @@
     </div>
     <div class="brief-actions">
       {#if lastGenerated}
-        <span class="gen-time"><i class="ti ti-clock"></i> สร้างล่าสุด {lastGenerated}</span>
+        <span class="gen-time hide-print"><i class="ti ti-clock"></i> สร้างล่าสุด {lastGenerated}</span>
+        <button class="ds-btn primary hide-print" on:click={() => showExportModal = true}>
+          <i class="ti ti-download"></i> Export Report
+        </button>
       {/if}
-      <button class="ds-btn primary" on:click={generateBriefing} disabled={isLoading}>
+      <button class="ds-btn primary hide-print" on:click={generateBriefing} disabled={isLoading}>
         <i class="ti ti-{isLoading ? 'loader-2' : 'sparkles'}" class:spin={isLoading}></i>
         {isLoading ? 'กำลังสรุป...' : 'สร้างสรุปใหม่'}
       </button>
     </div>
+    </div>
+  </div>
+
+  <ExportPreviewModal 
+    show={showExportModal} 
+    title="AI Briefing Source Data"
+    columns={['Time', 'Source IP', 'Country', 'Event Type', 'Severity', 'Target/Destination']}
+    data={fullExportData}
+    ipColumn="Source IP"
+    on:close={() => showExportModal = false}
+    on:confirm={handleExport}
+  />
+
+  <div class="toast {showToast ? 'show' : ''}">
+    <i class="ti ti-check" style="color:var(--green)"></i>
+    <span>Export Successful</span>
   </div>
 
   <!-- ── Snapshot KPI Row ───────────────────────────────────────────────── -->
@@ -337,6 +387,57 @@
     min-height: 260px;
     display: flex; align-items: flex-start;
   }
+  .briefing-content h4 {
+    margin: 20px 0 10px 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .briefing-content ul {
+    margin: 0;
+    padding-left: 20px;
+  }
+  .briefing-content li {
+    margin-bottom: 8px;
+  }
+
+  /* ── Print Styles (Export PDF) ── */
+  @media print {
+    :global(body) { background: #fff !important; color: #000 !important; }
+    :global(.sidebar) { display: none !important; }
+    :global(.main-content) { margin-left: 0 !important; padding: 20px !important; width: 100% !important; background: #fff !important; }
+    :global(.topbar) { display: none !important; }
+
+    .hide-print { display: none !important; }
+    .print-btn { display: none !important; }
+
+    .brief-wrap { max-width: 100%; padding: 0; }
+    .brief-title { color: #000; }
+    .brief-icon { background: #f0f0f0 !important; color: #000 !important; border: 1px solid #ccc !important; }
+    .brief-name { color: #000 !important; }
+    .brief-sub { color: #666 !important; }
+    
+    .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 20px; page-break-inside: avoid; }
+    .kpi-card { background: #fff !important; border: 1px solid #ddd !important; padding: 15px !important; box-shadow: none !important; }
+    .kpi-num { font-size: 18px !important; }
+    .kpi-lbl { color: #555 !important; }
+
+    .dashboard-grid { grid-template-columns: 1fr; gap: 20px; display: block; }
+    
+    .db-card { background: #fff !important; border: 1px solid #ccc !important; box-shadow: none !important; margin-bottom: 20px; page-break-inside: avoid; }
+    .db-card-header { background: #f8f9fa !important; border-bottom: 1px solid #ccc !important; color: #000 !important; }
+    
+    .ai-output-box { background: #fff !important; border: 1px solid #ccc !important; color: #000 !important; }
+    .briefing-content { color: #000 !important; }
+    
+    .data-table th { background: #f0f0f0 !important; color: #000 !important; border-bottom: 2px solid #ccc !important; }
+    .data-table td { color: #000 !important; border-bottom: 1px solid #ddd !important; }
+    .ds-badge { background: #fff !important; border: 1px solid #999 !important; color: #000 !important; }
+    
+    /* Ensure colors print properly if user enables background graphics */
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+
   .brief-text {
     font-size: 14px; line-height: 1.9;
     color: var(--text-primary);

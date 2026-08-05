@@ -142,7 +142,6 @@
       '/dashboard/settings': 'System Settings',
       '/dashboard/threats': 'Security Logs',
       '/dashboard/network-map': 'Network Map Management',
-      '/dashboard/outbound-monitor': 'Outbound Threat Monitor',
       '/dashboard/ai-briefing': 'AI Daily Briefing',
       '/dashboard/credential-intel': 'Credential Intelligence',
       '/dashboard/api-history': 'API History'
@@ -184,7 +183,7 @@
 </script>
 
 <svelte:head>
-  <title>KKUSIEM Command Center | KKUSIEM</title>
+  <title>KKUSIEM</title>
 </svelte:head>
 
 <div class="layout-wrapper">
@@ -209,24 +208,14 @@
       <a href="/dashboard/ai-briefing" class="nav-item {$page.url.pathname === '/dashboard/ai-briefing' ? 'active' : ''}">
         <i class="ti ti-brain"></i> AI Daily Briefing
       </a>
-      <a href="/dashboard/credential-intel" class="nav-item {$page.url.pathname === '/dashboard/credential-intel' ? 'active' : ''}">
-        <i class="ti ti-key"></i> Credential Intel
+      <a href="/dashboard/monitor" class="nav-item {$page.url.pathname === '/dashboard/monitor' ? 'active' : ''}">
+        <i class="ti ti-list-search"></i> Threat Monitor
       </a>
-      <a href="/dashboard/threats" class="nav-item {$page.url.pathname === '/dashboard/threats' ? 'active' : ''}">
-        <i class="ti ti-list-search"></i> Security Logs
-      </a>
-      <a href="/dashboard/alert" class="nav-item {$page.url.pathname === '/dashboard/alert' ? 'active' : ''}">
-        <i class="ti ti-alert-triangle"></i> Alerts & SOAR
-      </a>
-      <a href="/dashboard/investigate" class="nav-item {$page.url.pathname === '/dashboard/investigate' ? 'active' : ''}">
-        <i class="ti ti-zoom-in"></i> Threat Investigate
+      <a href="/dashboard/soar" class="nav-item {$page.url.pathname === '/dashboard/soar' ? 'active' : ''}">
+        <i class="ti ti-zoom-in"></i> Incident & SOAR
       </a>
       <a href="/dashboard/mitre" class="nav-item {$page.url.pathname === '/dashboard/mitre' ? 'active' : ''}">
         <i class="ti ti-grid-dots"></i> MITRE ATT&CK
-      </a>
-      <a href="/dashboard/outbound-monitor" class="nav-item {$page.url.pathname === '/dashboard/outbound-monitor' ? 'active' : ''}" style="position:relative;">
-        <i class="ti ti-radar-2"></i> Outbound Monitor
-        <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:9px;font-weight:700;background:#ef4444;color:#fff;padding:1px 6px;border-radius:10px;">NEW</span>
       </a>
 
       <div class="nav-group-title mt-2">RESPONSE & INTEL</div>
