@@ -88,17 +88,12 @@ npm run start:dev
 ```
 
 ### 2. Frontend Setup
-```bash
-cd frontend
-npm install
-```
-Start the frontend development server:
-```bash
-npm run dev
-```
-
-### 3. Access the System
-Navigate to `http://localhost:5173` in your browser. 
+6. Open a new terminal and start the frontend server:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+7. Navigate to `https://localhost:5173` in your browser. 
 *(If running on HTTPS locally, Vite basic-ssl will apply, and you may need to accept the self-signed certificate).*
 
 ---

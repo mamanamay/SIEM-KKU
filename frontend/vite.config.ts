@@ -12,13 +12,15 @@ export default defineConfig({
 		},
 		proxy: {
 			'/api': {
-				target: process.env.API_TARGET || 'http://127.0.0.1:5000',
-				changeOrigin: true
+				target: process.env.API_TARGET || 'https://127.0.0.1:5000',
+				changeOrigin: true,
+				secure: false
 			},
 			'/socket.io': {
-				target: process.env.API_TARGET || 'http://127.0.0.1:5000',
+				target: process.env.API_TARGET || 'https://127.0.0.1:5000',
 				changeOrigin: true,
-				ws: true
+				ws: true,
+				secure: false
 			}
 		}
 	}
