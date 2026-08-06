@@ -47,7 +47,8 @@ export class AuthController {
   ssoLogin() {
     // Read the App ID from .env so we NEVER hardcode it in the frontend
     const clientId = process.env.SSO_CLIENT_ID || '019f5e7a-664b-7b4b-89aa-d3e411cff59f';
-    return { url: `https://ssonext.kku.ac.th/login?app=${clientId}` };
+    const ssoWebUrl = process.env.SSO_WEB_URL || 'https://ssonext.kku.ac.th';
+    return { url: `${ssoWebUrl}/login?app=${clientId}` };
   }
 
   // ── SSO Callback ────────────────────────────────────────
@@ -58,11 +59,16 @@ export class AuthController {
 
     const clientId = process.env.SSO_CLIENT_ID || '';
     const clientSecret = process.env.SSO_CLIENT_SECRET || '';
+    
+    // IMPORTANT: This URL MUST EXACTLY match the one registered in the KKU SSO dashboard!
     const redirectUrl = process.env.SSO_CALLBACK_URL || 'https://odt-siem-uat.kku.ac.th/callback';
+    const ssoApiUrl = process.env.SSO_API_URL || 'https://ssonext-api.kku.ac.th';
+
+    console.log(`[SSO] Exchanging code. ClientID: ${clientId}, RedirectURL: ${redirectUrl}`);
 
     try {
       // 1. Exchange code for access token
-      const tokenRes = await fetch('https://ssonext-api.kku.ac.th/auth.token', {
+      const tokenRes = await fetch(`${ssoApiUrl}/auth.token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, redirectUrl, clientId, clientSecret }),
@@ -70,19 +76,21 @@ export class AuthController {
       const tokenData = await tokenRes.json();
 
       if (!tokenData.ok) {
+        console.error(`[SSO Token Error] URL Mismatch or Invalid Secret:`, tokenData);
         throw new UnauthorizedException(
-          'ไม่สามารถยืนยันตัวตนกับ KKU SSO ได้: ' + (tokenData.error || 'Unknown error'),
+          'ไม่สามารถยืนยันตัวตนกับ KKU SSO ได้: ' + (tokenData.error || 'Unknown error') + '. โปรดตรวจสอบ Redirect URL ในระบบว่าตรงกันหรือไม่',
         );
       }
 
       // 2. Get User Profile
-      const profileRes = await fetch('https://ssonext-api.kku.ac.th/user.profile', {
+      const profileRes = await fetch(`${ssoApiUrl}/user.profile`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${tokenData.accessToken}` },
       });
       const profileData = await profileRes.json();
 
       if (!profileData.ok) {
+        console.error(`[SSO Profile Error]:`, profileData);
         throw new UnauthorizedException('ไม่สามารถดึงข้อมูลโปรไฟล์จาก KKU SSO ได้');
       }
 
