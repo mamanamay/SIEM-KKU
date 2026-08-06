@@ -34,6 +34,7 @@ export class SeedService implements OnModuleInit {
       console.log('[+] Database is empty. Seeding 3 example threat cases...');
       const samples = [
         {
+          timeStr: new Date(Date.now() - 3600000).toISOString(),
           ip: '192.168.1.105',
           country: 'Local Network',
           type: 'Suspicious Network Scan',
@@ -43,6 +44,7 @@ export class SeedService implements OnModuleInit {
           timestampMs: Date.now() - 3600000,
         },
         {
+          timeStr: new Date(Date.now() - 7200000).toISOString(),
           ip: '45.33.32.156',
           country: 'United States',
           type: 'Brute Force Authentication',
@@ -52,6 +54,7 @@ export class SeedService implements OnModuleInit {
           timestampMs: Date.now() - 7200000,
         },
         {
+          timeStr: new Date(Date.now() - 14400000).toISOString(),
           ip: '185.15.22.99',
           country: 'Russia',
           type: 'Malware C2 Beacon',
