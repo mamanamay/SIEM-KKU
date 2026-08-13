@@ -1,7 +1,8 @@
 import { writable } from 'svelte/store';
 import { io, Socket } from 'socket.io-client';
 
-export const eventsStore = writable<any[]>([]);
+const initialEvents = typeof sessionStorage !== 'undefined' ? JSON.parse(sessionStorage.getItem('cachedEvents') || '[]') : [];
+export const eventsStore = writable<any[]>(initialEvents);
 export const socketStore = writable<Socket | null>(null);
 export const roleStore = writable<string>('guest');
 export const connectionState = writable<boolean>(false);
@@ -36,6 +37,7 @@ export function initSocket() {
 
   socket.on('initial_data', (data: any[]) => {
     eventsStore.set(data);
+    if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('cachedEvents', JSON.stringify(data));
   });
 
   socket.on('new_attack', (data: any) => {

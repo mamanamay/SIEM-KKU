@@ -6,6 +6,8 @@ import { WazuhController } from './wazuh.controller';
 import { LogService } from './log.service';
 import { AiService } from './ai.service';
 import { EventsGateway } from './events.gateway';
+import { CryptoService } from './crypto.service';
+import { TotpService } from './totp.service';
 import { User } from './entities/user.entity';
 import { Attack } from './entities/attack.entity';
 import { LoginSession } from './entities/login-session.entity';
@@ -16,8 +18,8 @@ import { ApiLogModule } from './api-log/api-log.module';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/honeypot',
+      type: 'sqlite',
+      database: 'database.sqlite',
       entities: [User, Attack, LoginSession, ApiLog],
       synchronize: true,
     }),
@@ -25,6 +27,6 @@ import { ApiLogModule } from './api-log/api-log.module';
     ApiLogModule,
   ],
   controllers: [AuthController, AttacksController, WazuhController],
-  providers: [LogService, AiService, EventsGateway, SeedService],
+  providers: [LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService],
 })
 export class AppModule {}

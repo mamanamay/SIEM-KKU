@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { formatEventTime } from '../../lib/formatTime';
   import { eventsStore } from '../../stores/events';
   import type { Unsubscriber } from 'svelte/store';
   import ExportPreviewModal from '../../lib/components/ExportPreviewModal.svelte';
+  import AiTriageBanner from '../../lib/components/AiTriageBanner.svelte';
   import { downloadCSV, downloadPDF } from '../../lib/utils/export';
   import Chart from 'chart.js/auto';
 
@@ -98,7 +100,17 @@
   })();
 
   // Top threats (last 20)
-  $: recentThreats = displayEvents.slice(-20).reverse();
+  let chartFilterHourDiff: number | null = null;
+  $: filteredDisplayEvents = chartFilterHourDiff !== null
+    ? displayEvents.filter(e => {
+        const nowMs = Date.now();
+        const ts = e.timestampMs || new Date(e.createdAt || Date.now()).getTime();
+        const hourDiff = Math.floor((nowMs - ts) / (1000 * 60 * 60));
+        return hourDiff === chartFilterHourDiff;
+      })
+    : displayEvents;
+    
+  $: recentThreats = filteredDisplayEvents.slice(-20).reverse();
 
   // Severity color
   function sevColor(sev: string) {
@@ -160,6 +172,14 @@
     if (!chartCanvas) return;
     const ctx = chartCanvas.getContext('2d');
     
+    const gradRed = (ctx as any).createLinearGradient(0, 0, 0, 220);
+    gradRed.addColorStop(0, 'rgba(239, 68, 68, 0.5)');
+    gradRed.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
+    
+    const gradBlue = (ctx as any).createLinearGradient(0, 0, 0, 220);
+    gradBlue.addColorStop(0, 'rgba(59, 130, 246, 0.5)');
+    gradBlue.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+    
     comparisonChart = new Chart(ctx as any, {
       type: 'line',
       data: {
@@ -169,21 +189,25 @@
             label: 'Inbound Threats',
             data: [],
             borderColor: '#ef4444',
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            backgroundColor: gradRed,
             fill: true,
             tension: 0.4,
             borderWidth: 2,
-            pointRadius: 0
+            pointRadius: 3,
+            pointBackgroundColor: '#ef4444',
+            pointHoverRadius: 6
           },
           {
             label: 'Domestic Threats',
             data: [],
             borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            backgroundColor: gradBlue,
             fill: true,
             tension: 0.4,
             borderWidth: 2,
-            pointRadius: 0
+            pointRadius: 3,
+            pointBackgroundColor: '#3b82f6',
+            pointHoverRadius: 6
           }
         ]
       },
@@ -195,9 +219,25 @@
         },
         scales: {
           x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', font: { size: 9 } } },
-          y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', font: { size: 9 }, stepSize: 1 } }
+          y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', font: { size: 9 }, stepSize: 1 }, beginAtZero: true }
         },
-        interaction: { mode: 'index', intersect: false }
+        interaction: { mode: 'index', intersect: false },
+        onClick: (event, elements) => {
+          if (elements && elements.length > 0) {
+            const index = elements[0].index;
+            const hourDiff = 11 - index;
+            if (chartFilterHourDiff === hourDiff) {
+              chartFilterHourDiff = null; // Toggle off
+            } else {
+              chartFilterHourDiff = hourDiff;
+            }
+          }
+        },
+        onHover: (event: any, elements) => {
+          if (event.native) {
+            event.native.target.style.cursor = elements && elements.length ? 'pointer' : 'default';
+          }
+        }
       }
     });
     updateChartData();
@@ -444,6 +484,8 @@
     <span>Export Successful</span>
   </div>
 
+  <AiTriageBanner {events} />
+
   <!-- ── KPI Cards ──────────────────────────────────────────────────────── -->
   <div class="kpi-row">
     <div class="kpi-card red">
@@ -548,7 +590,18 @@
           <span class="ds-card-title" style="font-size:12px;">
             <i class="ti ti-list"></i> Real-time Threat Monitoring
           </span>
-          <span style="font-size:11px;color:var(--text-muted);">{recentThreats.length} events</span>
+          <span class="flex items-center gap-2">
+            {#if chartFilterHourDiff !== null}
+              <button 
+                class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded text-[10px] hover:bg-blue-600/30 transition flex items-center gap-1"
+                on:click={() => chartFilterHourDiff = null}
+              >
+                Filtered: {chartFilterHourDiff}h ago
+                <span class="font-bold">×</span>
+              </button>
+            {/if}
+            <span style="font-size:11px;color:var(--text-muted);">{recentThreats.length} events</span>
+          </span>
         </div>
         <div class="threat-scroll">
           <table class="threat-table">
@@ -565,7 +618,7 @@
             <tbody>
               {#each recentThreats as e}
               <tr class="threat-row {e.severity}">
-                <td class="mono">{e.timeStr || '-'}</td>
+                <td class="mono">{formatEventTime(e.time || e.timeStr || e.timestampMs || e.createdAt)}</td>
                 <td class="mono">
                   <span class="flag">{countryFlag(e.country || 'Local Network')}</span>
                   {e.ip}
@@ -818,7 +871,7 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     overflow: hidden;
-    height: 140px;
+    height: 220px;
     display: flex;
     flex-direction: column;
     margin-bottom: 10px;

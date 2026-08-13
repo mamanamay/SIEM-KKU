@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
+  import { formatEventTime } from '../../../lib/formatTime';
 
   // ── State ────────────────────────────────────────────────────────────────────
   let logs: any[] = [];
@@ -93,7 +94,7 @@
   }
 
   $: fullExportData = (logs || []).map(log => ({
-    "Timestamp": formatTime(log.timestamp),
+    "Timestamp": formatEventTime(log.timestamp),
     "Method": log.method,
     "Path": log.path,
     "Status": log.status || log.statusCode,
@@ -300,7 +301,7 @@
             {#each logs as log}
               <tr>
                 <td style="color:var(--text-muted);font-size:12px" class="ds-mono">{log.id}</td>
-                <td class="ds-mono" style="white-space:nowrap;font-size:13px">{formatTime(log.timestamp)}</td>
+                <td class="ds-mono" style="white-space:nowrap;font-size:13px">{formatEventTime(log.timestamp)}</td>
                 <td>
                   <span class="method-badge {methodClass(log.method)}">{log.method}</span>
                 </td>

@@ -26,9 +26,16 @@
 
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem('token', data.access_token);
-        localStorage.setItem('role', data.role);
-        window.location.href = '/dashboard';
+        
+        if (data.stage === 'verify') {
+          // Enforce local 2FA: backend already set pre_auth_token cookie
+          window.location.href = '/?verify=true';
+        } else {
+          localStorage.setItem('token', data.access_token);
+          localStorage.setItem('role', data.role);
+          if (data.username) localStorage.setItem('username', data.username);
+          window.location.href = '/dashboard';
+        }
       } else {
         const errData = await res.json();
         // Check if this is an "unauthorized" error (not whitelisted)

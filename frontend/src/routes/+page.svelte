@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
+  // ── State ──────────────────────────────────────────────
   let username = '';
   let password = '';
   let error = '';
@@ -9,28 +10,42 @@
   let showPassword = false;
   let currentTheme = 'dark';
 
+  // 2FA State Machine: 'login' | 'verify'
+  type AuthStage = 'login' | 'verify';
+  let authStage: AuthStage = 'login';
+
+  // 2FA data
+  let totpCode = '';
+
   function toggleTheme() {
     currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', currentTheme);
     localStorage.setItem('theme', currentTheme);
   }
 
+  // ── Step 1: Login with username/password ───────────────
   async function handleLogin() {
     error = '';
     isLoading = true;
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
-        localStorage.setItem('token', data.access_token);
-        localStorage.setItem('role', data.role);
-        window.location.href = '/dashboard';
+        if (data.stage === 'verify') {
+          // User has MFA enabled
+          authStage = 'verify';
+          totpCode = '';
+        } else {
+          // Normal login without MFA
+          finalizeLogin(data);
+        }
       } else {
-        error = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+        error = data.message || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
       }
     } catch (err) {
       error = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง';
@@ -39,11 +54,53 @@
     }
   }
 
+  // ── Step 2: Verify TOTP (if required) ────────────────────
+  async function handleVerify() {
+    error = '';
+    isLoading = true;
+    try {
+      const res = await fetch('/api/auth/2fa/verify', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: totpCode.replace(/\s+/g, '') })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        finalizeLogin(data);
+      } else {
+        error = data.message || 'รหัส 2FA ไม่ถูกต้อง';
+      }
+    } catch {
+      error = 'เกิดข้อผิดพลาด กรุณาลองใหม่';
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  function finalizeLogin(data: any) {
+    if (data.access_token) {
+      localStorage.setItem('token', data.access_token);
+      localStorage.setItem('role', data.role);
+      if (data.username) localStorage.setItem('username', data.username);
+      window.location.href = '/dashboard';
+    }
+  }
+
+  function goBackToLogin() {
+    authStage = 'login';
+    totpCode = '';
+    error = '';
+  }
+
   onMount(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('expired') === 'true') {
       isSessionExpired = true;
-      window.history.replaceState({}, document.title, "/");
+      window.history.replaceState({}, document.title, '/');
+    } else if (urlParams.get('verify') === 'true') {
+      authStage = 'verify';
+      window.history.replaceState({}, document.title, '/');
     }
 
     if (localStorage.getItem('token')) {
@@ -104,84 +161,118 @@
       </div>
     {/if}
 
-    <!-- Form -->
-    <form on:submit|preventDefault={handleLogin} class="login-form">
-      <div class="field-group">
-        <label class="field-label" for="username">ชื่อผู้ใช้งาน</label>
-        <div class="field-wrap">
-          <i class="ti ti-user field-icon"></i>
-          <input
-            id="username"
-            type="text"
-            bind:value={username}
-            class="field-input"
-            placeholder="กรอกชื่อผู้ใช้งาน"
-            autocomplete="username"
-            required
-          />
-        </div>
-      </div>
-
-      <div class="field-group">
-        <label class="field-label" for="password-text">รหัสผ่าน</label>
-        <div class="field-wrap">
-          <i class="ti ti-lock field-icon"></i>
-          {#if showPassword}
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!-- STAGE: Login (Username + Password)                      -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    {#if authStage === 'login'}
+      <form on:submit|preventDefault={handleLogin} class="login-form">
+        <div class="field-group">
+          <label class="field-label" for="username">ชื่อผู้ใช้งาน</label>
+          <div class="field-wrap">
+            <i class="ti ti-user field-icon"></i>
             <input
-              id="password-text"
+              id="username"
               type="text"
-              bind:value={password}
+              bind:value={username}
               class="field-input"
-              placeholder="กรอกรหัสผ่าน"
-              autocomplete="current-password"
+              placeholder="กรอกชื่อผู้ใช้งาน"
+              autocomplete="username"
               required
             />
-          {:else}
-            <input
-              id="password-hidden"
-              type="password"
-              bind:value={password}
-              class="field-input"
-              placeholder="กรอกรหัสผ่าน"
-              autocomplete="current-password"
-              required
-            />
-          {/if}
-          <button
-            type="button"
-            class="field-toggle"
-            on:click={() => showPassword = !showPassword}
-            title={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
-          >
-            <i class="ti {showPassword ? 'ti-eye-off' : 'ti-eye'}"></i>
-          </button>
+          </div>
         </div>
+
+        <div class="field-group">
+          <label class="field-label" for="password-text">รหัสผ่าน</label>
+          <div class="field-wrap">
+            <i class="ti ti-lock field-icon"></i>
+            {#if showPassword}
+              <input
+                id="password-text"
+                type="text"
+                bind:value={password}
+                class="field-input"
+                placeholder="กรอกรหัสผ่าน"
+                autocomplete="current-password"
+                required
+              />
+            {:else}
+              <input
+                id="password-hidden"
+                type="password"
+                bind:value={password}
+                class="field-input"
+                placeholder="กรอกรหัสผ่าน"
+                autocomplete="current-password"
+                required
+              />
+            {/if}
+            <button
+              type="button"
+              class="field-toggle"
+              on:click={() => (showPassword = !showPassword)}
+              title={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+            >
+              <i class="ti {showPassword ? 'ti-eye-off' : 'ti-eye'}"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-login" disabled={isLoading}>
+          {#if isLoading}
+            <span class="spinner"></span>
+            <span>กำลังตรวจสอบ...</span>
+          {:else}
+            <i class="ti ti-login"></i>
+            <span>เข้าสู่ระบบ</span>
+          {/if}
+        </button>
+      </form>
+
+      <!-- SSO Divider -->
+      <div class="sso-divider"><span>Or continue with</span></div>
+      <a href="/api/auth/sso/login" class="btn-sso">
+        <i class="ti ti-login"></i>
+        <span>KKU SSO</span>
+      </a>
+      <div class="sso-hint">Authorized personnel only</div>
+
+    {:else if authStage === 'verify'}
+      <div class="mfa-section">
+        <div class="mfa-icon-ring">
+          <i class="ti ti-device-mobile"></i>
+        </div>
+        <div class="mfa-title">ยืนยัน 2-Factor Authentication</div>
+        <p class="mfa-desc">กรอกรหัส 6 หลักจากแอป Authenticator หรือ Backup Code เพื่อเข้าสู่ระบบ</p>
+
+        <form on:submit|preventDefault={handleVerify} class="login-form">
+          <div class="field-group">
+            <div class="field-wrap">
+              <i class="ti ti-shield-lock field-icon"></i>
+              <input
+                type="text"
+                bind:value={totpCode}
+                class="field-input totp-input"
+                placeholder="000 000"
+                maxlength="10"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                required
+              />
+            </div>
+          </div>
+          <button type="submit" class="btn-login" disabled={isLoading || totpCode.length < 6}>
+            {#if isLoading}<span class="spinner"></span>{/if}
+            <i class="ti ti-shield-check"></i> ยืนยันรหัส
+          </button>
+        </form>
+        <button class="btn-back" on:click={goBackToLogin}>
+          <i class="ti ti-arrow-left"></i> กลับหน้าเข้าสู่ระบบ
+        </button>
       </div>
+    {/if}
 
-      <button type="submit" class="btn-login" disabled={isLoading}>
-        {#if isLoading}
-          <span class="spinner"></span>
-          <span>กำลังเข้าสู่ระบบ...</span>
-        {:else}
-          <i class="ti ti-login"></i>
-          <span>เข้าสู่ระบบ</span>
-        {/if}
-      </button>
-    </form>
-
-    <!-- SSO Divider -->
-    <div class="sso-divider">
-      <span>Or continue with</span>
-    </div>
-
-    <!-- SSO Button -->
-    <a href="/api/auth/sso/login" class="btn-sso">
-      <i class="ti ti-login"></i>
-      <span>KKU SSO</span>
-    </a>
-    <div class="sso-hint">Authorized personnel only</div>
-
-    <!-- Footer -->
+    <!-- Footer (always shown) -->
     <div class="login-footer">
       <i class="ti ti-shield-lock"></i>
       Khon Kaen University · Security Operations Center
@@ -631,4 +722,170 @@
     gap: 5px;
   }
   .login-footer i { font-size: 13px; color: #1d9e75; opacity: 0.7; }
+
+  /* ── 2FA: MFA Section Wrapper ─────────────────────────────────── */
+  .mfa-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  .mfa-icon-ring {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--log-ring-bg);
+    box-shadow: 0 0 0 8px var(--log-btn-shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    color: #1d9e75;
+    margin-bottom: 4px;
+  }
+  .mfa-icon-ring.success { color: #22c55e; box-shadow: 0 0 0 8px rgba(34,197,94,0.15); }
+
+  .mfa-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--log-text-primary);
+    text-align: center;
+  }
+  .mfa-desc {
+    font-size: 13px;
+    color: var(--log-text-muted);
+    text-align: center;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .mfa-desc.backup-warning { color: #f59e0b; }
+  .mfa-desc strong { color: var(--log-text-primary); }
+
+  /* ── 2FA: QR Code ─────────────────────────────────────────────── */
+  .qr-wrapper {
+    padding: 12px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  }
+  .qr-image {
+    display: block;
+    width: 180px;
+    height: 180px;
+    border-radius: 4px;
+  }
+  .qr-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--log-text-muted);
+    padding: 20px;
+  }
+
+  /* ── 2FA: Manual Secret ───────────────────────────────────────── */
+  .manual-secret {
+    width: 100%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 10px 14px;
+    text-align: center;
+  }
+  .manual-secret-label {
+    font-size: 11px;
+    color: var(--log-text-muted);
+    margin-bottom: 4px;
+  }
+  .manual-secret-value {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d9e75;
+    letter-spacing: 0.08em;
+    word-break: break-all;
+  }
+  .mfa-divider {
+    width: 100%;
+    height: 1px;
+    background: rgba(255,255,255,0.07);
+  }
+  .mfa-code-label {
+    font-size: 12px;
+    color: var(--log-text-muted);
+    margin: 0;
+    text-align: center;
+  }
+
+  /* ── 2FA: TOTP Input (large centered digits) ──────────────────── */
+  .totp-input {
+    letter-spacing: 0.25em;
+    font-size: 22px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  /* ── 2FA: Backup Codes Grid ───────────────────────────────────── */
+  .backup-codes-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+  .backup-code {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: #e8eaf0;
+    text-align: center;
+    letter-spacing: 0.05em;
+    transition: background 0.2s;
+  }
+  .backup-code:hover { background: rgba(255,255,255,0.08); }
+
+  /* ── 2FA: Copy Button ─────────────────────────────────────────── */
+  .btn-copy {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 10px;
+    border: 1px solid rgba(29,158,117,0.4);
+    background: rgba(29,158,117,0.08);
+    color: #1d9e75;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-copy:hover { background: rgba(29,158,117,0.16); }
+
+  /* ── 2FA: Back Button ─────────────────────────────────────────── */
+  .btn-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 10px;
+    border: none;
+    background: transparent;
+    color: var(--log-text-muted);
+    border-radius: 10px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: color 0.2s;
+    margin-top: 4px;
+  }
+  .btn-back:hover { color: var(--log-text-primary); }
 </style>

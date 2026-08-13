@@ -16,15 +16,15 @@ export class SeedService implements OnModuleInit {
   async onModuleInit() {
     console.log('[+] Checking database seed...');
     
-    const adminUser = await this.userRepository.findOne({ where: { role: 'admin' } });
+    const adminUser = await this.userRepository.findOne({ where: { username: 'admin' } });
     if (!adminUser) {
       await this.userRepository.save({ username: 'admin', passwordHash: 'Admin@1234!', role: 'admin' });
-      console.log('[+] Seeded admin user with default password (Admin@1234!)');
+      console.log('[+] Seeded admin user');
     }
 
-    const guestUser = await this.userRepository.findOne({ where: { role: 'guest' } });
+    const guestUser = await this.userRepository.findOne({ where: { username: 'guest' } });
     if (!guestUser) {
-      await this.userRepository.save({ username: 'guest', passwordHash: 'guest', role: 'guest' });
+      await this.userRepository.save({ username: 'guest', passwordHash: 'guest123', role: 'guest' });
       console.log('[+] Seeded guest user');
     }
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { roleStore } from '../../../stores/events';
+  import SecuritySettings from './SecuritySettings.svelte';
 
   let activeTab = 'users';
 
@@ -42,10 +43,12 @@
   let cfgGeminiKey = '';
 
   onMount(() => {
-    if ($roleStore !== 'admin') return;
-    loadUsers();
-    loadSessions();
-    loadConfig();
+    if ($roleStore === 'admin') {
+      loadUsers();
+      loadSessions();
+      loadConfig();
+    }
+    // All users fetch their own info in security tab logic
   });
 
   // ---------- User Management ----------
@@ -87,6 +90,19 @@
       if (res.ok) { await loadUsers(); }
       else { alert(data.message || 'ไม่สามารถลบได้'); }
     } catch(e) { alert('Network error'); }
+  }
+
+  async function resetTwoFa(username: string) {
+    if (!confirm(`ยืนยันการรีเซ็ต 2FA ของบัญชี "${username}" ?\nการกระทำนี้จะปิดใช้งาน 2FA ของบัญชีนี้ทันที`)) return;
+    try {
+      const res = await fetch(`/api/auth/users/${username}/reset-2fa`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) { 
+        alert(data.message || `รีเซ็ต 2FA ของ ${username} สำเร็จ`);
+        await loadUsers(); 
+      }
+      else alert(data.message || 'Error resetting 2FA');
+    } catch (err) { alert('Network Error'); }
   }
 
   function togglePasswordVisibility(username: string) {
@@ -169,12 +185,24 @@
     setTimeout(() => configSaved = false, 3000);
   }
 
-  const tabs = [
-    { id: 'users',  label: 'User Management', icon: 'ti-users' },
-    { id: 'audit',  label: 'Login Audit',      icon: 'ti-history' },
-    { id: 'config', label: 'System Config',    icon: 'ti-adjustments' },
-    { id: 'about',  label: 'About System',     icon: 'ti-info-circle' },
-  ];
+  $: tabs = $roleStore === 'admin'
+    ? [
+        { id: 'users',    label: 'User Management', icon: 'ti-users' },
+        { id: 'audit',    label: 'Login Audit',     icon: 'ti-history' },
+        { id: 'security', label: 'Security (2FA)',  icon: 'ti-shield-lock' },
+        { id: 'config',   label: 'System Config',   icon: 'ti-adjustments' },
+        { id: 'about',    label: 'About System',    icon: 'ti-info-circle' },
+      ]
+    : [
+        { id: 'security', label: 'Security (2FA)',  icon: 'ti-shield-lock' },
+        { id: 'about',    label: 'About System',    icon: 'ti-info-circle' },
+      ];
+      
+  $: {
+    if ($roleStore !== 'admin' && (activeTab === 'users' || activeTab === 'audit' || activeTab === 'config')) {
+      activeTab = 'security';
+    }
+  }
 </script>
 
 <svelte:head>
@@ -190,13 +218,7 @@
     </div>
   </div>
 
-  {#if $roleStore !== 'admin'}
-    <div class="ds-card" style="text-align:center; padding: 5rem 2rem;">
-      <i class="ti ti-lock" style="font-size:3.5rem; color: var(--red); display:block; margin-bottom:1rem;"></i>
-      <div style="font-size:1.2rem; font-weight:700; color:var(--red); margin-bottom:.5rem;">Access Denied</div>
-      <div style="color:var(--text-muted); font-size:13px;">You do not have permission to view System Settings.</div>
-    </div>
-  {:else}
+  <!-- Remove global restriction to allow Security tab -->
     <!-- Tab Navigation -->
     <div class="tab-nav">
       {#each tabs as tab}
@@ -326,7 +348,7 @@
           {:else}
             <div class="ds-table-wrap">
               <table class="ds-table">
-                <thead><tr><th>#</th><th>Username</th><th>Role</th><th>Password</th><th>Action</th></tr></thead>
+                <thead><tr><th>#</th><th>Username</th><th>Role</th><th>2FA</th><th>Password</th><th>Action</th></tr></thead>
                 <tbody>
                   {#each users as u, i}
                     <tr>
@@ -347,6 +369,13 @@
                           <i class="ti {u.role === 'admin' ? 'ti-shield' : 'ti-eye'}"></i>
                           {u.role}
                         </span>
+                      </td>
+                      <td>
+                        {#if u.totpEnabled}
+                          <span class="ds-badge green"><i class="ti ti-shield-check" style="margin-right:2px"></i> เปิด</span>
+                        {:else}
+                          <span class="ds-badge" style="background:var(--bg-level-1); border-color:var(--border-color); color:var(--text-muted);"><i class="ti ti-shield-x" style="margin-right:2px"></i> ปิด</span>
+                        {/if}
                       </td>
                       <td class="pw-cell">
                         {#if u.isSso}
@@ -369,6 +398,11 @@
                       </td>
                       <td>
                         <div class="action-btns">
+                          {#if u.totpEnabled}
+                            <button class="ds-btn sm outline" style="color:var(--orange); border-color:var(--orange);" title="รีเซ็ต 2FA" on:click={() => resetTwoFa(u.username)}>
+                              <i class="ti ti-rotate"></i>
+                            </button>
+                          {/if}
                           {#if !u.isSso}
                             <button class="ds-btn sm" title="เปลี่ยนรหัสผ่าน" on:click={() => openEditModal(u.username)}>
                               <i class="ti ti-key"></i>
@@ -594,6 +628,10 @@
         </div>
       </div>
 
+    <!-- ═══════════════════ TAB: Security ═══════════════════ -->
+    {:else if activeTab === 'security'}
+      <SecuritySettings />
+
     <!-- ═══════════════════ TAB: About System ═══════════════════ -->
     {:else if activeTab === 'about'}
       <div class="about-grid">
@@ -644,8 +682,8 @@
         </div>
       </div>
     {/if}
-  {/if}
-</div>
+  </div>
+<!-- Removed the {/if} because we removed the admin if block -->
 
 <style>
   /* Hide browser default password reveal icon (Edge/Chrome on Windows) */

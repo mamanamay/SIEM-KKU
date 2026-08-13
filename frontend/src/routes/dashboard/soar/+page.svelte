@@ -1,6 +1,8 @@
 <svelte:head><title>Incident & SOAR - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { formatEventTime } from '../../../lib/formatTime';
+  import AttackTimeline from '../../../lib/components/AttackTimeline.svelte';
   import { eventsStore, roleStore } from '../../../stores/events';
   import { getFacultyForIP } from '../../../stores/faculties';
   import { page } from '$app/stores';
@@ -10,6 +12,11 @@
   $: events = $eventsStore;
   let searchIp = $page.url.searchParams.get('ip') || '';
   let searchTime = $page.url.searchParams.get('time') || '';
+  let searchType = '';
+  let searchSeverity = '';
+  let searchCountry = '';
+  let nlSearchQuery = '';
+  let isNlSearchLoading = false;
   let lastUrl = $page.url.href;
 
   $: if ($page.url.href !== lastUrl) {
@@ -19,6 +26,61 @@
     if (searchIp || searchTime) {
       selectedRange = 'all';
     }
+  }
+
+  async function performNlSearch() {
+    const query = nlSearchQuery.trim();
+    if (!query) {
+      clearFilters();
+      return;
+    }
+    
+    // Fast path: Exact IP Address lookup
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(query)) {
+      clearFilters();
+      searchIp = query;
+      nlSearchQuery = query; // keep it in the input
+      return;
+    }
+    
+    isNlSearchLoading = true;
+    try {
+      const geminiKey = localStorage.getItem('cfg_gemini_key') || '';
+      const res = await fetch('/api/attacks/nl-search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'x-gemini-key': geminiKey
+        },
+        body: JSON.stringify({ query: nlSearchQuery })
+      });
+      const data = await res.json();
+      if (data.filters) {
+        searchIp = data.filters.ip || '';
+        searchType = data.filters.type || '';
+        searchSeverity = data.filters.severity || '';
+        searchCountry = data.filters.country || '';
+        if (data.filters.timeRange) {
+          selectedRange = data.filters.timeRange;
+        }
+        resetAlertMode();
+      }
+    } catch (e) {
+      console.error('NL Search failed:', e);
+    } finally {
+      isNlSearchLoading = false;
+    }
+  }
+
+  function clearFilters() {
+    searchIp = '';
+    searchType = '';
+    searchSeverity = '';
+    searchCountry = '';
+    nlSearchQuery = '';
+    selectedRange = 'all';
+    resetAlertMode();
   }
 
   function resetAlertMode() {
@@ -53,8 +115,17 @@
   $: timeLimit = getTimeLimit(selectedRange);
 
   $: filteredEvents = (events || []).filter(e => {
-    const matchIp = (e.ip || '').includes(searchIp);
-    if (!matchIp) return false;
+    if (searchIp) {
+      const q = searchIp.toLowerCase();
+      const ipMatch = (e.ip || '').toLowerCase().includes(q);
+      const typeMatch = (e.type || '').toLowerCase().includes(q);
+      const detailMatch = (e.detail || '').toLowerCase().includes(q);
+      const payloadMatch = (e.payload || '').toLowerCase().includes(q);
+      if (!ipMatch && !typeMatch && !detailMatch && !payloadMatch) return false;
+    }
+    if (searchType && !(e.type || '').toLowerCase().includes(searchType.toLowerCase())) return false;
+    if (searchSeverity && (e.severity || '').toLowerCase() !== searchSeverity.toLowerCase()) return false;
+    if (searchCountry && !(e.country || '').toLowerCase().includes(searchCountry.toLowerCase())) return false;
     
     if (searchTime) {
       const timeStr = String(e.timeStr || '');
@@ -377,70 +448,42 @@
       </div>
     </div>
     
-    <div style="display:flex;align-items:center;gap:12px;">
-      <div style="position:relative;flex:1;min-width:200px;max-width:300px;">
-        <i class="ti ti-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);"></i>
-        <input type="text" bind:value={searchIp} on:input={() => { resetAlertMode(); }} placeholder="ค้นหาด้วย IP Address..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px 8px 36px;border-radius:8px;font-size:13px;outline:none;transition:border-color 0.2s;">
+    <div style="display:flex;align-items:center;gap:12px;flex:1;max-width:800px;">
+      <div class="ds-search" style="max-width:300px; flex:1;">
+        <i class="ti ti-search"></i>
+        <input type="text" bind:value={searchIp} placeholder="ค้นหา IP, ประเภท, รายละเอียด..." class="ds-search-input">
       </div>
-      <button class="ds-btn primary" on:click={() => showExportModal = true}>
+
+      {#if searchIp || searchType || searchSeverity || searchCountry}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <span style="font-size:11px;color:var(--text-muted);">Active Filters:</span>
+          {#if searchIp}<span class="filter-badge">ค้นหา: {searchIp}</span>{/if}
+          {#if searchType}<span class="filter-badge">Type: {searchType}</span>{/if}
+          {#if searchSeverity}<span class="filter-badge" style="background:var(--danger)">Sev: {searchSeverity}</span>{/if}
+          {#if searchCountry}<span class="filter-badge">Country: {searchCountry}</span>{/if}
+          <button on:click={clearFilters} style="background:transparent;border:none;color:var(--danger);font-size:16px;cursor:pointer;padding:0;"><i class="ti ti-x"></i></button>
+        </div>
+      {/if}
+
+      <button class="ds-btn primary" on:click={() => showExportModal = true} style="margin-left:auto;">
         <i class="ti ti-download"></i> Export Report
       </button>
     </div>
   </div>
 
-  <!-- ── Attack Timeline View ──────────────────────────────────────────── -->
-  {#if searchIp && filteredEvents.length}
-  {@const timelineEvents = filteredEvents.slice(0, 30)}
-  <div class="timeline-card">
-    <div class="timeline-header">
-      <div class="timeline-title">
-        <i class="ti ti-timeline"></i>
-        Attack Timeline —
-        <span class="timeline-ip">{searchIp}</span>
-        <span class="timeline-count">{filteredEvents.length} events</span>
-      </div>
-      <div class="timeline-legend">
-        <span class="tl-dot" style="background:#ef4444"></span><span class="tl-lbl">Critical</span>
-        <span class="tl-dot" style="background:#f97316"></span><span class="tl-lbl">High</span>
-        <span class="tl-dot" style="background:#f59e0b"></span><span class="tl-lbl">Medium</span>
-        <span class="tl-dot" style="background:#6b7280"></span><span class="tl-lbl">Low</span>
-      </div>
-    </div>
+  <style>
+    .filter-badge {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+  </style>
 
-    <!-- Horizontal Scroll Timeline -->
-    <div class="timeline-scroll">
-      <div class="timeline-track">
-        <!-- Axis line -->
-        <div class="timeline-axis"></div>
 
-        {#each timelineEvents as e, i}
-        {@const color = e.severity==='critical'?'#ef4444':e.severity==='high'?'#f97316':e.severity==='medium'?'#f59e0b':'#6b7280'}
-        <div class="timeline-node" style="--idx:{i};">
-          <!-- Dot on axis -->
-          <div class="tnode-dot" style="background:{color};box-shadow:0 0 8px {color}66;"></div>
-          <!-- Label card (alternates above/below) -->
-          <div class="tnode-card {i % 2 === 0 ? 'above' : 'below'}">
-            <div class="tnode-time">{(e.timeStr || e.time || '').split(' ').pop() || '-'}</div>
-            <div class="tnode-type" style="color:{color}">{e.type}</div>
-          </div>
-          <!-- Connector line -->
-          <div class="tnode-line {i % 2 === 0 ? 'up' : 'down'}"></div>
-        </div>
-        {/each}
-
-      </div>
-    </div>
-
-    <!-- Quick Summary Row -->
-    <div class="timeline-summary">
-      <span>📅 First seen: <strong>{timelineEvents[timelineEvents.length-1]?.timeStr || '-'}</strong></span>
-      <span>⏱ Last seen: <strong>{timelineEvents[0]?.timeStr || '-'}</strong></span>
-      <span>🔴 Critical: <strong style="color:#ef4444">{filteredEvents.filter(e=>e.severity==='critical').length}</strong></span>
-      <span>🟠 High: <strong style="color:#f97316">{filteredEvents.filter(e=>e.severity==='high').length}</strong></span>
-      <span>🌍 Country: <strong>{filteredEvents[0]?.country || 'Unknown'}</strong></span>
-    </div>
-  </div>
-  {/if}
 
   <div class="ds-card" style="padding:0;overflow:hidden;">
     <div class="ds-table-wrap"><table class="ds-table">
@@ -462,7 +505,7 @@
             <td class="text-center">
               <button class="toggle-btn">{expandedEvent === e ? '−' : '+'}</button>
             </td>
-            <td class="ds-mono">{e.time || e.timeStr || '-'}</td>
+            <td class="ds-mono">{formatEventTime(e.time || e.timeStr || e.createdAt)}</td>
             <td class="mono">
               {e.ip}
               {#if getFacultyForIP(e.ip)}
@@ -681,6 +724,9 @@
                         {:else}
                           <div class="action-note warn"><i class="ti ti-lock"></i> Admin Only - Insufficient permissions</div>
                         {/if}
+
+                        <hr style="border:0;border-top:1px solid var(--border);margin:16px 0;">
+                        <AttackTimeline ip={e.ip} />
 
                         <div class="action-label" style="margin-top:10px">
                           <i class="ti ti-bolt"></i> SOAR Playbook: Switch Port Action:
@@ -1007,120 +1053,7 @@
   .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .page-info { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
 
-  /* ── Attack Timeline ─────────────────────────────────────────────────── */
-  .timeline-card {
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    overflow: hidden;
-  }
-  .timeline-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap; gap: 8px;
-  }
-  .timeline-title {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 13px; font-weight: 700; color: var(--text-primary);
-  }
-  .timeline-title i { color: var(--green); font-size: 18px; }
-  .timeline-ip {
-    font-family: 'JetBrains Mono', monospace;
-    color: var(--green); font-size: 13px;
-  }
-  .timeline-count {
-    font-size: 11px; color: var(--text-muted);
-    background: var(--bg-secondary);
-    padding: 2px 8px; border-radius: 10px;
-  }
-  .timeline-legend {
-    display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--text-muted);
-  }
-  .tl-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .tl-lbl { margin-right: 4px; }
 
-  .timeline-scroll {
-    overflow-x: auto; overflow-y: hidden;
-    padding: 0 16px;
-    scrollbar-width: thin;
-  }
-  .timeline-track {
-    position: relative;
-    display: flex;
-    align-items: center;
-    height: 160px;
-    min-width: max-content;
-    gap: 0;
-    padding: 0 8px;
-  }
-  .timeline-axis {
-    position: absolute;
-    left: 0; right: 0;
-    top: 50%;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--border) 5%, var(--border) 95%, transparent);
-    transform: translateY(-50%);
-  }
-  .timeline-node {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 80px;
-    height: 160px;
-    flex-shrink: 0;
-    animation: fadeInNode 0.3s ease calc(var(--idx) * 40ms) both;
-  }
-  @keyframes fadeInNode { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none} }
-
-  .tnode-dot {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    border: 2px solid var(--bg-panel);
-    z-index: 2;
-    transition: transform 0.15s;
-  }
-  .timeline-node:hover .tnode-dot { transform: translateY(-50%) scale(1.5); }
-
-  .tnode-card {
-    position: absolute;
-    left: 50%; transform: translateX(-50%);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 4px 6px;
-    width: 72px;
-    text-align: center;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
-  .tnode-card.above { top: 8px; }
-  .tnode-card.below { bottom: 8px; }
-  .timeline-node:hover .tnode-card { border-color: var(--green); box-shadow: 0 0 8px rgba(29,158,117,0.2); }
-
-  .tnode-time { font-size: 9px; color: var(--text-muted); font-family: monospace; }
-  .tnode-type { font-size: 9px; font-weight: 600; line-height: 1.2; margin-top: 2px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-
-  .tnode-line {
-    position: absolute;
-    left: 50%;
-    width: 1px;
-    background: var(--border);
-  }
-  .tnode-line.up { top: 50px; bottom: calc(50% + 6px); }
-  .tnode-line.down { top: calc(50% + 6px); bottom: 50px; }
-
-  .timeline-summary {
-    display: flex; gap: 20px; flex-wrap: wrap;
-    padding: 10px 16px;
-    border-top: 1px solid var(--border);
-    font-size: 12px; color: var(--text-secondary);
-    background: var(--bg-secondary);
-  }
-  .timeline-summary strong { color: var(--text-primary); }
 
   /* Custom Modal Styles */
   .custom-modal-overlay {

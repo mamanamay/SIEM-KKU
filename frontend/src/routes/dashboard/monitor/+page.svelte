@@ -2,8 +2,10 @@
 <script lang="ts">
   import { eventsStore } from '../../../stores/events';
   import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
-  import AiAnalysisBlock from '$lib/components/AiAnalysisBlock.svelte';
+  import AiAnalysisBlock from '../../../lib/components/AiAnalysisBlock.svelte';
   import { downloadCSV, downloadPDF } from '../../../lib/utils/export';
+  import { formatEventTime } from '../../../lib/formatTime';
+  import AttackTimeline from '../../../lib/components/AttackTimeline.svelte';
 
   // Toggle mode
   let mode: 'logs' | 'alerts' = 'alerts'; // 'logs' = All logs, 'alerts' = High/Critical
@@ -108,7 +110,7 @@
   }
 
   $: fullExportData = (filteredEvents || []).map(event => ({
-    "Time": event.time || event.timeStr || formatDate(event.createdAt),
+    "Time": formatEventTime(event.time || event.timeStr || event.createdAt || event.timestamp),
     "Source IP": event.ip,
     "Country": event.country || 'Unknown',
     "Event Type": event.type,
@@ -203,7 +205,7 @@
           {#each paginatedEvents as event, i}
           <tr class="log-row {expandedRows.has(i) ? 'expanded' : ''}" on:click={() => toggleRow(i)} style="cursor:pointer; transition: background 0.15s;">
             <td class="expand-icon"><i class="ti {expandedRows.has(i) ? 'ti-chevron-down' : 'ti-chevron-right'}" style="color:var(--text-secondary)"></i></td>
-            <td class="ds-mono">{event.time || event.timeStr}</td>
+            <td class="ds-mono">{formatEventTime(event.time || event.timeStr || event.createdAt || event.timestamp)}</td>
             <td><span class="ds-mono" style="font-weight:600">{event.ip}</span></td>
             <td>{event.type}</td>
             <td>
@@ -233,9 +235,11 @@
                   <strong>Country:</strong> {event.country || 'Unknown'} <br>
                   <strong>Payload:</strong> <span class="ds-mono" style="font-size: 12px;">{event.payload || event.detail || '-'}</span>
                 </div>
-                {#if event.severity === 'high' || event.severity === 'critical'}
-                  <AiAnalysisBlock {event} />
-                {/if}
+                
+                <hr style="border:0;border-top:1px solid var(--border);margin:16px 0;">
+                <AttackTimeline ip={event.ip} />
+
+                <AiAnalysisBlock {event} />
               </div>
             </td>
           </tr>

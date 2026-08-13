@@ -3,7 +3,9 @@
   import { onMount } from 'svelte';
   import { eventsStore } from '../../../stores/events';
   import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
+  import AiReportModal from '../../../lib/components/AiReportModal.svelte';
   import { downloadCSV, downloadPDF } from '../../../lib/utils/export';
+  import { formatEventTime } from '../../../lib/formatTime';
 
   $: events = $eventsStore;
 
@@ -105,7 +107,7 @@
   let showExportModal = false;
   let showToast = false;
   $: fullExportData = (events || []).map(e => ({
-    'Time': e.timeStr || new Date(e.timestampMs || e.createdAt).toLocaleTimeString(),
+    'Time': formatEventTime(e.time || e.timeStr || e.createdAt || e.timestampMs),
     'Source IP': e.ip,
     'Country': e.country || 'Unknown',
     'Event Type': e.type,
@@ -130,6 +132,8 @@
     showToast = true;
     setTimeout(() => showToast = false, 3000);
   }
+
+  let showFullReportModal = false;
 </script>
 
 <div class="brief-wrap">
@@ -147,9 +151,12 @@
       {#if lastGenerated}
         <span class="gen-time hide-print"><i class="ti ti-clock"></i> สร้างล่าสุด {lastGenerated}</span>
         <button class="ds-btn primary hide-print" on:click={() => showExportModal = true}>
-          <i class="ti ti-download"></i> Export Report
+          <i class="ti ti-download"></i> Export CSV/PDF
         </button>
       {/if}
+      <button class="ds-btn primary hide-print" on:click={() => showFullReportModal = true}>
+        <i class="ti ti-file-analytics"></i> สร้างรายงานฉบับเต็ม
+      </button>
       <button class="ds-btn primary hide-print" on:click={generateBriefing} disabled={isLoading}>
         <i class="ti ti-{isLoading ? 'loader-2' : 'sparkles'}" class:spin={isLoading}></i>
         {isLoading ? 'กำลังสรุป...' : 'สร้างสรุปใหม่'}
@@ -165,6 +172,13 @@
     ipColumn="Source IP"
     on:close={() => showExportModal = false}
     on:confirm={handleExport}
+  />
+
+  <AiReportModal 
+    show={showFullReportModal} 
+    stats={stats}
+    events={events}
+    on:close={() => showFullReportModal = false} 
   />
 
   <div class="toast {showToast ? 'show' : ''}">

@@ -1,11 +1,31 @@
 import {
-  Controller, Post, Body, Req, UnauthorizedException, Get,
+  Controller, Post, Body, Req, Res, UnauthorizedException, Get,
   Delete, Param, BadRequestException, Put, Redirect
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import type { Response } from 'express';
 import { User } from './entities/user.entity';
 import { LoginSession } from './entities/login-session.entity';
+import { TotpService } from './totp.service';
+
+// ── Pre-auth token helpers (stateless, no DB, short-lived) ──────────────────
+// We store a signed JSON in an httpOnly cookie instead of a full JWT lib
+// to avoid adding another dependency. In production, use @nestjs/jwt.
+function signPreAuth(userId: number, stage: 'setup' | 'verify'): string {
+  const payload = { userId, stage, exp: Date.now() + 5 * 60 * 1000 }; // 5 min
+  return Buffer.from(JSON.stringify(payload)).toString('base64');
+}
+
+function verifyPreAuth(token: string): { userId: number; stage: 'setup' | 'verify' } | null {
+  try {
+    const payload = JSON.parse(Buffer.from(token, 'base64').toString('utf8'));
+    if (Date.now() > payload.exp) return null;
+    return { userId: payload.userId, stage: payload.stage };
+  } catch {
+    return null;
+  }
+}
 
 @Controller('api/auth')
 export class AuthController {
@@ -14,25 +34,211 @@ export class AuthController {
     private userRepository: Repository<User>,
     @InjectRepository(LoginSession)
     private sessionRepository: Repository<LoginSession>,
+    private readonly totpService: TotpService,
   ) {}
 
-  // ── Local Login ─────────────────────────────────────────
+  // ── Local Login (2FA-aware) ──────────────────────────────
   @Post('login')
-  async login(@Body() body: any, @Req() req: any) {
+  async login(@Body() body: any, @Req() req: any, @Res({ passthrough: true }) res: Response) {
     const { username, password } = body;
     const user = await this.userRepository.findOne({ where: { username } });
 
     if (user && user.passwordHash === password) {
-      const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
-      await this.sessionRepository.save({
-        username: user.username,
-        role: user.role,
-        ipAddress: Array.isArray(ip) ? ip[0] : ip,
-      });
-      return { access_token: `fake-jwt-token-for-${user.role}`, role: user.role };
+      // Password correct — determine 2FA stage
+      if (!user.totpEnabled) {
+        // User does not have 2FA enabled, log them in directly
+        const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+        await this.sessionRepository.save({
+          username: user.username,
+          role: user.role,
+          status: 'success',
+          ipAddress: Array.isArray(ip) ? ip[0] : ip,
+        });
+        // Important: clear any old pre-auth cookies
+        res.clearCookie('pre_auth_token');
+        return { access_token: `fake-jwt-token-for-${user.role}`, role: user.role, username: user.username, message: 'เข้าสู่ระบบสำเร็จ' };
+      } else {
+        // Already set up: user must verify TOTP
+        const preAuth = signPreAuth(user.id, 'verify');
+        res.cookie('pre_auth_token', preAuth, {
+          httpOnly: true,
+          sameSite: 'lax',
+          maxAge: 5 * 60 * 1000,
+        });
+        return { stage: 'verify', message: 'กรุณายืนยันรหัส 2FA' };
+      }
     }
 
     throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+  }
+
+  // ── 2FA Setup: Generate QR Code ─────────────────────────
+  @Post('2fa/setup')
+  async mfaSetup(@Req() req: any) {
+    const preAuth = req.cookies?.pre_auth_token;
+    const payload = verifyPreAuth(preAuth);
+    if (!payload || payload.stage !== 'setup') {
+      throw new UnauthorizedException('กรุณาเข้าสู่ระบบก่อนและเริ่มการตั้งค่า 2FA');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: payload.userId } });
+    if (!user) throw new UnauthorizedException('ไม่พบผู้ใช้');
+
+    // Generate new secret every time setup is called (safe to regenerate)
+    const setup = await this.totpService.generateSetup(user.username);
+
+    // Store encrypted secret (unconfirmed — totpEnabled stays false)
+    user.totpSecretEnc = setup.encryptedSecret;
+    await this.userRepository.save(user);
+
+    return {
+      qrCodeDataUrl: setup.qrCodeDataUrl,
+      secret: setup.secret, // for manual entry
+      message: 'สแกน QR Code ด้วยแอป Authenticator แล้วกรอกรหัส 6 หลักเพื่อยืนยัน',
+    };
+  }
+
+  // ── 2FA Setup Confirm: Verify code, enable TOTP, issue session ──────
+  @Post('2fa/setup/confirm')
+  async mfaSetupConfirm(@Body() body: any, @Req() req: any, @Res({ passthrough: true }) res: Response) {
+    const preAuth = req.cookies?.pre_auth_token;
+    const payload = verifyPreAuth(preAuth);
+    if (!payload || payload.stage !== 'setup') {
+      throw new UnauthorizedException('กรุณาเริ่มกระบวนการตั้งค่า 2FA ใหม่');
+    }
+
+    const { code } = body;
+    if (!code || typeof code !== 'string') {
+      throw new BadRequestException('กรุณากรอกรหัส 6 หลัก');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: payload.userId } });
+    if (!user || !user.totpSecretEnc) throw new UnauthorizedException('ไม่พบข้อมูล 2FA กรุณาเริ่มใหม่');
+
+    const isValid = await this.totpService.verifyCode(code, user.totpSecretEnc);
+    if (!isValid) throw new UnauthorizedException('รหัส 2FA ไม่ถูกต้อง กรุณาลองใหม่');
+
+    // Code valid — enable TOTP and generate backup codes
+    const { plainCodes, hashedCodes } = await this.totpService.generateBackupCodes();
+    user.totpEnabled = true;
+    user.backupCodesJson = JSON.stringify(hashedCodes);
+    await this.userRepository.save(user);
+
+    // Log session
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+    await this.sessionRepository.save({
+      username: user.username,
+      role: user.role,
+      ipAddress: Array.isArray(ip) ? ip[0] : ip,
+    });
+
+    // Clear pre-auth cookie, issue access token
+    res.clearCookie('pre_auth_token');
+    return {
+      access_token: `fake-jwt-token-for-${user.role}`,
+      role: user.role,
+      username: user.username,
+      backupCodes: plainCodes, // show once — user must save these!
+      message: '2FA เปิดใช้งานสำเร็จ! กรุณาบันทึก Backup Codes ไว้ในที่ปลอดภัย',
+    };
+  }
+
+  // ── 2FA Verify: Check code on every login ───────────────
+  @Post('2fa/verify')
+  async mfaVerify(@Body() body: any, @Req() req: any, @Res({ passthrough: true }) res: Response) {
+    const preAuth = req.cookies?.pre_auth_token;
+    const payload = verifyPreAuth(preAuth);
+    if (!payload || payload.stage !== 'verify') {
+      throw new UnauthorizedException('กรุณาเข้าสู่ระบบก่อน');
+    }
+
+    const { code } = body;
+    if (!code || typeof code !== 'string') {
+      throw new BadRequestException('กรุณากรอกรหัส 6 หลัก');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: payload.userId } });
+    if (!user || !user.totpEnabled || !user.totpSecretEnc) {
+      throw new UnauthorizedException('ไม่พบข้อมูล 2FA');
+    }
+
+    // Try TOTP code first
+    let isValid = await this.totpService.verifyCode(code, user.totpSecretEnc);
+
+    // Try backup codes if TOTP fails
+    if (!isValid && user.backupCodesJson) {
+      const hashedCodes: string[] = JSON.parse(user.backupCodesJson);
+      const usedIndex = await this.totpService.verifyBackupCode(code, hashedCodes);
+      if (usedIndex !== -1) {
+        // Remove used backup code (one-time use)
+        hashedCodes.splice(usedIndex, 1);
+        user.backupCodesJson = JSON.stringify(hashedCodes);
+        await this.userRepository.save(user);
+        isValid = true;
+      }
+    }
+
+    if (!isValid) throw new UnauthorizedException('รหัส 2FA ไม่ถูกต้อง');
+
+    // Log session
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+    await this.sessionRepository.save({
+      username: user.username,
+      role: user.role,
+      ipAddress: Array.isArray(ip) ? ip[0] : ip,
+    });
+
+    // Clear pre-auth cookie, issue access token
+    res.clearCookie('pre_auth_token');
+    return {
+      access_token: `fake-jwt-token-for-${user.role}`,
+      role: user.role,
+      username: user.username,
+    };
+  }
+
+  // ── User: Init 2FA Setup (from Settings page) ───────────
+  @Post('users/:username/init-2fa')
+  async initTwoFa(@Param('username') username: string, @Res({ passthrough: true }) res: Response) {
+    const user = await this.userRepository.findOne({ where: { username } });
+    if (!user) throw new BadRequestException('ไม่พบผู้ใช้');
+    
+    // We set a pre_auth_token to reuse the existing setup flow
+    const preAuth = signPreAuth(user.id, 'setup');
+    res.cookie('pre_auth_token', preAuth, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 5 * 60 * 1000,
+    });
+    return { success: true, message: 'กรุณาตั้งค่า 2FA' };
+  }
+
+  // ── User: Disable 2FA (from Settings page) ──────────────
+  @Post('users/:username/disable-2fa')
+  async disableTwoFa(@Param('username') username: string) {
+    const user = await this.userRepository.findOne({ where: { username } });
+    if (!user) throw new BadRequestException('ไม่พบผู้ใช้');
+
+    user.totpSecretEnc = null;
+    user.totpEnabled = false;
+    user.backupCodesJson = null;
+    await this.userRepository.save(user);
+
+    return { success: true, message: 'ปิดการใช้งาน 2FA สำเร็จ' };
+  }
+
+  // ── Admin: Reset 2FA for a user ─────────────────────────
+  @Post('users/:username/reset-2fa')
+  async resetTwoFa(@Param('username') username: string) {
+    const user = await this.userRepository.findOne({ where: { username } });
+    if (!user) throw new BadRequestException('ไม่พบผู้ใช้');
+
+    user.totpSecretEnc = null;
+    user.totpEnabled = false;
+    user.backupCodesJson = null;
+    await this.userRepository.save(user);
+
+    return { success: true, message: `รีเซ็ต 2FA ของ "${username}" สำเร็จ — ผู้ใช้จะต้องตั้งค่า 2FA ใหม่เมื่อ Login ครั้งถัดไป` };
   }
 
   // ── Login Audit Sessions ────────────────────────────────
@@ -53,7 +259,7 @@ export class AuthController {
 
   // ── SSO Callback ────────────────────────────────────────
   @Post('sso/callback')
-  async ssoCallback(@Body() body: { code: string }, @Req() req: any) {
+  async ssoCallback(@Body() body: { code: string }, @Req() req: any, @Res({ passthrough: true }) res: Response) {
     const { code } = body;
     if (!code) throw new BadRequestException('Authorization code is required');
 
@@ -63,8 +269,6 @@ export class AuthController {
     // IMPORTANT: This URL MUST EXACTLY match the one registered in the KKU SSO dashboard!
     const redirectUrl = process.env.SSO_CALLBACK_URL || 'https://odt-siem-uat.kku.ac.th/callback';
     const ssoApiUrl = process.env.SSO_API_URL || 'https://ssonext-api.kku.ac.th';
-
-    console.log(`[SSO] Exchanging code. ClientID: ${clientId}, RedirectURL: ${redirectUrl}`);
 
     try {
       // 1. Exchange code for access token
@@ -112,7 +316,18 @@ export class AuthController {
         ipAddress: Array.isArray(ip) ? ip[0] : ip,
       });
 
-      return { access_token: `fake-jwt-token-for-${user.role}`, role: user.role };
+      if (user.totpEnabled) {
+        // Enforce 2FA for SSO users
+        const preAuth = signPreAuth(user.id, 'verify');
+        res.cookie('pre_auth_token', preAuth, {
+          httpOnly: true,
+          sameSite: 'lax',
+          maxAge: 5 * 60 * 1000,
+        });
+        return { stage: 'verify', message: 'กรุณายืนยันรหัส 2FA' };
+      }
+
+      return { access_token: `fake-jwt-token-for-${user.role}`, role: user.role, username: user.username };
     } catch (err) {
       console.error('SSO Error:', err);
       throw new UnauthorizedException(err.message || 'SSO Authentication failed');
@@ -154,6 +369,7 @@ export class AuthController {
       // Expose password only for manually managed accounts (not SSO)
       passwordHash: u.passwordHash === 'SSO_MANAGED' ? null : u.passwordHash,
       isSso: u.passwordHash === 'SSO_MANAGED',
+      totpEnabled: u.totpEnabled,
     }));
   }
 
