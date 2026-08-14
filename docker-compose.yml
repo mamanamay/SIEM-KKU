@@ -104,14 +104,11 @@ services:
     restart: always
     ports:
       - "${COWRIE_SSH_PORT:-2222}:2222"
-      - "${COWRIE_TELNET_PORT:-2223}:2223"
     volumes:
       - ./honeypots/cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
       - ./honeypots/cowrie/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
       # เก็บ filesystem ปลอมไว้เพื่อให้ Attacker เดิน path ได้
       - ./honeypots/cowrie/var/lib/cowrie:/cowrie/cowrie-git/var/lib/cowrie
-    environment:
-      - COWRIE_TELNET_ENABLED=yes
     depends_on:
       - backend
 
@@ -125,7 +122,6 @@ services:
     restart: always
     ports:
       - "${WEBTRAP_HTTP_PORT:-8081}:8080"
-      - "${WEBTRAP_HTTPS_PORT:-8444}:8443"
     environment:
       - BACKEND_URL=http://backend:5000
       - INGEST_API_KEY=${INGEST_API_KEY:-}
