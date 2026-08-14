@@ -6,19 +6,12 @@ import { AiService } from './ai.service';
 import { Attack } from './entities/attack.entity';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
-
-// ─── Log File Paths ──────────────────────────────────────────────────────────
-// Docker volumes mount these paths into the container
-const isDocker = process.env.NODE_ENV === 'production' || process.env.IS_DOCKER === 'true';
-const basePath = process.cwd().endsWith('backend') ? path.join(process.cwd(), '..') : process.cwd();
-
-// Log paths — Docker volumes mount these into the container
-const COWRIE_LOG   = isDocker ? '/app/logs/cowrie/cowrie.json'   : path.join(basePath, 'logs', 'cowrie', 'cowrie.json');
-const WEBTRAP_LOG  = isDocker ? '/app/logs/webtrap/webtrap.json' : path.join(basePath, 'logs', 'webtrap', 'webtrap.json');
 
 // ─── Correlation Time Window ─────────────────────────────────────────────────
 const CORRELATION_WINDOW_MS = 5000; // 5 วินาที = ถือว่าเป็นเหตุการณ์เดียวกัน
+
+const isDocker = process.env.NODE_ENV === 'production' || process.env.IS_DOCKER === 'true';
+const basePath  = process.cwd().endsWith('backend') ? path.join(process.cwd(), '..') : process.cwd();
 
 @Injectable()
 export class LogService implements OnModuleInit {
@@ -39,10 +32,10 @@ export class LogService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.logger.log('🚀 SIEM Correlation Engine starting...');
-    this.watchFile(COWRIE_LOG,  line => this.processCowrieLine(line),  'Cowrie SSH Honeypot');
-    this.watchFile(WEBTRAP_LOG, line => this.processWebTrapLine(line), 'WebTrap HTTP Honeypot');
-    // Wazuh alerts arrive via HTTP POST /api/wazuh (see wazuh.controller.ts)
+    this.logger.log('🚀 SIEM Correlation Engine starting (API-Ingest Mode)...');
+    this.logger.log('[✓] Ready to receive logs via HTTP POST /api/ingest/:source');
+    this.logger.log('[✓] Wazuh alerts: POST /api/wazuh');
+    // ไม่มี File Watching อีกต่อไป — ทุก Log วิ่งผ่าน HTTP API ทั้งหมด
   }
 
   // ─── IP Map Registration (จาก proxy.js ผ่าน HTTP POST /api/attacks/ip-map) ─
@@ -51,33 +44,35 @@ export class LogService implements OnModuleInit {
     if (this.recentConnections.length > 100) this.recentConnections.shift();
   }
 
-  // ─── Generic File Watcher ────────────────────────────────────────────────
-  private watchFile(filePath: string, processor: (line: string) => void, label: string) {
-    if (!fs.existsSync(filePath)) {
-      this.logger.warn(`[!] ${label}: Log file not found at ${filePath} — retrying in 5s...`);
-      setTimeout(() => this.watchFile(filePath, processor, label), 5000);
-      return;
-    }
+  // ─── UNIFIED INGEST ENTRY POINT ──────────────────────────────────────────
+  // ทุกระบบต้นทาง (Cowrie, WebTrap, Suricata, ฯลฯ) เรียกผ่านฟังก์ชันนี้
+  public ingestLog(source: string, payload: any) {
+    const src = source.toLowerCase();
+    this.logger.log(`📥 Ingest from [${src}]`);
 
-    this.logger.log(`[+] Watching ${label}: ${filePath}`);
-    let lastSize = fs.statSync(filePath).size;
-
-    fs.watchFile(filePath, { interval: 500 }, (curr) => {
-      if (curr.size > lastSize) {
-        const stream = fs.createReadStream(filePath, {
-          encoding: 'utf-8',
-          start: lastSize,
-          end: curr.size,
-        });
-        lastSize = curr.size;
-        readline.createInterface({ input: stream }).on('line', line => {
-          if (line.trim()) processor(line.trim());
-        });
-      } else if (curr.size < lastSize) {
-        // File rotated
-        lastSize = 0;
+    if (src === 'cowrie') {
+      // Cowrie ยิง event ครั้งละ 1 record หรือเป็น Array ก็ได้
+      if (Array.isArray(payload)) {
+        payload.forEach(p => this.processCowrieLine(JSON.stringify(p)));
+      } else {
+        this.processCowrieLine(JSON.stringify(payload));
       }
-    });
+    } else if (src === 'webtrap') {
+      if (Array.isArray(payload)) {
+        payload.forEach(p => this.processWebTrapLine(JSON.stringify(p)));
+      } else {
+        this.processWebTrapLine(JSON.stringify(payload));
+      }
+    } else if (src === 'wazuh' || src === 'suricata') {
+      if (Array.isArray(payload)) {
+        payload.forEach(p => this.processWazuhAlert(p));
+      } else {
+        this.processWazuhAlert(payload);
+      }
+    } else {
+      // Generic Source (ระบบอื่นๆ ในอนาคต)
+      this.processGenericLog(src, payload);
+    }
   }
 
   // ─── Helper: Format timestamp to Bangkok time ──────────────────────────────
@@ -91,11 +86,9 @@ export class LogService implements OnModuleInit {
 
   // ─── Helper: Resolve real src_ip from proxy's IP map cache ────────────────
   private resolveRealIp(cowrieIp: string, session: string, cowrieTimestamp: string): string {
-    // First: check session map
     if (session && this.sessionToIpMap.has(session)) {
       return this.sessionToIpMap.get(session)!;
     }
-    // Second: time-based match from proxy's recent connections cache
     const cowrieTime = new Date(cowrieTimestamp).getTime();
     let bestMatch: string | null = null;
     let minDiff = CORRELATION_WINDOW_MS;
@@ -116,7 +109,7 @@ export class LogService implements OnModuleInit {
       return bestMatch;
     }
 
-    return cowrieIp; // fallback: use what Cowrie reported (usually 127.0.0.1)
+    return cowrieIp;
   }
 
   // ─── Helper: GeoIP lookup (simple prefix-based for demo) ──────────────────
@@ -131,9 +124,7 @@ export class LogService implements OnModuleInit {
     return 'United States';
   }
 
-  // (Removed simulated access and CNC helpers for production)
-
-  // ─── PROCESSOR 3: Cowrie SSH Honeypot Log ────────────────────────────────
+  // ─── PROCESSOR 1: Cowrie SSH Honeypot Log ────────────────────────────────
   private processCowrieLine(line: string) {
     try {
       const data    = JSON.parse(line);
@@ -144,7 +135,6 @@ export class LogService implements OnModuleInit {
       const timestamp = data.timestamp || new Date().toISOString();
       let   src_ip    = data.src_ip || '127.0.0.1';
 
-      // ── Resolve real IP via proxy time-correlation ────────────────────────
       if (eventid === 'cowrie.session.connect') {
         src_ip = this.resolveRealIp(src_ip, session, timestamp);
         if (session) this.sessionToIpMap.set(session, src_ip);
@@ -155,13 +145,9 @@ export class LogService implements OnModuleInit {
       const timeStr     = this.formatTime(timestamp);
       const attackTs    = new Date(timestamp).getTime();
       const country     = this.getCountry(src_ip);
-
-      // ── Build correlation chain ──────────────────────────────────────────
       const chain: string[] = [];
-
       let payload: any = null;
 
-      // ── cowrie.login.failed ───────────────────────────────────────────────
       if (eventid === 'cowrie.login.failed') {
         const now  = Date.now();
         let stat   = this.ipStats.get(src_ip) || { count: 0, lastTime: now };
@@ -189,16 +175,12 @@ export class LogService implements OnModuleInit {
           mitigation: stat.count > 10 ? 'Auto-ban IP | Alert SecOps' : 'Monitor for further attempts',
           mitreCode: 'T1110', threatScore: score,
           clientVersion: data.version || 'Unknown SSH Client',
-          sessionId: session, country,
-          correlationChain: chain,
-          accessLayer: null,
-          cncLayer: null,
+          sessionId: session, country, correlationChain: chain,
+          accessLayer: null, cncLayer: null,
         };
 
-      // ── cowrie.login.success ─────────────────────────────────────────────
       } else if (eventid === 'cowrie.login.success') {
         chain.push(`[Server] 🚨 SSH LOGIN SUCCESS: ${data.username}/${data.password}`);
-
         payload = {
           timestamp: attackTs,
           time: timeStr, ip: src_ip, type: 'System Compromised', severity: 'critical',
@@ -206,21 +188,14 @@ export class LogService implements OnModuleInit {
           mitigation: 'Kill Session (Immediate) | Change Passwords | Isolate Host',
           mitreCode: 'T1078', threatScore: 100,
           clientVersion: data.version || 'Unknown SSH Client',
-          sessionId: session, country,
-          correlationChain: chain,
-          accessLayer: null,
-          cncLayer: null,
+          sessionId: session, country, correlationChain: chain,
+          accessLayer: null, cncLayer: null,
         };
 
-      // ── cowrie.command.input ─────────────────────────────────────────────
       } else if (eventid === 'cowrie.command.input') {
         chain.push(`[Server] Command executed: ${data.input}`);
-
-        // Check if command is downloading/calling C&C
         const isCncCmd = /wget|curl|nc\s|bash\s+-i|python|perl/i.test(data.input || '');
-        if (isCncCmd) {
-          chain.push(`[C&C] ⚠️ Outbound connection attempted`);
-        }
+        if (isCncCmd) chain.push(`[C&C] ⚠️ Outbound connection attempted`);
 
         payload = {
           timestamp: attackTs,
@@ -229,10 +204,8 @@ export class LogService implements OnModuleInit {
           mitigation: 'Review Command for Malware | Rebuild Server',
           mitreCode: 'T1059', threatScore: 95,
           clientVersion: 'Interactive Shell',
-          sessionId: session, country,
-          correlationChain: chain,
-          accessLayer: null,
-          cncLayer: null,
+          sessionId: session, country, correlationChain: chain,
+          accessLayer: null, cncLayer: null,
         };
       }
 
@@ -240,7 +213,7 @@ export class LogService implements OnModuleInit {
     } catch (e) { /* ignore */ }
   }
 
-  // ─── PROCESSOR 4: WebTrap HTTP Honeypot Log ───────────────────────────────
+  // ─── PROCESSOR 2: WebTrap HTTP Honeypot Log ───────────────────────────────
   private processWebTrapLine(line: string) {
     try {
       const data     = JSON.parse(line);
@@ -249,17 +222,14 @@ export class LogService implements OnModuleInit {
 
       const timestamp  = data.timestamp || new Date().toISOString();
       const attackTs   = new Date(timestamp).getTime();
-      
-      // ── Resolve real IP via proxy time-correlation ────────────────────────
-      src_ip = this.resolveRealIp(src_ip, `webtrap-${attackTs}`, timestamp);
 
+      src_ip = this.resolveRealIp(src_ip, `webtrap-${attackTs}`, timestamp);
       const country    = this.getCountry(src_ip);
       const timeStr    = this.formatTime(timestamp);
 
       const chain: string[] = [];
       chain.push(`[Server] WebTrap HTTP: ${data.type} on ${data.detail}`);
 
-      // Map type → MITRE
       const mitreMap: Record<string, { code: string; score: number }> = {
         'SQL Inject':    { code: 'T1190', score: 95 },
         'Path Traversal':{ code: 'T1190', score: 80 },
@@ -275,53 +245,44 @@ export class LogService implements OnModuleInit {
         severity: data.severity || 'medium',
         detail: data.detail || `HTTP attack on WebTrap`,
         mitigation: 'Block IP via WAF | Review Web Application Firewall Rules',
-        mitreCode: mitre.code,
-        threatScore: mitre.score,
+        mitreCode: mitre.code, threatScore: mitre.score,
         clientVersion: data.user_agent || 'Unknown Browser',
-        sessionId: `webtrap-${Date.now()}`,
-        country,
-        correlationChain: chain,
-        accessLayer: null,
-        cncLayer: null,
+        sessionId: `webtrap-${Date.now()}`, country,
+        correlationChain: chain, accessLayer: null, cncLayer: null,
       };
 
       this.saveAndBroadcast(payload);
     } catch (e) { /* ignore */ }
   }
 
-  // ─── PROCESSOR 5: Wazuh Real-time Alerts ──────────────────────────────────
+  // ─── PROCESSOR 3: Wazuh / Suricata Real-time Alerts ──────────────────────
   public processWazuhAlert(data: any) {
     try {
-      const ruleId = data.rule?.id || 'Unknown';
+      const ruleId      = data.rule?.id || 'Unknown';
       const description = data.rule?.description || 'Wazuh Alert';
-      const srcIp = data.data?.srcip || data.agent?.ip || '0.0.0.0';
+      const srcIp       = data.data?.srcip || data.agent?.ip || '0.0.0.0';
       const severityNum = data.rule?.level || 0;
-      
+
       let severity = 'low';
       if (severityNum >= 12) severity = 'critical';
       else if (severityNum >= 8) severity = 'high';
       else if (severityNum >= 5) severity = 'medium';
 
-      const country = this.getCountry(srcIp);
+      const country  = this.getCountry(srcIp);
       const attackTs = Date.now();
-      const timeStr = this.formatTime(new Date(attackTs).toISOString());
+      const timeStr  = this.formatTime(new Date(attackTs).toISOString());
 
       const payload = {
-        timestamp: attackTs,
-        time: timeStr,
-        ip: srcIp,
+        timestamp: attackTs, time: timeStr, ip: srcIp,
         type: `Wazuh: ${description.substring(0, 30)}...`,
-        severity: severity,
-        detail: description,
+        severity, detail: description,
         mitigation: `Review Wazuh Console (Rule ID: ${ruleId})`,
         mitreCode: data.rule?.mitre?.id?.[0] || 'Unknown',
-        threatScore: severityNum * 8, // scale to 100
+        threatScore: severityNum * 8,
         clientVersion: data.agent?.name || 'Wazuh Agent',
-        sessionId: `wazuh-${Date.now()}`,
-        country,
+        sessionId: `wazuh-${Date.now()}`, country,
         correlationChain: [`[Wazuh] Alert Triggered: Rule ${ruleId} (Level ${severityNum})`],
-        accessLayer: null,
-        cncLayer: null,
+        accessLayer: null, cncLayer: null,
       };
 
       this.saveAndBroadcast(payload);
@@ -330,7 +291,33 @@ export class LogService implements OnModuleInit {
     }
   }
 
+  // ─── PROCESSOR 4: Generic Source (ระบบอื่นๆ เช่น Suricata, pfSense) ───────
+  private processGenericLog(source: string, data: any) {
+    try {
+      const srcIp    = data.src_ip || data.srcip || data.source_ip || '0.0.0.0';
+      const attackTs = data.timestamp ? new Date(data.timestamp).getTime() : Date.now();
+      const timeStr  = this.formatTime(new Date(attackTs).toISOString());
 
+      const payload = {
+        timestamp: attackTs, time: timeStr, ip: srcIp,
+        type: data.type || `${source} Alert`,
+        severity: data.severity || 'medium',
+        detail: data.detail || data.message || `Event from ${source}`,
+        mitigation: data.mitigation || `Review ${source} console`,
+        mitreCode: data.mitre || 'Unknown',
+        threatScore: data.score || 50,
+        clientVersion: data.agent || source,
+        sessionId: `${source}-${Date.now()}`,
+        country: this.getCountry(srcIp),
+        correlationChain: [`[${source.toUpperCase()}] Event ingested via API`],
+        accessLayer: null, cncLayer: null,
+      };
+
+      this.saveAndBroadcast(payload);
+    } catch (e) {
+      this.logger.error(`Error parsing ${source} log: ${e.message}`);
+    }
+  }
 
   // ─── Save to DB + Broadcast via WebSocket ─────────────────────────────────
   private async saveAndBroadcast(payload: any) {
@@ -361,7 +348,6 @@ export class LogService implements OnModuleInit {
         isBlockedRepeat   = blockedList.some((b: any) => b.ip === payload.ip);
       } catch { /* file may not exist yet */ }
 
-      // Attach correlation data for the frontend
       const enriched: any = {
         ...saved,
         correlationChain: payload.correlationChain || [],

@@ -5,6 +5,15 @@ version: '3.8'
 # ============================================================
 # All ports are configured via .env file.
 # Run: cp .env.example .env → edit .env → docker compose up -d --build
+#
+# ─── Log Ingestion Architecture ─────────────────────────────
+# ทุก Honeypot ยิง Log ผ่าน HTTP POST ตรงเข้า Backend
+# ไม่จำเป็นต้องแชร์ไฟล์ (shared volume) ระหว่าง Container อีกต่อไป
+#
+#  [Cowrie]  ──HTTP POST──▶ backend:5000/api/ingest/cowrie
+#  [WebTrap] ──HTTP POST──▶ backend:5000/api/ingest/webtrap
+#  [Wazuh]   ──HTTP POST──▶ backend:5000/api/wazuh  (เดิม, ยังใช้ได้)
+#  [อื่นๆ]   ──HTTP POST──▶ backend:5000/api/ingest/<source>
 # ============================================================
 
 services:
@@ -54,10 +63,13 @@ services:
       - SSO_CLIENT_ID=${SSO_CLIENT_ID}
       - SSO_CLIENT_SECRET=${SSO_CLIENT_SECRET}
       - SSO_CALLBACK_URL=${SSO_CALLBACK_URL}
+      # (Optional) ตั้ง API Key นี้เพื่อป้องกันคนภายนอกยิง Log ปลอมเข้ามา
+      - INGEST_API_KEY=${INGEST_API_KEY:-}
     expose:
       - "5000"
     volumes:
-      - ./logs:/app/logs
+      # siem-logs: เก็บ blocked_ips.json / isolated_ports.json (ยังคงใช้อยู่)
+      - siem_logs:/app/siem-logs
     depends_on:
       - postgres
       - redis
@@ -85,6 +97,7 @@ services:
       - "6379"
 
   # ── 6. SSH/Telnet Honeypot (Cowrie) ─────────────────────────
+  # Log วิ่งผ่าน [output_http] ใน cowrie.cfg → backend:5000/api/ingest/cowrie
   cowrie:
     image: cowrie/cowrie:latest
     container_name: cowrie-honeypot
@@ -95,12 +108,15 @@ services:
     volumes:
       - ./honeypots/cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
       - ./honeypots/cowrie/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
-      - ./logs/cowrie:/cowrie/cowrie-git/var/log/cowrie
+      # เก็บ filesystem ปลอมไว้เพื่อให้ Attacker เดิน path ได้
       - ./honeypots/cowrie/var/lib/cowrie:/cowrie/cowrie-git/var/lib/cowrie
     environment:
       - COWRIE_TELNET_ENABLED=yes
+    depends_on:
+      - backend
 
   # ── 7. Web Vulnerability Honeypot (WebTrap) ──────────────────
+  # Log วิ่งผ่าน fetch() ใน server.js → backend:5000/api/ingest/webtrap
   webtrap:
     build:
       context: ./honeypots/webtrap
@@ -110,9 +126,14 @@ services:
     ports:
       - "${WEBTRAP_HTTP_PORT:-8081}:8080"
       - "${WEBTRAP_HTTPS_PORT:-8444}:8443"
+    environment:
+      - BACKEND_URL=http://backend:5000
+      - INGEST_API_KEY=${INGEST_API_KEY:-}
     volumes:
-      - ./logs/webtrap:/logs
       - ./nginx/certs:/certs:ro
+    depends_on:
+      - backend
 
 volumes:
   pgdata:
+  siem_logs:

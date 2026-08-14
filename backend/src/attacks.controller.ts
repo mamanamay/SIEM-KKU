@@ -45,6 +45,47 @@ export class AttacksController {
     throw new HttpException('Missing parameters', HttpStatus.BAD_REQUEST);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // ── UNIFIED LOG INGEST (จุดรับ Log รวมศูนย์) ───────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  //
+  // วิธีใช้: ยิง HTTP POST มาที่ /api/ingest/<ชื่อระบบ>
+  //   Content-Type: application/json
+  //   Body:        ก้อน JSON ของ Event (1 record หรือ Array ก็ได้)
+  //
+  // ตัวอย่าง source ที่รองรับ:
+  //   /api/ingest/cowrie     — SSH Honeypot (Cowrie)
+  //   /api/ingest/webtrap    — Web Honeypot (WebTrap)
+  //   /api/ingest/wazuh      — Wazuh HIDS
+  //   /api/ingest/suricata   — Suricata IDS/IPS
+  //   /api/ingest/<anything> — Generic (ระบบอื่นๆ)
+  //
+  // (Optional) ใส่ X-Ingest-Key header เป็น INGEST_API_KEY env var เพื่อความปลอดภัย
+  @Post('/ingest/:source')
+  ingestLog(
+    @Param('source') source: string,
+    @Body() body: any,
+    @Headers('x-ingest-key') apiKey?: string,
+  ) {
+    // ── Optional API Key Guard ────────────────────────────────────────────
+    const expectedKey = process.env.INGEST_API_KEY;
+    if (expectedKey && apiKey !== expectedKey) {
+      throw new HttpException('Unauthorized: Invalid Ingest API Key', HttpStatus.UNAUTHORIZED);
+    }
+
+    if (!body || (Array.isArray(body) && body.length === 0)) {
+      throw new HttpException('Empty payload', HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      this.logService.ingestLog(source, body);
+      const count = Array.isArray(body) ? body.length : 1;
+      return { status: 'ok', source, accepted: count };
+    } catch (err) {
+      throw new HttpException(`Ingest error: ${err.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
   // ── Update Attack Status ──────────────────────────────────────────────────
   @Patch(':id/status')
   async updateStatus(@Param('id') id: string, @Body('status') status: string) {

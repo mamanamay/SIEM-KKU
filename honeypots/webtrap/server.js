@@ -1,74 +1,93 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const path    = require('path');
 
-const app = express();
+const app  = express();
 const PORT = 8080;
-const LOG_FILE = '/logs/webtrap.json';
+
+// ─── Backend Ingest URL ──────────────────────────────────────────────────────
+// เมื่ออยู่ใน Docker: backend = hostname ของ container ตาม docker-compose.yml
+// เมื่อทดสอบ local: ใช้ localhost:5000
+const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:5000';
+const INGEST_URL  = `${BACKEND_URL}/api/ingest/webtrap`;
+const INGEST_KEY  = process.env.INGEST_API_KEY || ''; // Optional API Key
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Ensure log directory exists
-const logDir = path.dirname(LOG_FILE);
-if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir, { recursive: true });
-}
-
+// ─── ฟังก์ชันวิเคราะห์ Request ───────────────────────────────────────────────
 function analyzeRequest(req) {
-    const url = req.url;
-    const body = JSON.stringify(req.body);
-    const userAgent = req.headers['user-agent'] || '';
+    const url         = req.url;
+    const body        = JSON.stringify(req.body);
+    const userAgent   = req.headers['user-agent'] || '';
     const fullPayload = url + ' ' + body;
-    
-    let type = 'Web Scan';
+
+    let type     = 'Web Scan';
     let severity = 'medium';
-    let detail = `Accessed ${url}`;
+    let detail   = `Accessed ${url}`;
 
     if (fullPayload.match(/UNION|SELECT|INSERT|UPDATE|DELETE|DROP|--|' OR 1=1/i)) {
-        type = 'SQL Inject';
+        type     = 'SQL Inject';
         severity = 'critical';
-        detail = `SQLi Pattern Detected in ${url}`;
-    } else if (fullPayload.match(/\.\.\/|\.\.\\/i)) {
-        type = 'Path Traversal';
+        detail   = `SQLi Pattern Detected in ${url}`;
+    } else if (fullPayload.match(/\.\.\//)) {
+        type     = 'Path Traversal';
         severity = 'high';
-        detail = `Path Traversal attempt to ${url}`;
+        detail   = `Path Traversal attempt to ${url}`;
     } else if (fullPayload.match(/<script>|javascript:/i)) {
-        type = 'XSS Attempt';
+        type     = 'XSS Attempt';
         severity = 'high';
-        detail = `XSS payload found`;
+        detail   = `XSS payload found`;
     } else if (userAgent.match(/nmap|masscan|zgrab|nikto|dirb/i)) {
-        type = 'Web Scan';
+        type     = 'Web Scan';
         severity = 'high';
-        detail = `Scanner detected: ${userAgent}`;
+        detail   = `Scanner detected: ${userAgent}`;
     }
 
-    // Determine Real IP if behind proxy
-    let srcIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    // Resolve Real IP (ถ้าอยู่หลัง Proxy/Nginx)
+    let srcIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '0.0.0.0';
     if (srcIp.startsWith('::ffff:')) srcIp = srcIp.replace('::ffff:', '');
 
     return {
-        timestamp: new Date().toISOString(),
-        src_ip: srcIp,
-        type: type,
-        severity: severity,
-        detail: detail,
-        payload: fullPayload,
-        user_agent: userAgent
+        timestamp:  new Date().toISOString(),
+        src_ip:     srcIp,
+        type:       type,
+        severity:   severity,
+        detail:     detail,
+        payload:    fullPayload.substring(0, 500), // จำกัดความยาว
+        user_agent: userAgent,
     };
 }
 
+// ─── ฟังก์ชันยิง Log เข้า Backend (Fire-and-forget, ไม่บล็อก Response) ──────
+async function sendToBackend(logEntry) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (INGEST_KEY) headers['x-ingest-key'] = INGEST_KEY;
+
+    try {
+        const res = await fetch(INGEST_URL, {
+            method:  'POST',
+            headers: headers,
+            body:    JSON.stringify(logEntry),
+            signal:  AbortSignal.timeout(3000), // timeout 3 วินาที
+        });
+        if (!res.ok) {
+            console.error(`[!] Backend rejected: ${res.status}`);
+        }
+    } catch (err) {
+        // ถ้า Backend ไม่ตอบ (เช่นยังไม่ขึ้น) ให้ print warning และดำเนินต่อ
+        console.warn(`[!] Could not reach backend (${err.message}) — event dropped.`);
+    }
+}
+
+// ─── จับทุก Request ──────────────────────────────────────────────────────────
 app.all('*', (req, res) => {
     const logEntry = analyzeRequest(req);
-    
-    // Write to log file
-    fs.appendFile(LOG_FILE, JSON.stringify(logEntry) + '\n', (err) => {
-        if (err) console.error('[!] Failed to write log:', err);
-    });
 
-    console.log(`[+] Captured: ${logEntry.type} from ${logEntry.src_ip}`);
+    // ยิง Log ไปที่ Backend แบบ Async (ไม่รอผล ไม่ block hacker)
+    sendToBackend(logEntry);
+    console.log(`[+] Captured: ${logEntry.type} from ${logEntry.src_ip} → sent to Backend`);
 
-    // Return fake vulnerable looking response
+    // ส่ง Response หลอกๆ ให้ Attacker เห็น (เหมือนเว็บจริงที่มีช่องโหว่)
     res.status(200).send(`
         <html>
         <head><title>Admin Portal</title></head>
@@ -85,21 +104,24 @@ app.all('*', (req, res) => {
     `);
 });
 
-const https = require('https');
-
+// ─── HTTP Server ─────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 WebTrap Honeypot listening on port ${PORT} (HTTP)`);
+    console.log(`📤 Sending logs to: ${INGEST_URL}`);
 });
+
+// ─── HTTPS Server (Optional, ต้องการ SSL cert) ───────────────────────────────
+const https = require('https');
+const fs    = require('fs');
 
 try {
     const options = {
-        key: fs.readFileSync('/certs/key.pem'),
-        cert: fs.readFileSync('/certs/cert.pem')
+        key:  fs.readFileSync('/certs/key.pem'),
+        cert: fs.readFileSync('/certs/cert.pem'),
     };
-    const HTTPS_PORT = 8443;
-    https.createServer(options, app).listen(HTTPS_PORT, '0.0.0.0', () => {
-        console.log(`🚀 WebTrap Honeypot listening on port ${HTTPS_PORT} (HTTPS)`);
+    https.createServer(options, app).listen(8443, '0.0.0.0', () => {
+        console.log(`🚀 WebTrap Honeypot listening on port 8443 (HTTPS)`);
     });
 } catch (err) {
-    console.error('⚠️ Could not start HTTPS server, certs not found:', err.message);
+    console.warn(`⚠️ HTTPS not started (certs not found): ${err.message}`);
 }
