@@ -4,11 +4,10 @@ const path    = require('path');
 const app  = express();
 const PORT = 8080;
 
-// ─── Backend Ingest URL ──────────────────────────────────────────────────────
-// เมื่ออยู่ใน Docker: backend = hostname ของ container ตาม docker-compose.yml
-// เมื่อทดสอบ local: ใช้ localhost:5000
+// ─── Backend Ingest URL ─────────────────────────────────────────────────────────
+// จุดรับ Log เดียว — Backend Auto-detect เองว่ามาจาก WebTrap
 const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:5000';
-const INGEST_URL  = `${BACKEND_URL}/api/ingest/webtrap`;
+const INGEST_URL  = `${BACKEND_URL}/api/ingest`;
 const INGEST_KEY  = process.env.INGEST_API_KEY || ''; // Optional API Key
 
 app.use(express.json());

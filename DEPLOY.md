@@ -114,7 +114,7 @@ webtrap_honeypot    running
 
 ```
 https://SERVER_IP:18443
-Login: admin / admin   ← เปลี่ยนทันทีหลัง login
+Login: admin / Admin@1234!   ← เปลี่ยนทันทีหลัง login
 ```
 
 ---
@@ -145,11 +145,19 @@ sudo ufw status
 
 ---
 
-## 🔄 การ Update ระบบ (หลัง pull code ใหม่)
+## 🔄 การ Update ระบบ (ทั้งแบบใช้ Git และแบบก๊อปปี้ไฟล์มาวางเอง)
+
+**ไม่ว่าคุณจะอัปเดตด้วย `git pull` หรือก๊อปปี้ไฟล์มาวางทับด้วยตัวเอง** คุณ **จำเป็นต้อง** พ่วงคำสั่ง `--build` เสมอ เพื่อให้ Docker ติดตั้งไลบรารีใหม่ (แพ็กเกจใน `package.json` ที่ถูกอัปเดต) เข้าไปใน Image ครับ หากไม่ทำ Backend จะพังและขึ้น 502 Bad Gateway
 
 ```bash
+# 1. หากใช้ Git ให้ดึงโค้ดก่อน (ถ้าใช้วิธีก๊อปปี้ไฟล์มาวางเอง ให้ข้ามบรรทัดนี้)
 git pull origin main
+
+# 2. บังคับ Build Image ใหม่ด้วยไฟล์ล่าสุด (สำคัญที่สุด!)
 docker compose up -d --build
+
+# 3. ลบ Image ตัวเก่าที่ไม่ได้ใช้แล้วทิ้ง (เพื่อไม่ให้กินพื้นที่ Server)
+docker image prune -f
 ```
 
 หากเปลี่ยนเฉพาะ Frontend หรือ Backend:

@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth.controller';
 import { AttacksController } from './attacks.controller';
-import { WazuhController } from './wazuh.controller';
+import { WazuhController } from './wazuh.controller'; // Legacy shim — forwards to /api/ingest
 import { LogService } from './log.service';
 import { AiService } from './ai.service';
 import { EventsGateway } from './events.gateway';
@@ -15,17 +15,39 @@ import { ApiLog } from './entities/api-log.entity';
 import { SeedService } from './seed.service';
 import { ApiLogModule } from './api-log/api-log.module';
 
-@Module({
-  imports: [
-    TypeOrmModule.forRoot({
+// ─────────────────────────────────────────────────────────────────────────────
+// Database Configuration
+// Production:  PostgreSQL ผ่าน DATABASE_URL env (docker-compose inject ให้)
+// Development: SQLite fallback ถ้าไม่มี DATABASE_URL (รันในเครื่อง local)
+// ─────────────────────────────────────────────────────────────────────────────
+const DATABASE_URL = process.env.DATABASE_URL;
+
+const typeOrmConfig: any = DATABASE_URL
+  ? {
+      // ── Production: PostgreSQL ─────────────────────────────────────────
+      type: 'postgres',
+      url: DATABASE_URL,
+      entities: [User, Attack, LoginSession, ApiLog],
+      synchronize: true, // ใน Production จริงๆ ควรใช้ migrations แทน
+      ssl: process.env.NODE_ENV === 'production'
+        ? { rejectUnauthorized: false }
+        : false,
+    }
+  : {
+      // ── Development: SQLite (fallback เมื่อรัน local โดยไม่มี .env) ──
       type: 'sqlite',
       database: 'database.sqlite',
       entities: [User, Attack, LoginSession, ApiLog],
       synchronize: true,
-    }),
+    };
+
+@Module({
+  imports: [
+    TypeOrmModule.forRoot(typeOrmConfig),
     TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog]),
     ApiLogModule,
   ],
+  // WazuhController — Legacy compatibility shim (ยังคง /api/wazuh ไว้เพื่อ backward compat)
   controllers: [AuthController, AttacksController, WazuhController],
   providers: [LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService],
 })

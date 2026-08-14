@@ -8,6 +8,7 @@ import type { Response } from 'express';
 import { User } from './entities/user.entity';
 import { LoginSession } from './entities/login-session.entity';
 import { TotpService } from './totp.service';
+import * as jwt from 'jsonwebtoken';
 
 // ── Pre-auth token helpers (stateless, no DB, short-lived) ──────────────────
 // We store a signed JSON in an httpOnly cookie instead of a full JWT lib
@@ -25,6 +26,15 @@ function verifyPreAuth(token: string): { userId: number; stage: 'setup' | 'verif
   } catch {
     return null;
   }
+}
+
+function signAccessToken(user: { id: number; username: string; role: string }): string {
+  const secret = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+  return jwt.sign(
+    { sub: user.id, username: user.username, role: user.role },
+    secret,
+    { expiresIn: '8h' },
+  );
 }
 
 @Controller('api/auth')
@@ -56,7 +66,7 @@ export class AuthController {
         });
         // Important: clear any old pre-auth cookies
         res.clearCookie('pre_auth_token');
-        return { access_token: `fake-jwt-token-for-${user.role}`, role: user.role, username: user.username, message: 'เข้าสู่ระบบสำเร็จ' };
+        return { access_token: signAccessToken(user), role: user.role, username: user.username, message: 'เข้าสู่ระบบสำเร็จ' };
       } else {
         // Already set up: user must verify TOTP
         const preAuth = signPreAuth(user.id, 'verify');
@@ -135,7 +145,7 @@ export class AuthController {
     // Clear pre-auth cookie, issue access token
     res.clearCookie('pre_auth_token');
     return {
-      access_token: `fake-jwt-token-for-${user.role}`,
+      access_token: signAccessToken(user),
       role: user.role,
       username: user.username,
       backupCodes: plainCodes, // show once — user must save these!
@@ -191,7 +201,7 @@ export class AuthController {
     // Clear pre-auth cookie, issue access token
     res.clearCookie('pre_auth_token');
     return {
-      access_token: `fake-jwt-token-for-${user.role}`,
+      access_token: signAccessToken(user),
       role: user.role,
       username: user.username,
     };
@@ -327,7 +337,7 @@ export class AuthController {
         return { stage: 'verify', message: 'กรุณายืนยันรหัส 2FA' };
       }
 
-      return { access_token: `fake-jwt-token-for-${user.role}`, role: user.role, username: user.username };
+      return { access_token: signAccessToken(user), role: user.role, username: user.username };
     } catch (err) {
       console.error('SSO Error:', err);
       throw new UnauthorizedException(err.message || 'SSO Authentication failed');
