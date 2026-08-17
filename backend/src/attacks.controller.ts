@@ -21,7 +21,10 @@ function readJSON(filePath: string, fallback: any[] = []) {
 }
 
 function writeJSON(filePath: string, data: any) {
-  try { fs.writeFileSync(filePath, JSON.stringify(data, null, 2)); } catch (err) {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  } catch (err) {
     console.error(`❌ Failed to write JSON to ${filePath}:`, err);
   }
 }
