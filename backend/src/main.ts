@@ -4,6 +4,11 @@ import * as bodyParser from 'body-parser';
 import * as cookieParser from 'cookie-parser';
 
 async function bootstrap() {
+  if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+    console.error('❌ FATAL ERROR: JWT_SECRET is not set in production.');
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule);
   app.enableCors({ credentials: true, origin: true });
   // Parse cookies for 2FA pre-auth token

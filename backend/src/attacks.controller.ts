@@ -63,50 +63,7 @@ export class AttacksController {
   //     Generic  → { "source": "suricata", "src_ip": "...", "type": "...", ... }
   //     Array    → [{ ... }, { ... }]  ← Batch ingest
   //
-  @Post('/ingest')
-  ingestLog(
-    @Body() body: any,
-    @Headers('x-ingest-key') apiKey?: string,
-  ) {
-    // ── Optional API Key Guard ────────────────────────────────────────────
-    const expectedKey = process.env.INGEST_API_KEY;
-    if (expectedKey && apiKey !== expectedKey) {
-      throw new HttpException('Unauthorized: Invalid Ingest API Key', HttpStatus.UNAUTHORIZED);
-    }
 
-    if (!body || (Array.isArray(body) && body.length === 0)) {
-      throw new HttpException('Empty payload', HttpStatus.BAD_REQUEST);
-    }
-
-    try {
-      this.logService.ingestLog(body);
-      const count = Array.isArray(body) ? body.length : 1;
-      return { status: 'ok', accepted: count, endpoint: '/api/ingest' };
-    } catch (err) {
-      throw new HttpException(`Ingest error: ${err.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-  }
-
-  // ── Ingest Health Monitor ─────────────────────────────────────────────────
-  // GET /api/ingest/status — SOC ใช้ดูว่าต้นทางไหนยังส่งข้อมูลมาอยู่
-  @Get('/ingest/status')
-  getIngestStatus() {
-    return this.logService.getIngestHealth();
-  }
-
-  // ── Ingest Connectivity Test ─────────────────────────────────────────
-  // GET /api/ingest/test — ไม่ต้องใช้ Key — แค่ Ping เช็คว่า Backend ทำงานอยู่
-  // สำหรับทีมต้นทางใช้ verify ว่าถึง endpoint ได้ก่อนจะตั้งค่า
-  @Get('/ingest/test')
-  testIngest() {
-    return {
-      status: 'ok',
-      message: 'KKUSIEM Ingest Endpoint is reachable',
-      endpoint: 'POST /api/ingest',
-      auth: process.env.INGEST_API_KEY ? 'X-Ingest-Key header required' : 'No auth required',
-      timestamp: new Date().toISOString(),
-    };
-  }
 
   // ── Update Attack Status ──────────────────────────────────────────────────
   @Patch(':id/status')

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { Attack } from './entities/attack.entity';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class SeedService implements OnModuleInit {
@@ -18,13 +19,15 @@ export class SeedService implements OnModuleInit {
     
     const adminUser = await this.userRepository.findOne({ where: { username: 'admin' } });
     if (!adminUser) {
-      await this.userRepository.save({ username: 'admin', passwordHash: 'Admin@1234!', role: 'admin' });
+      const hash = await bcrypt.hash('Admin@1234!', 10);
+      await this.userRepository.save({ username: 'admin', passwordHash: hash, role: 'admin' });
       console.log('[+] Seeded admin user');
     }
 
     const guestUser = await this.userRepository.findOne({ where: { username: 'guest' } });
     if (!guestUser) {
-      await this.userRepository.save({ username: 'guest', passwordHash: 'guest123', role: 'guest' });
+      const guestHash = await bcrypt.hash('guest123', 10);
+      await this.userRepository.save({ username: 'guest', passwordHash: guestHash, role: 'guest' });
       console.log('[+] Seeded guest user');
     }
 

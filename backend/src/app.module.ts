@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth.controller';
 import { AttacksController } from './attacks.controller';
+import { IngestController } from './ingest.controller';
 import { WazuhController } from './wazuh.controller'; // Legacy shim — forwards to /api/ingest
 import { LogService } from './log.service';
 import { AiService } from './ai.service';
@@ -48,7 +49,7 @@ const typeOrmConfig: any = DATABASE_URL
     ApiLogModule,
   ],
   // WazuhController — Legacy compatibility shim (ยังคง /api/wazuh ไว้เพื่อ backward compat)
-  controllers: [AuthController, AttacksController, WazuhController],
+  controllers: [AuthController, AttacksController, IngestController, WazuhController],
   providers: [LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService],
 })
 export class AppModule {}

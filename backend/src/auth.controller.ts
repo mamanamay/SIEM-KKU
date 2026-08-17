@@ -9,6 +9,7 @@ import { User } from './entities/user.entity';
 import { LoginSession } from './entities/login-session.entity';
 import { TotpService } from './totp.service';
 import * as jwt from 'jsonwebtoken';
+import * as bcrypt from 'bcrypt';
 
 // ── Pre-auth token helpers (stateless, no DB, short-lived) ──────────────────
 // We store a signed JSON in an httpOnly cookie instead of a full JWT lib
@@ -53,7 +54,7 @@ export class AuthController {
     const { username, password } = body;
     const user = await this.userRepository.findOne({ where: { username } });
 
-    if (user && user.passwordHash === password) {
+    if (user && await bcrypt.compare(password, user.passwordHash)) {
       // Password correct — determine 2FA stage
       if (!user.totpEnabled) {
         // User does not have 2FA enabled, log them in directly
@@ -359,9 +360,10 @@ export class AuthController {
       throw new BadRequestException('Username นี้มีในระบบแล้ว');
     }
 
+    const hash = isSso ? 'SSO_MANAGED' : await bcrypt.hash(password, 10);
     const user = this.userRepository.create({
       username,
-      passwordHash: isSso ? 'SSO_MANAGED' : password,
+      passwordHash: hash,
       role: role || 'guest',
     });
     await this.userRepository.save(user);
@@ -397,7 +399,7 @@ export class AuthController {
       throw new BadRequestException('ไม่สามารถเปลี่ยนรหัสผ่านบัญชี SSO ได้');
     }
 
-    user.passwordHash = newPassword;
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
     await this.userRepository.save(user);
     return { success: true, message: `เปลี่ยนรหัสผ่านของ "${username}" สำเร็จ` };
   }
