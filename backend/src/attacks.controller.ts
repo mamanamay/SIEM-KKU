@@ -1,4 +1,4 @@
-import { Controller, Patch, Post, Body, HttpException, HttpStatus, Get, Headers } from '@nestjs/common';
+import { Controller, Patch, Post, Param, Body, HttpException, HttpStatus, Get, Headers, Delete } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Attack } from './entities/attack.entity';
