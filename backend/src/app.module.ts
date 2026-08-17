@@ -30,7 +30,7 @@ const typeOrmConfig: any = DATABASE_URL
       url: DATABASE_URL,
       entities: [User, Attack, LoginSession, ApiLog],
       synchronize: true, // ใน Production จริงๆ ควรใช้ migrations แทน
-      ssl: process.env.NODE_ENV === 'production'
+      ssl: process.env.DB_SSL === 'true'
         ? { rejectUnauthorized: false }
         : false,
     }
