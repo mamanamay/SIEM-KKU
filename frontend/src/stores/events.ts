@@ -1,11 +1,14 @@
 import { writable } from 'svelte/store';
 import { io, Socket } from 'socket.io-client';
 
-const initialEvents = typeof sessionStorage !== 'undefined' ? JSON.parse(sessionStorage.getItem('cachedEvents') || '[]') : [];
-export const eventsStore = writable<any[]>(initialEvents);
-export const socketStore = writable<Socket | null>(null);
-export const roleStore = writable<string>('guest');
-export const connectionState = writable<boolean>(false);
+const initialEvents = typeof sessionStorage !== 'undefined'
+  ? JSON.parse(sessionStorage.getItem('cachedEvents') || '[]')
+  : [];
+
+export const eventsStore      = writable<any[]>(initialEvents);
+export const socketStore      = writable<Socket | null>(null);
+export const roleStore        = writable<string>('guest');
+export const connectionState  = writable<boolean>(false);
 export const latestAttackStore = writable<any>(null);
 
 let socket: Socket | null = null;
@@ -16,7 +19,15 @@ export function initSocket() {
     window.location.href = '/?expired=true';
     return;
   }
-  
+
+  // Guard: ถ้า token ยังเป็น fake string เดิม (ก่อน deploy JWT จริง) ให้ logout
+  if (token.startsWith('fake-jwt-token')) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('role');
+    window.location.href = '/?expired=true';
+    return;
+  }
+
   const role = localStorage.getItem('role') || 'guest';
   roleStore.set(role);
 
@@ -24,7 +35,11 @@ export function initSocket() {
 
   socket = io({
     path: '/socket.io/',
-    auth: { token }
+    auth: { token },
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 2000,
+    timeout: 10000,
   });
 
   socket.on('connect', () => {
@@ -37,7 +52,9 @@ export function initSocket() {
 
   socket.on('initial_data', (data: any[]) => {
     eventsStore.set(data);
-    if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('cachedEvents', JSON.stringify(data));
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('cachedEvents', JSON.stringify(data));
+    }
   });
 
   socket.on('new_attack', (data: any) => {
@@ -45,7 +62,7 @@ export function initSocket() {
     latestAttackStore.set(data);
   });
 
-  socket.on('status_updated', (data: { id: number, status: string }) => {
+  socket.on('status_updated', (data: { id: number; status: string }) => {
     eventsStore.update(events => {
       const index = events.findIndex(e => e.id === data.id);
       if (index !== -1) {
@@ -55,12 +72,16 @@ export function initSocket() {
     });
   });
 
+  // FIX: รับ connect_error ได้ทุกกรณี (ไม่ใช่แค่ string 'Unauthorized')
   socket.on('connect_error', (err) => {
-    if (err.message === 'Unauthorized') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('role');
-      window.location.href = '/?expired=true';
-    }
+    console.warn('[WS] connect_error:', err.message);
+    // Backend ใช้ disconnect(true) → client จะเห็น error message ว่าง หรือ "xhr poll error"
+    // ให้ logout ถ้าเชื่อมต่อไม่ได้หลังพยายามหลายครั้งแล้ว
+    connectionState.set(false);
+  });
+
+  socket.on('error', (msg: string) => {
+    console.warn('[WS] server error:', msg);
   });
 
   socketStore.set(socket);
