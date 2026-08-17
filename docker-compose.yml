@@ -130,6 +130,27 @@ services:
     depends_on:
       - backend
 
+  # ── 8. Attack Simulator (สำหรับ Demo / Testing เท่านั้น) ───────────────────
+  # เปิดใช้งาน:  docker compose --profile attacker up -d
+  # หยุด:        docker compose --profile attacker down
+  # ยิงชุดเดียว: docker compose run --rm attacker
+  attacker:
+    build:
+      context: ./tools/attacker
+      dockerfile: Dockerfile
+    container_name: attack_simulator
+    profiles: ["attacker"]   # ← ไม่ start โดยอัตโนมัติ ต้อง --profile attacker
+    restart: "no"
+    environment:
+      - BACKEND_URL=http://backend:5000
+      - INGEST_API_KEY=${INGEST_API_KEY:-}
+      - ATTACKER_MODE=${ATTACKER_MODE:-AUTO}
+      - BURST_COUNT=${BURST_COUNT:-30}
+      - MIN_DELAY_MS=${MIN_DELAY_MS:-2000}
+      - MAX_DELAY_MS=${MAX_DELAY_MS:-8000}
+    depends_on:
+      - backend
+
 volumes:
   pgdata:
   siem_logs:

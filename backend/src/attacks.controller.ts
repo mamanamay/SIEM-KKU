@@ -91,6 +91,20 @@ export class AttacksController {
     return this.logService.getIngestHealth();
   }
 
+  // ── Ingest Connectivity Test ─────────────────────────────────────────
+  // GET /api/ingest/test — ไม่ต้องใช้ Key — แค่ Ping เช็คว่า Backend ทำงานอยู่
+  // สำหรับทีมต้นทางใช้ verify ว่าถึง endpoint ได้ก่อนจะตั้งค่า
+  @Get('/ingest/test')
+  testIngest() {
+    return {
+      status: 'ok',
+      message: 'KKUSIEM Ingest Endpoint is reachable',
+      endpoint: 'POST /api/ingest',
+      auth: process.env.INGEST_API_KEY ? 'X-Ingest-Key header required' : 'No auth required',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   // ── Update Attack Status ──────────────────────────────────────────────────
   @Patch(':id/status')
   async updateStatus(@Param('id') id: string, @Body('status') status: string) {
