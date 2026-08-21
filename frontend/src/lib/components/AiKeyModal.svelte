@@ -113,7 +113,7 @@
             <input
               id="ai-key-input"
               type={showKey ? 'text' : 'password'}
-              bind:value={apiKey}
+              value={apiKey} on:input={(e) => apiKey = e.target.value}
               placeholder="sk-..."
               autocomplete="off"
               spellcheck="false"
