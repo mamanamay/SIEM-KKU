@@ -1,3 +1,56 @@
+export function downloadCSV(data, selectedColumns, filename = 'export.csv') {
+  if (!data || data.length === 0 || !selectedColumns || selectedColumns.length === 0) return;
+
+  try {
+    // Header row
+    const header = selectedColumns.join(',');
+    
+    // Data rows
+    const rows = data.map(row => {
+      return selectedColumns.map(col => {
+        let val = row[col];
+        if (val === null || val === undefined) val = '';
+        val = String(val); // Convert everything to string safely
+        
+        // Escape commas and quotes for CSV
+        if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+          val = '"' + val.replace(/"/g, '""') + '"';
+        }
+        return val;
+      }).join(',');
+    });
+
+    const csvContent = [header, ...rows].join('\n');
+    
+    // Create Blob and trigger download
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM for UTF-8 Excel support
+    
+    // Fallback for older browsers
+    if (window.navigator && window.navigator.msSaveOrOpenBlob) {
+      window.navigator.msSaveOrOpenBlob(blob, filename);
+      return;
+    }
+    
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 100);
+  } catch (err) {
+    console.error("CSV Download Error:", err);
+    alert("เกิดข้อผิดพลาดในการดาวน์โหลด CSV: " + err.message);
+  }
+}
+
+
 export function downloadDOCX(data: any[], selectedColumns: string[], filename = 'export.doc', title = 'Report') {
   if (!data || data.length === 0 || !selectedColumns || selectedColumns.length === 0) return;
 
