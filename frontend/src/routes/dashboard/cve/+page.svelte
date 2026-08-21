@@ -1,5 +1,9 @@
 <script lang="ts">
+  import { callKKUAI, getKKUAIKey, getKKUAIModel } from '../../../lib/utils/kkuai';
+  import AiKeyModal from '../../../lib/components/AiKeyModal.svelte';
   let searchQuery = '';
+  let showAiKeyModal = false;
+
   let loading = false;
   let analyzing = false;
   let cveData: any = null;
@@ -9,6 +13,12 @@
   // Real functional structure: We will fetch from public APIs (MITRE/NVD)
   async function searchVulnerability(query: string) {
     if (!query) return;
+    const apiKey = getKKUAIKey();
+    if (!apiKey) {
+      showAiKeyModal = true;
+      return;
+    }
+    
     searchQuery = query;
     loading = true;
     analyzing = true;
@@ -25,31 +35,58 @@
         if (!res.ok) throw new Error('Not found in database.');
         const data = await res.json();
         
-        // Structure real data into the UI
         const desc = data.containers?.cna?.descriptions?.[0]?.value || 'No description provided.';
         const affected = data.containers?.cna?.affected?.map((a:any) => `${a.vendor || 'Unknown'} ${a.product || 'Unknown'}`) || ["Unknown"];
         
         aiBriefing = {
-          cveId: data.cveMetadata.cveId,
-          state: data.cveMetadata.state,
-          published: data.cveMetadata.datePublished?.substring(0,10) || 'Unknown',
-          assigner: data.cveMetadata.assignerShortName || 'Unknown',
-          cvss: 0, // Mitre API doesn't provide CVSS easily without NVD integration
+          cveId: data.cveMetadata?.cveId || id,
+          state: data.cveMetadata?.state || 'PUBLISHED',
+          published: data.cveMetadata?.datePublished?.substring(0,10) || 'Unknown',
+          assigner: data.cveMetadata?.assignerShortName || 'Unknown',
+          cvss: 0, 
           severity: "UNKNOWN",
           attackVector: "Unknown",
           complexity: "Unknown",
           privileges: "Unknown",
           userInteraction: "Unknown",
-          aiSummary: "Data retrieved from MITRE: " + desc,
-          mitigation: ["Please refer to vendor advisories for official patches."],
+          aiSummary: "กำลังสร้างบทวิเคราะห์จาก KKU AI...",
+          mitigation: ["กำลังสร้างวิธีการแก้ไข..."],
           affected: affected,
           affectedInternal: false
         };
+        
+        // Call KKU AI for summary and mitigation
+        const prompt = `Summarize this vulnerability (CVE) and provide exactly 3 bullet points for mitigation steps (in Thai).
+CVE: ${id}
+Description: ${desc}
+Affected: ${affected.join(', ')}`;
+
+        callKKUAI(apiKey, getKKUAIModel(), [
+          { role: 'system', content: 'You are an expert security researcher. Return output as:\nSUMMARY:\n[summary text]\n\nMITIGATION:\n- [step 1]\n- [step 2]\n- [step 3]' },
+          { role: 'user', content: prompt }
+        ]).then(res => {
+           let summary = desc;
+           let mitigations = ["Please refer to vendor advisories for official patches."];
+           if(res.includes('SUMMARY:') && res.includes('MITIGATION:')) {
+             const parts = res.split('MITIGATION:');
+             summary = parts[0].replace('SUMMARY:', '').trim();
+             mitigations = parts[1].split('\n').filter(l => l.trim().startsWith('-')).map(l => l.replace('-', '').trim());
+           } else {
+             summary = res;
+           }
+           aiBriefing = { ...aiBriefing, aiSummary: summary };
+           if(mitigations.length > 0 && mitigations[0] !== "") {
+               aiBriefing = { ...aiBriefing, mitigation: mitigations };
+           }
+        }).catch(err => {
+           aiBriefing = { ...aiBriefing, aiSummary: "Error generating AI summary: " + err.message };
+        });
+
       } catch (err: any) {
         errorMsg = 'Could not find relevant data for this CVE ID in the MITRE database.';
       }
     } else {
-      errorMsg = 'Currently, the real API only supports exact CVE IDs (e.g., CVE-2021-44228). Please connect a real AI backend for natural language search.';
+      errorMsg = 'Currently, the real API only supports exact CVE IDs (e.g., CVE-2021-44228).';
     }
 
     loading = false;
@@ -60,6 +97,10 @@
     if (e.key === 'Enter') searchVulnerability(searchQuery);
   }
 </script>
+
+<AiKeyModal show={showAiKeyModal} onClose={() => showAiKeyModal = false} onSaved={() => { showAiKeyModal = false; searchVulnerability(searchQuery); }} />
+
+<svelte:head><title>CVE Database - KKUSIEM</title></svelte:head>
 
 <style>
   .ai-hub-container {
@@ -147,7 +188,7 @@
   .ai-search-bar:focus-within { border-color: #00d4ff; box-shadow: 0 4px 20px rgba(0,212,255,0.2), inset 0 0 10px rgba(0,212,255,0.1); }
   .ai-search-bar i { font-size: 20px; color: #00d4ff; }
   .ai-search-bar input {
-    flex: 1; background: transparent; border: none; color: var(--text-primary); font-size: 15px; outline: none;
+    flex: 1; background: transparent; border: none; color: #ffffff; font-size: 15px; outline: none;
   }
   .btn-search {
     background: #00d4ff; color: #000; border: none; padding: 10px 24px; border-radius: 6px;
@@ -161,10 +202,10 @@
     display: grid; grid-template-columns: 350px 1fr; overflow: hidden;
   }
   
-  .b-left { background: rgba(0,0,0,0.3); padding: 24px; border-right: 1px solid var(--border); }
+  .b-left { background: #1e293b; padding: 24px; border-right: 1px solid var(--border); }
   .b-right { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
 
-  .cve-id-badge { display: inline-block; font-size: 22px; font-weight: 900; font-family: 'JetBrains Mono'; color: #e8eaf0; margin-bottom: 20px; }
+  .cve-id-badge { display: inline-block; font-size: 22px; font-weight: 900; font-family: 'JetBrains Mono'; color: #ffffff; margin-bottom: 20px; }
   
   /* CVSS Gauge */
   .cvss-gauge-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 30px; position: relative; }
@@ -230,7 +271,7 @@
     
     <div class="search-hero">
       <div class="hero-title">Vulnerability Intelligence</div>
-      <div class="hero-sub">Ask the AI about any vulnerability, CVE ID, or threat name.</div>
+      
       
       <div class="ai-search-bar">
         <i class="ti ti-sparkles"></i>
@@ -346,10 +387,8 @@
         </div>
       </div>
     {:else}
-      <div style="text-align:center; padding: 100px 20px; color: var(--text-muted); background: var(--bg-panel); border-radius: 12px; border: 1px dashed var(--border);">
-        <i class="ti ti-robot" style="font-size:64px; opacity:0.2; margin-bottom:20px; display:block;"></i>
-        <div style="font-size:18px; font-weight:700; color:var(--text-secondary);">Ready to Analyze</div>
-        <div style="font-size:14px; margin-top:8px;">Enter a vulnerability name or CVE ID above to get an AI-generated briefing.</div>
+      <div class="loading-box" style="opacity: 0.5;">
+        <i class="ti ti-robot" style="animation:none; font-size: 64px;"></i>
       </div>
     {/if}
 

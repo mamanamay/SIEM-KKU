@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { formatEventTime } from '../../lib/formatTime';
   import { eventsStore } from '../../stores/events';
+  import { themeStore } from '../../stores/theme';
   import type { Unsubscriber } from 'svelte/store';
   import ExportPreviewModal from '../../lib/components/ExportPreviewModal.svelte';
   import AiTriageBanner from '../../lib/components/AiTriageBanner.svelte';
@@ -24,10 +25,32 @@
   let arcCtx: CanvasRenderingContext2D | null;
   let animFrame: number;
   let arcs: Arc[] = [];
+  let tileLayer: any;
 
   // KKU center coords
   const KKU_LAT = 16.4666;
   const KKU_LNG = 102.8399;
+  $: if (comparisonChart) {
+    const isDark = $themeStore === "dark";
+    const textColor = isDark ? "#9ca3af" : "#475569";
+    const gridColor = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+    
+    if (comparisonChart.options?.plugins?.legend?.labels) comparisonChart.options.plugins.legend.labels.color = textColor;
+    if (comparisonChart.options?.scales?.x?.ticks) comparisonChart.options.scales.x.ticks.color = textColor;
+    if (comparisonChart.options?.scales?.x?.grid) comparisonChart.options.scales.x.grid.color = gridColor;
+    if (comparisonChart.options?.scales?.y?.ticks) comparisonChart.options.scales.y.ticks.color = textColor;
+    if (comparisonChart.options?.scales?.y?.grid) comparisonChart.options.scales.y.grid.color = gridColor;
+    comparisonChart.update();
+  }
+
+  $: if (map && L && tileLayer) {
+    const isDark = $themeStore === "dark";
+    const tileUrl = isDark 
+      ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+      : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+    tileLayer.setUrl(tileUrl);
+  }
+
 
   // Country → approx coords
   const COUNTRY_COORDS: Record<string, [number, number]> = {
@@ -996,5 +1019,12 @@
     .otm-right { flex-direction: row; overflow-x: auto; }
     .stat-card { min-width: 240px; }
     .kpi-row { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  @media (max-width: 1200px) {
+    .span-8, .span-4 { grid-column: span 12 !important; }
+    .row-span-2 { grid-row: span 1 !important; }
+    .map-cell { min-height: 400px; }
+    .chart-cell { min-height: 300px; }
   }
 </style>

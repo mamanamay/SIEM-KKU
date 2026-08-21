@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { themeStore } from '../../stores/theme';
+  import Omnisearch from '../../lib/components/Omnisearch.svelte';
   import { page } from '$app/stores';
   import { initSocket, disconnectSocket, roleStore, connectionState, latestAttackStore } from '../../stores/events';
   
@@ -28,6 +30,7 @@
   let showNotifications = false;
   let activeToast: any = null;
   let toastTimeout: any;
+  let showProfileMenu = false;
 
   $: if ($latestAttackStore) {
     // Prevent duplicate triggers if store hasn't actually changed reference (Svelte reactivity quirk)
@@ -61,23 +64,23 @@
     }
   }
 
-  let currentTheme = 'dark';
+  
 
   function toggleTheme() {
-    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', currentTheme);
-    localStorage.setItem('theme', currentTheme);
+    $themeStore = $themeStore === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', $themeStore);
+    localStorage.setItem('theme', $themeStore);
   }
 
   onMount(() => {
     // Load theme
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) {
-      currentTheme = savedTheme;
+      $themeStore = savedTheme;
     } else {
-      currentTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      $themeStore = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
-    document.documentElement.setAttribute('data-theme', currentTheme);
+    document.documentElement.setAttribute('data-theme', $themeStore);
 
     // Restore persistent notifications
     const savedNotifs = localStorage.getItem('notifications');
@@ -141,10 +144,11 @@
       '/dashboard/blocked_ip_audit': 'Blocked IP Audit',
       '/dashboard/settings': 'System Settings',
       '/dashboard/threats': 'Security Logs',
-      '/dashboard/network-map': 'Network Map Management',
+      '/dashboard/network-map': 'Network Map',
       '/dashboard/ai-briefing': 'AI Daily Briefing',
       '/dashboard/credential-intel': 'Credential Intelligence',
-      '/dashboard/api-history': 'API History'
+      '/dashboard/api-history': 'API History',
+      '/dashboard/reports': 'Report Generation'
     };
     return titles[path] || 'Command Center';
   }
@@ -200,8 +204,14 @@
       <a href="/dashboard" class="nav-item {$page.url.pathname === '/dashboard' ? 'active' : ''}">
         <i class="ti ti-dashboard"></i> Dashboard
       </a>
+      <a href="/dashboard/scorecard" class="nav-item {$page.url.pathname === '/dashboard/scorecard' ? 'active' : ''}">
+        <i class="ti ti-shield-check"></i> Security Scorecard
+      </a>
 
       <div class="nav-group-title mt-2">DETECTION & ANALYSIS</div>
+      <a href="/dashboard/hunting" class="nav-item {$page.url.pathname === '/dashboard/hunting' ? 'active' : ''}">
+        <i class="ti ti-code-asterisk"></i> Threat Hunting
+      </a>
       <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}">
         <i class="ti ti-chart-pie"></i> Analyst Center
       </a>
@@ -209,7 +219,7 @@
         <i class="ti ti-brain"></i> AI Daily Briefing
       </a>
       <a href="/dashboard/monitor" class="nav-item {$page.url.pathname === '/dashboard/monitor' ? 'active' : ''}">
-        <i class="ti ti-list-search"></i> Threat Monitor
+        <i class="ti ti-list-search"></i> SOC Operations Center
       </a>
       <a href="/dashboard/soar" class="nav-item {$page.url.pathname === '/dashboard/soar' ? 'active' : ''}">
         <i class="ti ti-zoom-in"></i> Incident & SOAR
@@ -234,6 +244,9 @@
       <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}">
         <i class="ti ti-settings"></i> System Settings
       </a>
+      <a href="/dashboard/audit" class="nav-item {$page.url.pathname === '/dashboard/audit' ? 'active' : ''}">
+        <i class="ti ti-clipboard-list"></i> System Audit Trail
+      </a>
       <a href="/dashboard/api-history" class="nav-item {$page.url.pathname === '/dashboard/api-history' ? 'active' : ''}">
         <i class="ti ti-api"></i> API History
       </a>
@@ -247,10 +260,59 @@
       </a>
     </nav>
     <div class="sidebar-footer">
-      <div class="status-indicator">
+      <div class="status-indicator" style="margin-bottom: 8px;">
         <span class="status-dot {$connectionState ? 'online' : 'offline'}"></span>
         {$connectionState ? 'Connected' : 'Disconnected'}
       </div>
+      
+      <div class="user-profile-widget" style="position: relative;">
+        <button class="profile-btn" on:click={() => showProfileMenu = !showProfileMenu}>
+          <div class="avatar"><i class="ti ti-user"></i></div>
+          <div class="profile-info">
+            <span class="p-name">นภัสวรรณ ชัยบาล</span>
+            <span class="p-role">นักวิเคราะห์ SOC</span>
+          </div>
+          <i class="ti ti-chevron-up" style="margin-left: auto; color: var(--text-muted); font-size: 14px;"></i>
+        </button>
+
+                {#if showProfileMenu}
+          <!-- Backdrop to close menu -->
+          <div style="position:fixed; inset:0; z-index:99;" on:click={() => showProfileMenu = false}></div>
+          <div class="profile-dropdown" style="position: absolute; bottom: calc(100% + 12px); left: 16px; width: 260px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); z-index: 100; overflow: hidden; display: flex; flex-direction: column;">
+            
+            <div class="dropdown-header" style="padding: 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border);">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="avatar" style="width: 40px; height: 40px; border-radius: 50%; background: var(--color-cyan); color: #000; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">N</div>
+                <div style="overflow: hidden;">
+                  <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">นภัสวรรณ ชัยบาล</div>
+                  <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">napatwan.c@kkumail.com</div>
+                </div>
+              </div>
+              <div style="margin-top: 12px; display: flex; align-items: center; gap: 6px;">
+                <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: rgba(16, 185, 129, 0.15); color: #10b981; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+                  <i class="ti ti-shield-check" style="font-size: 12px;"></i> นักวิเคราะห์ SOC
+                </span>
+              </div>
+            </div>
+
+            <div class="dropdown-body" style="padding: 8px;">
+              <a href="/dashboard/settings" class="menu-link-modern" on:click={() => showProfileMenu = false} style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none; transition: background 0.2s;">
+                <i class="ti ti-settings" style="font-size: 16px; color: var(--text-muted);"></i> การตั้งค่าระบบ
+              </a>
+              <a href="/dashboard/account" class="menu-link-modern" on:click={() => showProfileMenu = false} style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none; transition: background 0.2s;">
+                <i class="ti ti-user-edit" style="font-size: 16px; color: var(--text-muted);"></i> แก้ไขประวัติส่วนตัว
+              </a>
+            </div>
+
+            <div class="dropdown-footer" style="padding: 8px; border-top: 1px solid var(--border); background: var(--bg-surface);">
+              <button on:click={() => logout()} style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: none; background: none; border-radius: 8px; font-size: 13px; font-weight: 500; color: #ef4444; cursor: pointer; text-align: left; transition: background 0.2s;">
+                <i class="ti ti-logout" style="font-size: 16px;"></i> ออกจากระบบ
+              </button>
+            </div>
+          </div>
+        {/if}
+      </div>
+      <div style="text-align: center; margin-top: 12px; font-size: 11px; color: var(--text-muted);">Version 0.1.0</div>
     </div>
   </aside>
 
@@ -321,7 +383,7 @@
 
         <!-- Theme Toggle -->
         <button class="btn-icon" on:click={toggleTheme} title="Toggle Theme" style="margin-right: 15px;">
-          {#if currentTheme === 'dark'}
+          {#if $themeStore === 'dark'}
             <i class="ti ti-sun"></i>
           {:else}
             <i class="ti ti-moon"></i>
@@ -911,5 +973,57 @@
 :global(.ds-accent-red)   { border-left: 3px solid var(--red)    !important; }
 :global(.ds-accent-orange){ border-left: 3px solid var(--orange) !important; }
 :global(.ds-accent-blue)  { border-left: 3px solid var(--blue)   !important; }
+
+.profile-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; text-align: left; transition: 0.2s; }
+.profile-btn:hover { background: var(--border); }
+.profile-btn .avatar { width: 32px; height: 32px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; border: 1px solid var(--border); }
+.profile-info { display: flex; flex-direction: column; overflow: hidden; }
+.p-name { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-role { font-size: 11px; color: var(--text-muted); }
+
+.theme-toggle-group { display: flex; width: 100%; }
+.theme-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); background: transparent; border: none; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+.theme-btn:hover { color: var(--text-primary); }
+.theme-btn.active { background: var(--bg-panel); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+.menu-link { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; font-size: 13px; font-weight: 600; color: var(--text-primary); text-decoration: none; border: none; background: transparent; cursor: pointer; border-radius: 6px; transition: 0.2s; }
+.menu-link:hover { background: var(--bg-secondary); }
+.menu-link.text-red { color: #f43f5e; }
+.menu-link.text-red:hover { background: rgba(244, 63, 94, 0.1); }
+
+
+  .menu-link-modern:hover { background: var(--bg-surface-hover); color: var(--color-cyan) !important; }
+  .menu-link-modern:hover i { color: var(--color-cyan) !important; }
+  .dropdown-footer button:hover { background: rgba(239, 68, 68, 0.1); }
+
+
+  .search-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 12px;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .search-btn:hover {
+    border-color: var(--blue);
+    color: var(--text-primary);
+  }
+  .search-shortcut {
+    background: var(--bg-surface-solid);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
 </style>
+
+<Omnisearch />
 

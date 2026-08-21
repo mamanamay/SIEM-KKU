@@ -196,6 +196,26 @@
   function prevPage() { if (currentPage > 1) currentPage--; }
   function nextPage() { if (currentPage < totalPages) currentPage++; }
 
+  
+  let isUpdatingCase = false;
+  let caseUpdateMsg = "";
+
+  async function updateCase() {
+    if (!selectedEvent) return;
+    isUpdatingCase = true;
+    caseUpdateMsg = "";
+    try {
+      await new Promise(r => setTimeout(r, 600)); // Simulate API call
+      caseUpdateMsg = "Case updated successfully";
+      setTimeout(() => { caseUpdateMsg = ""; }, 3000);
+    } catch (e) {
+      console.error(e);
+      caseUpdateMsg = "Update failed";
+    } finally {
+      isUpdatingCase = false;
+    }
+  }
+
   onMount(async () => {
     try {
       const res = await fetch('/api/attacks/blocked-ips');

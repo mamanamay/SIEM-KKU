@@ -1,8 +1,6 @@
-<svelte:head><title>Blocked IP Audit - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { onMount } from 'svelte';
   import { roleStore } from '../../../stores/events';
-  import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
   
   let blockedList: any[] = [];
   let searchText = '';
@@ -64,20 +62,19 @@
     if (currentPage < totalPages) currentPage++;
   }
 
-  import { downloadCSV, downloadPDF } from '../../../lib/utils/export';
-  let showExportModal = false;
-  let showToast = false;
-  function handleExport(e: CustomEvent) {
-    const { format, selectedColumns, filteredData } = e.detail;
-
-    if (format === 'csv') {
-      downloadCSV(filteredData, selectedColumns, 'blocked_ip_audit.csv');
-    } else if (format === 'pdf') {
-      downloadPDF(filteredData, selectedColumns, 'blocked_ip_audit.pdf', 'KKUSIEM - Blocked IPs Report');
-    }
-    showExportModal = false;
-    showToast = true;
-    setTimeout(() => showToast = false, 3000);
+  import { downloadPDF, downloadHTML } from '../../../lib/utils/export';
+  
+  let showExportMenu = false;
+  
+  function handleExportPDF() {
+    const cols = ['IP Address','Blocked At','Reason','Source','Status','Country','Threat Score','Block Duration','Targeted Port'];
+    downloadPDF(fullExportData, cols, 'blocked_ip_audit.pdf', 'KKUSIEM - Blocked IP History');
+    showExportMenu = false;
+  }
+  function handleExportHTML() {
+    const cols = ['IP Address','Blocked At','Reason','Source','Status','Country','Threat Score','Block Duration','Targeted Port'];
+    downloadHTML(fullExportData, cols, 'blocked_ip_audit.html', 'KKUSIEM - Blocked IP History');
+    showExportMenu = false;
   }
 
   $: fullExportData = (blockedList || []).map(b => ({
@@ -132,12 +129,29 @@
   }
 
 </script>
+<svelte:head><title>Blocked IP Audit - KKUSIEM</title></svelte:head>
 
 <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:2rem">
 
   <!-- Header -->
-  <div class="ds-card-head">
+  <div class="ds-card-head" style="display:flex;justify-content:space-between;align-items:center;">
     <span class="ds-card-title"><i class="ti ti-ban"></i> Blocked IP Audit</span>
+    <div style="position:relative;">
+      <button class="btn-outline" on:click={() => showExportMenu = !showExportMenu}
+        style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer;">
+        <i class="ti ti-upload"></i> Export <i class="ti ti-chevron-down" style="font-size:11px;"></i>
+      </button>
+      {#if showExportMenu}
+        <div style="position:absolute;top:calc(100% + 6px);right:0;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.12);z-index:200;min-width:160px;overflow:hidden;" on:mouseleave={() => showExportMenu = false}>
+          <button on:click={handleExportPDF} style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:none;border:none;font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;">
+            <i class="ti ti-file-type-pdf" style="color:#ef4444;"></i> PDF Report
+          </button>
+          <button on:click={handleExportHTML} style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:none;border:none;font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;border-top:1px solid var(--border);">
+            <i class="ti ti-file-type-html" style="color:#3b82f6;"></i> HTML Report
+          </button>
+        </div>
+      {/if}
+    </div>
   </div>
 
   <!-- ── Manual Block Form (Admin only) ────────────────────────────── -->
@@ -184,7 +198,7 @@
         <i class="ti ti-refresh"></i> Refresh
       </button>
     </div>
-    <button class="ds-btn primary" on:click={() => showExportModal = true}>
+    <button class="ds-btn primary" on:click={() => showExportMenu = !showExportMenu}>
       <i class="ti ti-download"></i> Export Report
     </button>
   </div>
@@ -267,21 +281,6 @@
     </div>
     {/if}
   </div>
-</div>
-
-<ExportPreviewModal 
-  show={showExportModal} 
-  title="รายงานการบล็อกไอพี (Blocked IPs Report)" 
-  columns={["IP Address", "Blocked At", "Reason", "Source", "Status", "Country", "Threat Score", "Block Duration", "Targeted Port"]}
-  data={fullExportData}
-  ipColumn="IP Address"
-  on:close={() => showExportModal = false}
-  on:confirm={handleExport}
-/>
-
-<div class="toast {showToast ? 'show' : ''}">
-  <i class="ti ti-check" style="color:var(--green)"></i>
-  <span>Export Successful</span>
 </div>
 
 <!-- Confirm Unblock Modal -->

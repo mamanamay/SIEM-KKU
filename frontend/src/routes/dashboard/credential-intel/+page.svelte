@@ -1,6 +1,7 @@
-<svelte:head><title>Credential Intel - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { eventsStore } from '../../../stores/events';
+  import { downloadHTML } from '../../../lib/utils/export';
+
 
   $: events = $eventsStore;
 
@@ -91,8 +92,7 @@
     return COMMON_CREDS.some(c => s.toLowerCase().includes(c));
   }
 </script>
-
-
+<svelte:head><title>Credential Intel - KKUSIEM</title></svelte:head>
 
 <div class="ci-wrap">
 
@@ -105,8 +105,14 @@
         <div class="ci-sub">วิเคราะห์ Credential Stuffing patterns จาก Brute Force attacks</div>
       </div>
     </div>
-    <div class="ci-badge">
-      <i class="ti ti-shield-bolt"></i> Honeypot Mode — All credentials captured safely
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="ci-badge">
+        <i class="ti ti-shield-bolt"></i> Honeypot Mode — All credentials captured safely
+      </div>
+      <button style="display:inline-flex;align-items:center;gap:5px;padding:7px 13px;background:#1d9e75;border:none;border-radius:8px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;"
+        on:click={() => downloadHTML(honeypotCreds.map(c => ({'Username': c.user, 'Password': c.pass, 'Attempts': String(c.count)})), ['Username','Password','Attempts'], 'credential-intel.html', 'Honeypot Credential Intelligence Report')}>
+        <i class="ti ti-file-type-html"></i> Export
+      </button>
     </div>
   </div>
 

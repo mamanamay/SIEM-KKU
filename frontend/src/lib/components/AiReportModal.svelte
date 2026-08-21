@@ -152,7 +152,7 @@
           <textarea bind:value={customPrompt} rows="3" class="input-field" placeholder="เช่น เน้นวิเคราะห์ความเสี่ยงของ Database..."></textarea>
         </div>
 
-        <button class="ds-btn primary w-full" style="margin-top:auto;" on:click={generateReport} disabled={isGenerating}>
+        <button class="ds-btn primary" style="width: 100%; justify-content: center; margin-top:auto;" on:click={generateReport} disabled={isGenerating}>
           <i class="ti ti-{isGenerating ? 'loader-2' : 'sparkles'}" class:spin={isGenerating}></i>
           {isGenerating ? 'Generating...' : 'Generate Report'}
         </button>

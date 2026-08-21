@@ -1,12 +1,13 @@
+<svelte:head>
+  <title>Network Map - KKUSIEM</title>
+</svelte:head>
+
 <script lang="ts">
   import { eventsStore } from '../../../stores/events';
   import { getFacultyForIP } from '../../../stores/faculties';
   import { isIpInCidr } from '../../../lib/utils/ip';
   // @ts-ignore
   import ipRecordsRaw from '$lib/data/ip_records.json';
-  import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
-  import { downloadCSV, downloadPDF } from '../../../lib/utils/export';
-
   // --- Local State for Editing ---
   let editableRecords = [...ipRecordsRaw].map((r, i) => ({ ...r, _id: i })); 
   
@@ -181,31 +182,6 @@
     }
   }
 
-  // --- Export Logic ---
-  let showExportModal = false;
-  let showToast = false;
-  $: fullExportData = (filteredRecords || []).map(r => ({
-    'Route (CIDR)': r.Route,
-    'Faculty / Dept': r['Faculty/Dept'] || '—',
-    'Type': r.Type || 'LAN',
-    'Description': r.Description || '—'
-  }));
-
-  function handleExport(e: CustomEvent) {
-    const { format, selectedColumns, filteredData } = e.detail;
-    const title = 'Network Map Database';
-    const filename = 'network_map_db';
-
-    if (format === 'csv') {
-      downloadCSV(filteredData, selectedColumns, `${filename}.csv`);
-    } else if (format === 'pdf') {
-      downloadPDF(filteredData, selectedColumns, `${filename}.pdf`, `KKUSIEM - ${title}`);
-    }
-    
-    showExportModal = false;
-    showToast = true;
-    setTimeout(() => showToast = false, 3000);
-  }
 
 </script>
 
@@ -306,28 +282,10 @@
   <div class="page-header">
     <div class="page-title"><i class="ti ti-network"></i> Network Map Database</div>
     <div class="admin-tools">
-      <button class="ds-btn primary" style="padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; border: none; background: var(--accent); color: #000;" on:click={() => showExportModal = true}>
-        <i class="ti ti-download"></i> Export Report
-      </button>
       <button class="btn-primary" on:click={openAddModal}>
         <i class="ti ti-plus"></i> เพิ่มไอพีใหม่
       </button>
     </div>
-  </div>
-
-  <ExportPreviewModal 
-    show={showExportModal} 
-    title="Network Map Database"
-    columns={['Route (CIDR)', 'Faculty / Dept', 'Type', 'Description']}
-    data={fullExportData}
-    ipColumn="Route (CIDR)"
-    on:close={() => showExportModal = false}
-    on:confirm={handleExport}
-  />
-
-  <div class="toast {showToast ? 'show' : ''}">
-    <i class="ti ti-check" style="color:var(--green)"></i>
-    <span>Export Successful</span>
   </div>
 
   <!-- Master Filters -->

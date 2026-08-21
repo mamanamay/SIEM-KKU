@@ -1,0 +1,1 @@
+const fs = require('fs'); let c = fs.readFileSync('src/routes/dashboard/settings/SecuritySettings.svelte', 'utf8'); c = c.replace(/<\/div>\s*<\/div>\s*<!-- 2FA Setup Modal -->/, '</div>\n  <!-- 2FA Setup Modal -->'); fs.writeFileSync('src/routes/dashboard/settings/SecuritySettings.svelte', c);

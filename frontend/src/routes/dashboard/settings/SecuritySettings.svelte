@@ -147,13 +147,16 @@
   }
 </script>
 
-<div class="ds-card p-6">
-  <h2 class="text-xl font-bold mb-4" style="color: var(--text-base);"><i class="ti ti-shield-lock text-2xl mr-2" style="vertical-align: middle;"></i> ความปลอดภัยและการยืนยันตัวตน (2FA)</h2>
+<div class="ds-card">
+  <div class="ds-card-head">
+    <div class="ds-card-title"><i class="ti ti-shield-lock"></i> ความปลอดภัยและการยืนยันตัวตน (2FA)</div>
+  </div>
+  <div class="config-section">
   
   {#if loadingStatus}
-    <div style="color: var(--text-muted);"><span class="mini-spin"></span> กำลังตรวจสอบสถานะ...</div>
+    <div class="config-row" style="justify-content: center; padding: 30px;"><span class="mini-spin"></span> กำลังตรวจสอบสถานะ...</div>
   {:else}
-    <div style="background: var(--bg-level-1); border-radius: 8px; padding: 20px; border: 1px solid var(--border-color); margin-bottom: 20px;">
+    <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 15px; border: 1px solid var(--border); background: var(--bg-surface); padding: 20px; border-radius: var(--radius-md);">
       <div>
         <div style="font-size: 16px; font-weight: 600; color: var(--text-base); margin-bottom: 8px;">ยืนยันตัวตนสองขั้นตอน (2FA)</div>
         <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">
@@ -198,9 +201,9 @@
       {/if}
     </div>
   {/if}
+  </div>
 </div>
-
-<!-- 2FA Setup Modal -->
+  <!-- 2FA Setup Modal -->
 {#if showModal}
   <div class="modal-overlay" on:click|self={() => { if(setupStage !== 'backup') showModal = false; }}>
     <div class="modal-box" style="max-width: 400px;">
@@ -294,10 +297,4 @@
     vertical-align: text-bottom;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .p-6 { padding: 1.5rem; }
-  .mb-4 { margin-bottom: 1rem; }
-  .text-xl { font-size: 1.25rem; }
-  .font-bold { font-weight: 700; }
-  .text-2xl { font-size: 1.5rem; }
-  .mr-2 { margin-right: 0.5rem; }
 </style>

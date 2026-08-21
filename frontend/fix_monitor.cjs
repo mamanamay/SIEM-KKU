@@ -1,4 +1,7 @@
-<svelte:head>
+﻿const fs = require('fs');
+const file = 'src/routes/dashboard/monitor/+page.svelte';
+
+const content = `<svelte:head>
   <title>SOC Monitor Wall - KKUSIEM</title>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
 </svelte:head>
@@ -260,3 +263,7 @@
   .adv-count { color: #ff8a00; font-weight: bold; }
 
 </style>
+`;
+
+fs.writeFileSync(file, content);
+console.log('SOC monitor wall created!');

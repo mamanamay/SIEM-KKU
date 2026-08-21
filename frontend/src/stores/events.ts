@@ -1,15 +1,18 @@
 import { writable } from 'svelte/store';
 import { io, Socket } from 'socket.io-client';
 
-const initialEvents = typeof sessionStorage !== 'undefined'
-  ? JSON.parse(sessionStorage.getItem('cachedEvents') || '[]')
+const initialEvents = typeof localStorage !== 'undefined'
+  ? JSON.parse(localStorage.getItem('cachedEvents') || '[]')
   : [];
 
 export const eventsStore      = writable<any[]>(initialEvents);
 export const socketStore      = writable<Socket | null>(null);
 export const roleStore        = writable<string>('guest');
+export const usernameStore    = writable<string>('');
 export const connectionState  = writable<boolean>(false);
 export const latestAttackStore = writable<any>(null);
+export const isHistoricalMode = writable<boolean>(false);
+export const selectedDateStore = writable<string>(new Date().toISOString().split('T')[0]);
 
 let socket: Socket | null = null;
 
@@ -30,6 +33,9 @@ export function initSocket() {
 
   const role = localStorage.getItem('role') || 'guest';
   roleStore.set(role);
+  
+  const username = localStorage.getItem('username') || '';
+  usernameStore.set(username);
 
   if (socket) return; // already connected
 
@@ -51,15 +57,32 @@ export function initSocket() {
   });
 
   socket.on('initial_data', (data: any[]) => {
-    eventsStore.set(data);
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('cachedEvents', JSON.stringify(data));
-    }
+    // Only set initial data if not in historical mode
+    isHistoricalMode.subscribe(historical => {
+      if (!historical) {
+        eventsStore.set(data);
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('cachedEvents', JSON.stringify(data));
+        }
+      }
+    })();
   });
 
   socket.on('new_attack', (data: any) => {
-    eventsStore.update(events => [data, ...events]);
-    latestAttackStore.set(data);
+    // Ignore real-time updates if in historical mode
+    let isHistorical = false;
+    isHistoricalMode.subscribe(val => isHistorical = val)();
+    
+    if (!isHistorical) {
+      eventsStore.update(events => {
+        const newEvents = [data, ...events].slice(0, 2000);
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('cachedEvents', JSON.stringify(newEvents));
+        }
+        return newEvents;
+      });
+      latestAttackStore.set(data);
+    }
   });
 
   socket.on('status_updated', (data: { id: number; status: string }) => {
@@ -67,6 +90,9 @@ export function initSocket() {
       const index = events.findIndex(e => e.id === data.id);
       if (index !== -1) {
         events[index] = { ...events[index], status: data.status };
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('cachedEvents', JSON.stringify(events));
       }
       return events;
     });
@@ -94,4 +120,33 @@ export function disconnectSocket() {
     socketStore.set(null);
     connectionState.set(false);
   }
+}
+
+export async function fetchHistoricalEvents(dateStr: string) {
+  isHistoricalMode.set(true);
+  selectedDateStore.set(dateStr);
+  
+  try {
+    const res = await fetch(`/api/attacks/history?date=${dateStr}`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      eventsStore.set(data);
+    }
+  } catch (err) {
+    console.error('Failed to fetch historical events:', err);
+  }
+}
+
+export function resumeLiveEvents() {
+  isHistoricalMode.set(false);
+  selectedDateStore.set(new Date().toISOString().split('T')[0]);
+  
+  // Try to refetch live data via API, or let the socket's 'initial_data' handle it if we reconnect
+  // An easy way to refresh live data is to disconnect and reconnect the socket
+  disconnectSocket();
+  setTimeout(() => initSocket(), 100);
 }

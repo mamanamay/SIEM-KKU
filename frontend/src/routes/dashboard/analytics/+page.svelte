@@ -1,11 +1,16 @@
 <script lang="ts">
   import { eventsStore } from '../../../stores/events';
-  
+  import { downloadHTML, downloadPDF } from '../../../lib/utils/export';
+  import Chart from 'chart.js/auto';
+  import { onMount } from 'svelte';
+
   $: events = $eventsStore;
-  
+
+
   let activeTab = 'overview';
 
   // ─── Data Computations ──────────────────────────────────────────────────────
+
   $: topIps = (() => {
     const counts: Record<string, number> = {};
     events.forEach(e => counts[e.ip] = (counts[e.ip] || 0) + 1);
@@ -38,6 +43,52 @@
   })();
 
   $: payloadEvents = events.filter(e => e.detail && e.detail.length > 3);
+
+  let chartType: any;
+  let chartIp: any;
+  let chartCanvasType: HTMLCanvasElement;
+  let chartCanvasIp: HTMLCanvasElement;
+
+  $: if (activeTab === 'overview' && chartCanvasType && topTypes.length) {
+    if (chartType) chartType.destroy();
+    chartType = new Chart(chartCanvasType, {
+      type: 'doughnut',
+      data: {
+        labels: topTypes.map(t => shortType(t.type)),
+        datasets: [{
+          data: topTypes.map(t => t.count),
+          backgroundColor: topTypes.map(t => getTypeColor(t.type)),
+          borderWidth: 0
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#9ca3af' } } } }
+    });
+  }
+
+  $: if (activeTab === 'overview' && chartCanvasIp && topIps.length) {
+    if (chartIp) chartIp.destroy();
+    chartIp = new Chart(chartCanvasIp, {
+      type: 'bar',
+      data: {
+        labels: topIps.slice(0, 5).map(t => t.ip),
+        datasets: [{
+          label: 'Hits',
+          data: topIps.slice(0, 5).map(t => t.count),
+          backgroundColor: topIps.slice(0, 5).map((t,i) => i===0?'#ef4444':i<3?'#f97316':'#10b981'),
+          borderRadius: 4
+        }]
+      },
+      options: { 
+        responsive: true, maintainAspectRatio: false, 
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#9ca3af', font: { size: 10 } } },
+          y: { ticks: { color: '#9ca3af' }, beginAtZero: true }
+        }
+      }
+    });
+  }
+
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
   const TYPE_COLORS: Record<string, string> = {
@@ -102,11 +153,53 @@
     if (i === 2) return '#f59e0b';
     return 'var(--text-muted)';
   }
+  let showExportMenu = false;
+  function handleExportPDF() {
+    const data = topIps.map(r => ({'IP': r.ip, 'Hits': String(r.count), 'Percent': r.percent+'%'}));
+    downloadPDF(data, ['IP','Hits','Percent'], 'analytics-top-ips.pdf', 'Top Attack IPs Report');
+    showExportMenu = false;
+  }
+  function handleExportHTML() {
+    const data = topIps.map(r => ({'IP': r.ip, 'Hits': String(r.count), 'Percent': r.percent+'%'}));
+    downloadHTML(data, ['IP','Hits','Percent'], 'analytics-top-ips.html', 'Top Attack IPs Report');
+    showExportMenu = false;
+  }
 </script>
 
-<div style="display:flex;flex-direction:column;gap:16px;padding-bottom:2rem;">
+<svelte:head><title>Attacker Analytics - KKUSIEM</title></svelte:head>
+
+<div style="display:flex;flex-direction:column;gap:16px;padding:24px 32px 2rem;max-width:1400px;margin:0 auto;">
+  <!-- Page Header -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div style="width:44px;height:44px;background:rgba(59,130,246,0.12);color:#3b82f6;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;">
+        <i class="ti ti-chart-bar"></i>
+      </div>
+      <div>
+        <h1 style="font-size:22px;font-weight:800;color:var(--text-primary);margin:0 0 4px;">Analyst Center</h1>
+        <p style="font-size:13px;color:var(--text-muted);margin:0;">วิเคราะห์ข้อมูล IP, ประเทศ, ประเภทการโจมตี และ Payload เชิงลึก</p>
+      </div>
+    </div>
+    <div style="position:relative;">
+      <button class="btn-outline" on:click={() => showExportMenu = !showExportMenu}
+        style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer;">
+        <i class="ti ti-upload"></i> Export <i class="ti ti-chevron-down" style="font-size:11px;"></i>
+      </button>
+      {#if showExportMenu}
+        <div style="position:absolute;top:calc(100% + 6px);right:0;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.12);z-index:200;min-width:160px;overflow:hidden;" on:mouseleave={() => showExportMenu = false}>
+          <button class="export-option" on:click={handleExportPDF} style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:none;border:none;font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;transition:0.15s;">
+            <i class="ti ti-file-type-pdf" style="color:#ef4444;"></i> PDF Report
+          </button>
+          <button class="export-option" on:click={handleExportHTML} style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:none;border:none;font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;border-top:1px solid var(--border);transition:0.15s;">
+            <i class="ti ti-file-type-html" style="color:#3b82f6;"></i> HTML Report
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
 
   <!-- ─── Tab Navigation ──────────────────────────────────────────────────── -->
+
   <div class="ds-filters">
     <button class="ds-btn {activeTab === 'overview' ? 'primary' : ''}" on:click={() => activeTab = 'overview'}>
       <i class="ti ti-chart-bar"></i> Overview
@@ -168,7 +261,8 @@
         {#if topIps.length === 0}
           <div class="empty-state"><i class="ti ti-database-off"></i><br>ไม่มีข้อมูลการโจมตี</div>
         {:else}
-          <div class="rank-list">
+          <div style="height: 200px; padding: 16px;"><canvas bind:this={chartCanvasIp}></canvas></div>
+          <div class="rank-list" style="border-top:1px solid var(--border);">
             {#each topIps as item, i}
               <div class="rank-row">
                 <div class="rank-num" style="color: {rankColor(i)}">
@@ -199,7 +293,8 @@
         {#if topTypes.length === 0}
           <div class="empty-state"><i class="ti ti-database-off"></i><br>ไม่มีข้อมูลการโจมตี</div>
         {:else}
-          <div class="type-chips">
+          <div style="height: 200px; padding: 16px;"><canvas bind:this={chartCanvasType}></canvas></div>
+          <div class="type-chips" style="border-top:1px solid var(--border);">
             {#each topTypes as item}
               <div class="type-chip" style="border-color:{getTypeColor(item.type)}22; background:{getTypeBg(item.type)}">
                 <i class="ti {getTypeIcon(item.type)}" style="color:{getTypeColor(item.type)}"></i>

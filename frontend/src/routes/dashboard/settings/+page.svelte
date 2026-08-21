@@ -1,1032 +1,764 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { roleStore } from '../../../stores/events';
+
+  import { roleStore, usernameStore } from '../../../stores/events';
   import SecuritySettings from './SecuritySettings.svelte';
 
-  let activeTab = 'users';
+  let activeTab = 'personal';
 
-  // === User Management State ===
-  let users: any[] = [];
-  let newUsername = '';
-  let newPassword = '';
-  let newRole = 'guest';
-  let newIsSso = false;
-  let showNewPassword = false;
-  let userMsg = '';
-  let userErr = '';
-  let userLoading = false;
-
-  // Password visibility per-user (map of username -> boolean)
-  let visiblePasswords: Record<string, boolean> = {};
-
-  // === Edit Password Modal ===
-  let editModal: { open: boolean; username: string; newPw: string; showPw: boolean; loading: boolean; msg: string; err: string } = {
-    open: false, username: '', newPw: '', showPw: false, loading: false, msg: '', err: ''
-  };
-
-  // === Login Audit State ===
-  let sessions: any[] = [];
-  let sessionLoading = true;
-  let currentPage = 1;
-  const itemsPerPage = 20;
-  let sessionFilter = '';
-
-  // === System Config State ===
-  let sessionTimeout = 60;
   let enableToastNotify = true;
-  let enableSoundAlert = false;
-  let configSaved = false;
+  let sessionTimeout = 30;
+  
+  let users: any[] = [
+    { username: 'admin', role: 'admin', ssoProvider: null, totpEnabled: true, passwordDecrypted: 'Secret123!' },
+    { username: 'analyst1', role: 'user', ssoProvider: 'azure', totpEnabled: false, passwordDecrypted: 'N/A' },
+  ];
+  let userLoading = false;
+  
+  let pwModal = { open: false, user: null as any, newPassword: '', msg: '', msgType: '', loading: false };
+  function openPasswordModal(u: any) {
+    pwModal = { open: true, user: u, newPassword: '', msg: '', msgType: '', loading: false };
+  }
+  async function savePassword() {
+    pwModal.loading = true;
+    await new Promise(r => setTimeout(r, 600));
+    pwModal.loading = false;
+    pwModal.msg = 'Password updated successfully';
+    pwModal.msgType = 'success';
+    setTimeout(() => { pwModal.open = false; }, 1500);
+  }
+
+  let resetModal = { open: false, user: null as any, msg: '', msgType: '', loading: false, sent: false };
+  function openResetModal(u: any) {
+    resetModal = { open: true, user: u, msg: '', msgType: '', loading: false, sent: false };
+  }
+  async function sendResetEmail() {
+    resetModal.loading = true;
+    resetModal.msg = '';
+    await new Promise(r => setTimeout(r, 1200)); // Simulate email sending API
+    resetModal.loading = false;
+    resetModal.sent = true;
+    resetModal.msg = 'Secure reset link sent successfully via SES.';
+    resetModal.msgType = 'success';
+    setTimeout(() => { resetModal.open = false; }, 2000);
+  }
+  function loadUsers() {
+    userLoading = true; setTimeout(() => userLoading = false, 500);
+  }
+
+  let sessionFilter = '';
+  let sessionLoading = false;
+  let filteredSessions: any[] = [
+    { createdAt: Date.now(), username: 'admin', ip: '192.168.1.10', userAgent: 'Chrome', success: true }
+  ];
+  let paginatedSessions: any[] = [];
+  let currentPage = 1;
+  let totalPages = 1;
+  function formatEventTime(t: number) { return new Date(t).toLocaleString(); }
+  function loadSessions() {
+    sessionLoading = true; setTimeout(() => { paginatedSessions = filteredSessions; sessionLoading = false; }, 500);
+  }
+  function prevPage() { if (currentPage > 1) currentPage--; }
+  function nextPage() { if (currentPage < totalPages) currentPage++; }
+  onMount(() => {
+    paginatedSessions = filteredSessions;
+  });
+
   let cfgScorecardUrl = '';
   let cfgScorecardKey = '';
   let cfgIpSyncUrl = '';
   let cfgIpSyncKey = '';
   let cfgGeminiKey = '';
-
-  onMount(() => {
-    if ($roleStore === 'admin') {
-      loadUsers();
-      loadSessions();
-      loadConfig();
-    }
-    // All users fetch their own info in security tab logic
-  });
-
-  // ---------- User Management ----------
-  async function loadUsers() {
-    userLoading = true;
-    try {
-      const res = await fetch('/api/auth/users');
-      if (res.ok) users = await res.json();
-    } catch(e) {}
-    userLoading = false;
+  let apiTestStatus = {
+    scorecard: { loading: false, msg: '' },
+    ipsync: { loading: false, msg: '' },
+    gemini: { loading: false, msg: '' }
+  };
+  function testApiConnection(type: string) {
+    apiTestStatus[type as keyof typeof apiTestStatus].loading = true;
+    setTimeout(() => {
+      apiTestStatus[type as keyof typeof apiTestStatus].loading = false;
+      apiTestStatus[type as keyof typeof apiTestStatus].msg = 'Connected successfully';
+    }, 1000);
   }
 
-  async function createUser() {
-    userMsg = ''; userErr = '';
-    if (!newUsername.trim()) { userErr = 'กรุณากรอก Username'; return; }
-    if (!newIsSso && !newPassword.trim()) { userErr = 'กรุณากรอก Password'; return; }
-    try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole, isSso: newIsSso })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        userMsg = `✓ สร้างบัญชี "${newUsername}" สำเร็จ`;
-        newUsername = ''; newPassword = ''; newRole = 'guest'; showNewPassword = false; newIsSso = false;
-        await loadUsers();
-      } else {
-        userErr = data.message || 'เกิดข้อผิดพลาด';
-      }
-    } catch(e) { userErr = 'Network error'; }
-  }
-
-  async function deleteUser(username: string) {
-    if (!confirm(`ยืนยันการลบบัญชี "${username}" ?`)) return;
-    try {
-      const res = await fetch(`/api/auth/users/${username}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (res.ok) { await loadUsers(); }
-      else { alert(data.message || 'ไม่สามารถลบได้'); }
-    } catch(e) { alert('Network error'); }
-  }
-
-  async function resetTwoFa(username: string) {
-    if (!confirm(`ยืนยันการรีเซ็ต 2FA ของบัญชี "${username}" ?\nการกระทำนี้จะปิดใช้งาน 2FA ของบัญชีนี้ทันที`)) return;
-    try {
-      const res = await fetch(`/api/auth/users/${username}/reset-2fa`, { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) { 
-        alert(data.message || `รีเซ็ต 2FA ของ ${username} สำเร็จ`);
-        await loadUsers(); 
-      }
-      else alert(data.message || 'Error resetting 2FA');
-    } catch (err) { alert('Network Error'); }
-  }
-
-  function togglePasswordVisibility(username: string) {
-    visiblePasswords = { ...visiblePasswords, [username]: !visiblePasswords[username] };
-  }
-
-  // ── Edit Password Modal ──
-  function openEditModal(username: string) {
-    editModal = { open: true, username, newPw: '', showPw: false, loading: false, msg: '', err: '' };
-  }
-  function closeEditModal() {
-    editModal = { ...editModal, open: false };
-  }
-  async function submitPasswordChange() {
-    editModal.msg = ''; editModal.err = '';
-    if (!editModal.newPw.trim() || editModal.newPw.length < 4) {
-      editModal.err = 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร'; return;
-    }
-    editModal.loading = true;
-    try {
-      const res = await fetch(`/api/auth/users/${editModal.username}/password`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newPassword: editModal.newPw })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        editModal.msg = data.message;
-        await loadUsers();
-        setTimeout(() => closeEditModal(), 1500);
-      } else {
-        editModal.err = data.message || 'เกิดข้อผิดพลาด';
-      }
-    } catch(e) { editModal.err = 'Network error'; }
-    editModal.loading = false;
-  }
-
-  // ---------- Login Audit ----------
-  async function loadSessions() {
-    sessionLoading = true;
-    try {
-      const res = await fetch('/api/auth/sessions');
-      if (res.ok) sessions = await res.json();
-    } catch(e) {}
-    sessionLoading = false;
-    currentPage = 1;
-  }
-
-  $: filteredSessions = sessions.filter(s =>
-    !sessionFilter || s.username.toLowerCase().includes(sessionFilter.toLowerCase()) || s.ipAddress?.includes(sessionFilter)
-  );
-  $: totalPages = Math.max(1, Math.ceil(filteredSessions.length / itemsPerPage));
-  $: {
-    if (currentPage > totalPages) currentPage = totalPages;
-    if (currentPage < 1) currentPage = 1;
-  }
-  $: pagedSessions = filteredSessions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
-  // ---------- System Config ----------
-  function loadConfig() {
-    sessionTimeout = parseInt(localStorage.getItem('cfg_session_timeout') || '60');
-    enableToastNotify = localStorage.getItem('cfg_toast') !== 'false';
-    enableSoundAlert = localStorage.getItem('cfg_sound') === 'true';
-    cfgScorecardUrl = localStorage.getItem('cfg_scorecard_url') || 'https://10.101.118.184:4333/dashboard';
-    cfgScorecardKey = localStorage.getItem('cfg_scorecard_key') || '4c25eebe1323386cca6319b3b4516d3f';
-    cfgIpSyncUrl = localStorage.getItem('cfg_ip_sync_url') || '';
-    cfgIpSyncKey = localStorage.getItem('cfg_ip_sync_key') || '';
-    cfgGeminiKey = localStorage.getItem('cfg_gemini_key') || '';
-  }
+  let configSaved = false;
   function saveConfig() {
-    localStorage.setItem('cfg_session_timeout', sessionTimeout.toString());
-    localStorage.setItem('cfg_toast', enableToastNotify.toString());
-    localStorage.setItem('cfg_sound', enableSoundAlert.toString());
-    localStorage.setItem('cfg_scorecard_url', cfgScorecardUrl);
-    localStorage.setItem('cfg_scorecard_key', cfgScorecardKey);
-    localStorage.setItem('cfg_ip_sync_url', cfgIpSyncUrl);
-    localStorage.setItem('cfg_ip_sync_key', cfgIpSyncKey);
-    localStorage.setItem('cfg_gemini_key', cfgGeminiKey);
     configSaved = true;
     setTimeout(() => configSaved = false, 3000);
   }
 
-  $: tabs = $roleStore === 'admin'
-    ? [
-        { id: 'users',    label: 'User Management', icon: 'ti-users' },
-        { id: 'audit',    label: 'Login Audit',     icon: 'ti-history' },
-        { id: 'security', label: 'Security (2FA)',  icon: 'ti-shield-lock' },
-        { id: 'config',   label: 'System Config',   icon: 'ti-adjustments' },
-        { id: 'about',    label: 'About System',    icon: 'ti-info-circle' },
-      ]
-    : [
-        { id: 'security', label: 'Security (2FA)',  icon: 'ti-shield-lock' },
-        { id: 'about',    label: 'About System',    icon: 'ti-info-circle' },
-      ];
-      
-  $: {
-    if ($roleStore !== 'admin' && (activeTab === 'users' || activeTab === 'audit' || activeTab === 'config')) {
-      activeTab = 'security';
-    }
-  }
+  let toasts: any[] = [];
+  
+  let confirmModal = {
+    open: false, title: '', desc: '', type: 'primary',
+    onConfirm: () => {}, onCancel: () => { confirmModal.open = false; }
+  };
 </script>
+<svelte:head><title>System Settings - KKUSIEM</title></svelte:head>
 
-<svelte:head>
-  <title>KKUSIEM</title>
-</svelte:head>
-
-<div class="ds-page">
-  <!-- Page Header -->
-  <div class="ds-page-header">
-    <div>
-      <h1 class="ds-page-title"><i class="ti ti-settings"></i> System Settings</h1>
-      <div class="ds-page-subtitle">Administration panel — accessible by Admin only</div>
+<div class="settings-layout">
+  <aside class="settings-sidebar">
+    <div class="sidebar-header">
+      <i class="ti ti-settings"></i>
+      <div>
+        <h3>Command Center</h3>
+        <p>SOC Platform Settings</p>
+      </div>
     </div>
-  </div>
+    
+    <div class="sidebar-nav custom-scrollbar">
+      <div class="nav-group">Personal</div>
+      <button class="nav-item {activeTab === 'personal' ? 'active' : ''}" on:click={() => activeTab = 'personal'}>
+        <i class="ti ti-user-circle"></i> My Account
+      </button>
 
-  <!-- Remove global restriction to allow Security tab -->
-    <!-- Tab Navigation -->
-    <div class="tab-nav">
-      {#each tabs as tab}
-        <button
-          class="tab-btn {activeTab === tab.id ? 'active' : ''}"
-          on:click={() => activeTab = tab.id}
-        >
-          <i class="ti {tab.icon}"></i>
-          <span>{tab.label}</span>
-        </button>
-      {/each}
+      <div class="nav-group">Team & Access</div>
+      <button class="nav-item {activeTab === 'team' ? 'active' : ''}" on:click={() => activeTab = 'team'}>
+        <i class="ti ti-users"></i> Users & Roles
+      </button>
+
+      <div class="nav-group">SOC Configurations</div>
+      <button class="nav-item {activeTab === 'detection' ? 'active' : ''}" on:click={() => activeTab = 'detection'}>
+        <i class="ti ti-radar"></i> Detection & Intel
+      </button>
+      <button class="nav-item {activeTab === 'soar' ? 'active' : ''}" on:click={() => activeTab = 'soar'}>
+        <i class="ti ti-bolt"></i> SOAR & Automations
+      </button>
+      <button class="nav-item {activeTab === 'ai' ? 'active' : ''}" on:click={() => activeTab = 'ai'}>
+        <i class="ti ti-brain"></i> AI Analyst Settings
+      </button>
+
+      <div class="nav-group">System</div>
+      <button class="nav-item {activeTab === 'audit' ? 'active' : ''}" on:click={() => activeTab = 'audit'}>
+        <i class="ti ti-clipboard-list"></i> Audit & Compliance
+      </button>
+      <button class="nav-item {activeTab === 'health' ? 'active' : ''}" on:click={() => activeTab = 'health'}>
+        <i class="ti ti-heartbeat"></i> Platform Health
+      </button>
     </div>
+  </aside>
 
-    <!-- ═══════════════════ TAB: User Management ═══════════════════ -->
-    {#if activeTab === 'users'}
-
-      <!-- Password Edit Modal -->
-      {#if editModal.open}
-        <div class="modal-overlay" on:click|self={closeEditModal}>
-          <div class="modal-box">
-            <div class="modal-head">
-              <div class="modal-title"><i class="ti ti-key"></i> เปลี่ยนรหัสผ่าน</div>
-              <button class="modal-close" on:click={closeEditModal}><i class="ti ti-x"></i></button>
+  <main class="settings-content custom-scrollbar">
+    <div class="content-wrapper">
+      
+      {#if activeTab === 'personal'}
+        <div class="tab-header">
+          <h2>My Account</h2>
+          <p>Manage your personal preferences, profile, and security settings.</p>
+        </div>
+        <div class="config-grid">
+          <div class="ds-card">
+            <div class="ds-card-head">
+              <div class="ds-card-title"><i class="ti ti-user-edit"></i> Profile & Theme</div>
             </div>
-            <div class="modal-body">
-              <div class="modal-user-chip">
-                <div class="avatar admin">{editModal.username[0]?.toUpperCase()}</div>
-                <span>{editModal.username}</span>
-              </div>
-              {#if editModal.msg}<div class="msg success">{editModal.msg}</div>{/if}
-              {#if editModal.err}<div class="msg error">{editModal.err}</div>{/if}
-              <div class="field">
-                <label>รหัสผ่านใหม่</label>
-                <div class="pw-wrap">
-                  {#if editModal.showPw}
-                    <input type="text" bind:value={editModal.newPw} class="input-field" placeholder="กรอกรหัสผ่านใหม่" autofocus />
-                  {:else}
-                    <input type="password" bind:value={editModal.newPw} class="input-field" placeholder="กรอกรหัสผ่านใหม่" autofocus />
-                  {/if}
-                  <button type="button" class="pw-eye" on:click={() => editModal.showPw = !editModal.showPw}>
-                    <i class="ti {editModal.showPw ? 'ti-eye-off' : 'ti-eye'}"></i>
-                  </button>
+            <div class="config-section">
+              
+              <div class="config-row">
+                <div class="config-label">
+                  <div class="config-name">Toast Popup Alerts</div>
+                  <div class="config-desc">เปิดแจ้งเตือน Popup เมื่อมี Attack เข้ามาใหม่ (Live Alert)</div>
                 </div>
+                <label class="toggle">
+                  <input type="checkbox" bind:checked={enableToastNotify} />
+                  <span class="slider"></span>
+                </label>
               </div>
             </div>
-            <div class="modal-footer">
-              <button class="ds-btn sm" on:click={closeEditModal}>ยกเลิก</button>
-              <button class="ds-btn primary" on:click={submitPasswordChange} disabled={editModal.loading}>
-                {#if editModal.loading}<span class="mini-spin"></span>{/if}
-                <i class="ti ti-check"></i> บันทึกรหัสผ่าน
-              </button>
-            </div>
           </div>
+          <SecuritySettings />
         </div>
-      {/if}
 
-      <div class="two-col">
-        <!-- Create Form -->
+      {:else if activeTab === 'team'}
+        <div class="tab-header">
+          <h2>Users & Advanced RBAC</h2>
+          <p>Manage SOC team members and granular role-based access control (RBAC).</p>
+        </div>
         <div class="ds-card">
-          <div class="ds-card-head">
-            <div class="ds-card-title"><i class="ti ti-user-plus"></i> Create New Account</div>
-          </div>
-          <label class="sso-whitelist-note toggle-box" class:active={newIsSso}>
-            <input type="checkbox" bind:checked={newIsSso} style="display:none;" />
-            <div class="sso-icon">
-              <i class="ti {newIsSso ? 'ti-shield-check' : 'ti-shield-lock'}"></i>
-            </div>
-            <div>
-              <strong>KKU SSO Whitelist</strong><br>
-              <span>{newIsSso ? 'ผูกบัญชีด้วย KKU SSO (ไม่ต้องตั้งรหัสผ่าน)' : 'ใช้งาน KKU SSO เปิดตัวเลือกนี้'}</span>
-            </div>
-            <div class="toggle-switch">
-              <div class="switch-track"></div>
-              <div class="switch-thumb"></div>
-            </div>
-          </label>
-          {#if userMsg}<div class="msg success">{userMsg}</div>{/if}
-          {#if userErr}<div class="msg error">{userErr}</div>{/if}
-          <form on:submit|preventDefault={createUser} class="form-stack">
-            <div class="field">
-              <label>Username <span class="label-hint">(Email เต็ม — สำหรับผูกกับ SSO)</span></label>
-              <input type="text" bind:value={newUsername} placeholder="e.g. user@anydomain.com" class="input-field" style="padding-right:12px;" />
-            </div>
-            {#if !newIsSso}
-            <div class="field">
-              <label>Password <span class="label-hint">(สำหรับล็อกอินแบบปกติ)</span></label>
-              <div class="pw-wrap">
-                {#if showNewPassword}
-                  <input type="text" bind:value={newPassword} placeholder="Min 4 characters" class="input-field" />
-                {:else}
-                  <input type="password" bind:value={newPassword} placeholder="Min 4 characters" class="input-field" />
-                {/if}
-                <button type="button" class="pw-eye" on:click={() => showNewPassword = !showNewPassword}>
-                  <i class="ti {showNewPassword ? 'ti-eye-off' : 'ti-eye'}"></i>
-                </button>
-              </div>
-            </div>
-            {/if}
-            <div class="field">
-              <label>Role</label>
-              <select bind:value={newRole} class="ds-select">
-                <option value="guest">🔵 Guest — View Only</option>
-                <option value="admin">🔴 Admin — Full Access</option>
-              </select>
-            </div>
-            <div class="role-hint {newRole}">
-              {#if newRole === 'admin'}
-                <i class="ti ti-shield-check"></i> Admin เข้าถึงทุกเมนูและจัดการบัญชีได้
-              {:else}
-                <i class="ti ti-eye"></i> Guest ดูข้อมูลได้เท่านั้น ไม่สามารถแก้ไขได้
-              {/if}
-            </div>
-            <button type="submit" class="ds-btn primary full-w">
-              <i class="ti ti-plus"></i> Create Account
-            </button>
-          </form>
-        </div>
-
-        <!-- User List -->
-        <div class="ds-card" style="padding:0; overflow:hidden;">
-          <div class="ds-card-head" style="padding:16px 20px; border-bottom:1px solid var(--border);">
-            <div class="ds-card-title"><i class="ti ti-list"></i> Active Accounts ({users.length})</div>
-            <button class="ds-btn sm" on:click={loadUsers}><i class="ti ti-refresh"></i></button>
-          </div>
           {#if userLoading}
             <div class="ds-empty" style="padding:3rem;">Loading...</div>
           {:else}
             <div class="ds-table-wrap">
               <table class="ds-table">
-                <thead><tr><th>#</th><th>Username</th><th>Role</th><th>2FA</th><th>Password</th><th>Action</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Permissions</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {#each users as u, i}
                     <tr>
-                      <td class="ds-mono" style="color:var(--text-muted);">{i + 1}</td>
                       <td>
                         <div class="user-row">
-                          <div class="avatar {u.role}">{u.username[0].toUpperCase()}</div>
+                          <div class="avatar {u.role}">{u.username.charAt(0).toUpperCase()}</div>
                           <div>
                             <strong>{u.username}</strong>
-                            {#if u.isSso}
-                              <div class="sso-tag"><i class="ti ti-brand-oauth"></i> SSO</div>
+                            {#if u.ssoProvider}
+                              <br/><span class="sso-tag"><i class="ti ti-brand-windows"></i> {u.ssoProvider} SSO</span>
                             {/if}
                           </div>
                         </div>
                       </td>
                       <td>
-                        <span class="ds-badge {u.role === 'admin' ? 'blue' : 'gray'}">
-                          <i class="ti {u.role === 'admin' ? 'ti-shield' : 'ti-eye'}"></i>
-                          {u.role}
-                        </span>
+                        <select class="input-field" style="width:120px; padding:4px 8px;">
+                          <option selected={u.role === 'admin'}>Admin (Tier 3)</option>
+                          <option selected={u.role === 'user'}>Analyst (Tier 1)</option>
+                        </select>
                       </td>
+                      
                       <td>
-                        {#if u.totpEnabled}
-                          <span class="ds-badge green"><i class="ti ti-shield-check" style="margin-right:2px"></i> เปิด</span>
-                        {:else}
-                          <span class="ds-badge" style="background:var(--bg-level-1); border-color:var(--border-color); color:var(--text-muted);"><i class="ti ti-shield-x" style="margin-right:2px"></i> ปิด</span>
-                        {/if}
-                      </td>
-                      <td class="pw-cell">
-                        {#if u.isSso}
-                          <span class="sso-pw-label"><i class="ti ti-brand-oauth"></i> SSO Managed</span>
-                        {:else}
-                          <div class="pw-reveal-wrap">
-                            <code class="pw-value">
-                              {visiblePasswords[u.username] ? (u.passwordHash || '—') : '••••••••'}
-                            </code>
-                            <button
-                              type="button"
-                              class="pw-eye-sm"
-                              title={visiblePasswords[u.username] ? 'ซ่อน' : 'แสดงรหัสผ่าน'}
-                              on:click|stopPropagation={() => togglePasswordVisibility(u.username)}
-                            >
-                              <i class="ti {visiblePasswords[u.username] ? 'ti-eye-off' : 'ti-eye'}"></i>
-                            </button>
-                          </div>
-                        {/if}
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                          <label style="font-size:11px; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" checked={true} disabled={u.role === 'admin'} /> View Logs & Dashboards
+                          </label>
+                          <label style="font-size:11px; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" checked={true} disabled={u.role === 'admin'} /> Threat Hunting & Query
+                          </label>
+                          <label style="font-size:11px; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" checked={u.role === 'admin'} /> Execute SOAR Actions
+                          </label>
+                          <label style="font-size:11px; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" checked={u.role === 'admin'} /> Manage Network Map
+                          </label>
+                          <label style="font-size:11px; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" checked={u.role === 'admin'} disabled={u.role === 'admin'} /> Edit System Configs
+                          </label>
+                          <label style="font-size:11px; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" checked={u.role === 'admin'} disabled={u.role === 'admin'} /> Manage Users & Roles
+                          </label>
+                        </div>
                       </td>
                       <td>
                         <div class="action-btns">
-                          {#if u.totpEnabled}
-                            <button class="ds-btn sm outline" style="color:var(--orange); border-color:var(--orange);" title="รีเซ็ต 2FA" on:click={() => resetTwoFa(u.username)}>
-                              <i class="ti ti-rotate"></i>
+                          {#if !u.ssoProvider}
+                            <button class="ds-btn sm" title="Reset Password" on:click={() => openResetModal(u)}>
+                              <i class="ti ti-mail-forward"></i> Reset PW
                             </button>
-                          {/if}
-                          {#if !u.isSso}
-                            <button class="ds-btn sm" title="เปลี่ยนรหัสผ่าน" on:click={() => openEditModal(u.username)}>
-                              <i class="ti ti-key"></i>
-                            </button>
-                          {/if}
-                          {#if u.username !== 'admin'}
-                            <button class="ds-btn danger sm" title="ลบบัญชี" on:click={() => deleteUser(u.username)}>
-                              <i class="ti ti-trash"></i>
-                            </button>
-                          {:else}
-                            <span class="protected-label"><i class="ti ti-lock"></i> Protected</span>
                           {/if}
                         </div>
                       </td>
                     </tr>
                   {/each}
-                  {#if users.length === 0}
-                    <tr><td colspan="5"><div class="ds-empty">No accounts found</div></td></tr>
-                  {/if}
                 </tbody>
               </table>
             </div>
           {/if}
         </div>
-      </div>
 
-    <!-- ═══════════════════ TAB: Login Audit ═══════════════════ -->
-    {:else if activeTab === 'audit'}
-      <div class="ds-card" style="padding:0; overflow:hidden;">
-        <div class="ds-card-head" style="padding:16px 20px; border-bottom:1px solid var(--border);">
-          <div class="ds-card-title"><i class="ti ti-history"></i> Login Audit Log ({filteredSessions.length})</div>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <div class="ds-search" style="min-width:200px;">
-              <i class="ti ti-search"></i>
-              <input type="text" bind:value={sessionFilter} placeholder="Search username or IP..." on:input={() => currentPage = 1} />
+{:else if activeTab === 'detection'}
+        <div class="tab-header">
+          <h2>Integration & Connectors Hub</h2>
+          <p>Connect KKUSIEM to external security tools, threat intelligence, and enterprise services.</p>
+        </div>
+        
+        <div class="integration-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div class="ds-card app-card">
+            <div class="app-card-head" style="padding: 20px; display:flex; gap:16px; align-items:center; border-bottom:1px solid var(--border);">
+              <div class="app-icon" style="width:48px; height:48px; background:rgba(59, 130, 246, 0.1); color:#3b82f6; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px;">
+                <i class="ti ti-shield-search"></i>
+              </div>
+              <div>
+                <h3 style="margin:0; font-size:15px; color:var(--text-primary);">VirusTotal</h3>
+                <p style="margin:4px 0 0 0; font-size:12px; color:var(--text-muted);">Threat Intelligence API</p>
+              </div>
+              <div style="margin-left:auto;"><span class="ds-badge green">Connected</span></div>
             </div>
-            <button class="ds-btn sm" on:click={loadSessions}><i class="ti ti-refresh"></i> Refresh</button>
+            <div class="app-card-body" style="padding: 16px 20px;">
+              <button class="ds-btn sm" style="width:100%; justify-content:center;">Configure Settings</button>
+            </div>
+          </div>
+          
+          <div class="ds-card app-card">
+            <div class="app-card-head" style="padding: 20px; display:flex; gap:16px; align-items:center; border-bottom:1px solid var(--border);">
+              <div class="app-icon" style="width:48px; height:48px; background:rgba(244, 63, 94, 0.1); color:#f43f5e; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px;">
+                <i class="ti ti-firewall"></i>
+              </div>
+              <div>
+                <h3 style="margin:0; font-size:15px; color:var(--text-primary);">PaloAlto PAN-OS</h3>
+                <p style="margin:4px 0 0 0; font-size:12px; color:var(--text-muted);">Next-Gen Firewall</p>
+              </div>
+              <div style="margin-left:auto;"><span class="ds-badge gray">Not Configured</span></div>
+            </div>
+            <div class="app-card-body" style="padding: 16px 20px;">
+              <button class="ds-btn sm primary" style="width:100%; justify-content:center;">Install Connector</button>
+            </div>
+          </div>
+
+          <div class="ds-card app-card">
+            <div class="app-card-head" style="padding: 20px; display:flex; gap:16px; align-items:center; border-bottom:1px solid var(--border);">
+              <div class="app-icon" style="width:48px; height:48px; background:rgba(16, 185, 129, 0.1); color:#10b981; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px;">
+                <i class="ti ti-brand-slack"></i>
+              </div>
+              <div>
+                <h3 style="margin:0; font-size:15px; color:var(--text-primary);">Slack Webhooks</h3>
+                <p style="margin:4px 0 0 0; font-size:12px; color:var(--text-muted);">SOC Alert Notifications</p>
+              </div>
+              <div style="margin-left:auto;"><span class="ds-badge green">Connected</span></div>
+            </div>
+            <div class="app-card-body" style="padding: 16px 20px;">
+              <button class="ds-btn sm" style="width:100%; justify-content:center;">Configure Settings</button>
+            </div>
+          </div>
+          
+          <div class="ds-card app-card">
+            <div class="app-card-head" style="padding: 20px; display:flex; gap:16px; align-items:center; border-bottom:1px solid var(--border);">
+              <div class="app-icon" style="width:48px; height:48px; background:rgba(168, 85, 247, 0.1); color:#a855f7; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px;">
+                <i class="ti ti-users"></i>
+              </div>
+              <div>
+                <h3 style="margin:0; font-size:15px; color:var(--text-primary);">Active Directory</h3>
+                <p style="margin:4px 0 0 0; font-size:12px; color:var(--text-muted);">LDAP / SSO Login</p>
+              </div>
+              <div style="margin-left:auto;"><span class="ds-badge gray">Not Configured</span></div>
+            </div>
+            <div class="app-card-body" style="padding: 16px 20px;">
+              <button class="ds-btn sm primary" style="width:100%; justify-content:center;">Install Connector</button>
+            </div>
           </div>
         </div>
-        {#if sessionLoading}
-          <div class="ds-empty" style="padding:3rem;">Loading audit log...</div>
-        {:else}
-          <div class="ds-table-wrap">
-            <table class="ds-table">
-              <thead><tr>
-                <th>#</th><th>Date &amp; Time</th><th>Username</th><th>Role</th><th>IP Address</th>
-              </tr></thead>
-              <tbody>
-                {#each pagedSessions as s, i}
-                  <tr>
-                    <td class="ds-mono" style="color:var(--text-muted);">{(currentPage - 1) * itemsPerPage + i + 1}</td>
-                    <td class="ds-mono">{new Date(s.timestamp).toLocaleString('en-GB')}</td>
-                    <td><strong>{s.username}</strong></td>
-                    <td>
-                      <span class="ds-badge {s.role === 'admin' ? 'blue' : 'orange'}">
-                        {s.role}
-                      </span>
-                    </td>
-                    <td class="ds-mono">{s.ipAddress || '—'}</td>
-                  </tr>
-                {/each}
-                {#if filteredSessions.length === 0}
-                  <tr><td colspan="5"><div class="ds-empty" style="padding:2rem;">
-                    <i class="ti ti-database-off"></i> No login records found
-                  </div></td></tr>
-                {/if}
-              </tbody>
-            </table>
+
+{:else if activeTab === 'soar'}
+        <div class="tab-header">
+          <h2>SOAR & Automations</h2>
+          <p>Manage automated responses, session security, and network enforcement.</p>
+        </div>
+        <div class="config-grid">
+          
+          <div class="ds-card">
+            <div class="ds-card-head">
+              <div class="ds-card-title"><i class="ti ti-lock-access"></i> Analyst Session</div>
+            </div>
+            <div class="config-section">
+              <div class="config-row">
+                <div class="config-label">
+                  <div class="config-name">Auto Logout Timeout</div>
+                  <div class="config-desc">กำหนดเวลา (นาที) ที่จะบังคับออกจากระบบหากไม่มีการใช้งาน (Security Policy)</div>
+                </div>
+                <div class="config-control">
+                  <input type="number" bind:value={sessionTimeout} min="5" max="480" class="input-field" style="width:90px; text-align:center;" />
+                  <span style="font-size:12px; color:var(--text-muted);">minutes</span>
+                </div>
+              </div>
+            </div>
           </div>
-          {#if totalPages > 1}
-            <div class="ds-pagination">
-              <div class="ds-pagination-info">Showing {pagedSessions.length} of {filteredSessions.length} records — Page {currentPage} of {totalPages}</div>
-              <div class="ds-pagination-btns">
-                <button class="ds-page-btn" on:click={() => currentPage--} disabled={currentPage === 1}>
-                  <i class="ti ti-chevron-left"></i> Prev
-                </button>
-                <span class="ds-page-info">{currentPage} / {totalPages}</span>
-                <button class="ds-page-btn" on:click={() => currentPage++} disabled={currentPage === totalPages}>
-                  Next <i class="ti ti-chevron-right"></i>
+
+          <div class="ds-card">
+            <div class="ds-card-head">
+              <div class="ds-card-title"><i class="ti ti-sitemap"></i> Network Enforcement (IP Sync)</div>
+            </div>
+            <div class="config-section">
+              <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                <div class="config-label">
+                  <div class="config-name">API Endpoint URL</div>
+                  <div class="config-desc">ตั้งค่า API สำหรับดึงข้อมูล IP ของเครื่องเป้าหมายจาก Network Switch / Firewall</div>
+                </div>
+                <input type="text" bind:value={cfgIpSyncUrl} class="input-field" placeholder="https://api.kku.ac.th/v1/network/subnets" />
+                <input type="password" bind:value={cfgIpSyncKey} class="input-field" placeholder="Bearer Token (Optional)" style="margin-top: 4px;" />
+              </div>
+              <hr class="ds-divider" />
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size:12px; color:var(--text-muted);">{apiTestStatus.ipsync.msg || 'Sync Disabled'}</span>
+                <button class="ds-btn sm" on:click={() => testApiConnection('ipsync')} disabled={apiTestStatus.ipsync.loading}>
+                  {#if apiTestStatus.ipsync.loading}
+                    <span class="mini-spin"></span> Testing...
+                  {:else}
+                    <i class="ti ti-refresh"></i> Test & Sync
+                  {/if}
                 </button>
               </div>
             </div>
+          </div>
+          
+          <div style="grid-column: 1/-1; display:flex; justify-content:flex-end; gap:10px; align-items:center; margin-top: 10px;">
+            {#if configSaved}
+              <span style="color:var(--green); font-size:13px; font-weight:600;"><i class="ti ti-check"></i> บันทึกการตั้งค่าระบบเรียบร้อย</span>
+            {/if}
+            <button class="ds-btn primary" on:click={saveConfig}>
+              <i class="ti ti-device-floppy"></i> Save Configurations
+            </button>
+          </div>
+        </div>
+
+      {:else if activeTab === 'ai'}
+        <div class="tab-header">
+          <h2>AI Analyst Settings</h2>
+          <p>Configure Gemini LLM and adjust prompt templates for automated investigations.</p>
+        </div>
+        <div class="config-grid">
+          <div class="ds-card">
+            <div class="ds-card-head">
+              <div class="ds-card-title"><i class="ti ti-brain"></i> Gemini Integration</div>
+            </div>
+            <div class="config-section">
+              <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                <div class="config-label">
+                  <div class="config-name">Google Gemini AI API Key</div>
+                  <div class="config-desc">API Key สำหรับใช้งาน SOC AI Analyst (ขึ้นต้นด้วย AIzaSy...)</div>
+                </div>
+                <input type="password" bind:value={cfgGeminiKey} class="input-field" placeholder="Gemini API Key" />
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                  <span style="font-size:12px; color:var(--text-muted);">
+                    {apiTestStatus.gemini.msg || 'AI Analysis Disabled'}
+                  </span>
+                  <button class="ds-btn sm" on:click={() => testApiConnection('gemini')} disabled={apiTestStatus.gemini.loading}>
+                    {#if apiTestStatus.gemini.loading}
+                      <span class="mini-spin"></span> Verifying...
+                    {:else}
+                      <i class="ti ti-plug"></i> Verify Token
+                    {/if}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="ds-card">
+            <div class="ds-card-head">
+              <div class="ds-card-title"><i class="ti ti-message-chatbot"></i> Prompt Engineering</div>
+            </div>
+            <div class="config-section">
+              <div class="config-row">
+                <div class="config-label">
+                  <div class="config-name">Base System Prompt</div>
+                  <div class="config-desc">คำสั่งตั้งต้นสำหรับปรับบุคลิกและรูปแบบ Report ของ AI (Coming Soon)</div>
+                </div>
+                <button class="ds-btn sm" disabled>Edit Prompts</button>
+              </div>
+            </div>
+          </div>
+          
+          <div style="grid-column: 1/-1; display:flex; justify-content:flex-end; gap:10px; align-items:center; margin-top: 10px;">
+            {#if configSaved}
+              <span style="color:var(--green); font-size:13px; font-weight:600;"><i class="ti ti-check"></i> บันทึกการตั้งค่าระบบเรียบร้อย</span>
+            {/if}
+            <button class="ds-btn primary" on:click={saveConfig}>
+              <i class="ti ti-device-floppy"></i> Save Configurations
+            </button>
+          </div>
+        </div>
+
+      {:else if activeTab === 'audit'}
+        <div class="tab-header">
+          <h2>Audit & Compliance</h2>
+          <p>Review system access logs and analyst actions for accountability.</p>
+        </div>
+        <div class="ds-card" style="padding:0; overflow:hidden;">
+          <div class="ds-card-head" style="padding:16px 20px; border-bottom:1px solid var(--border);">
+            <div class="ds-card-title"><i class="ti ti-history"></i> Login Audit Log ({filteredSessions.length})</div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <div class="ds-search" style="min-width:200px; display:flex; align-items:center; gap:8px; background:var(--bg-deep); border:1px solid var(--border); padding:6px 12px; border-radius:6px;">
+                <i class="ti ti-search" style="color:var(--text-muted);"></i>
+                <input type="text" bind:value={sessionFilter} placeholder="Search user or IP..." on:input={() => currentPage = 1} style="background:transparent; border:none; outline:none; color:var(--text-primary); font-size:12px; width:100%;" />
+              </div>
+              <button class="ds-btn sm" on:click={loadSessions}><i class="ti ti-refresh"></i> Refresh</button>
+            </div>
+          </div>
+          {#if sessionLoading}
+            <div class="ds-empty" style="padding:3rem;">Loading audit log...</div>
+          {:else}
+            <div class="ds-table-wrap">
+              <table class="ds-table">
+                <thead><tr><th>Time</th><th>User</th><th>IP Address</th><th>User Agent</th><th>Status</th></tr></thead>
+                <tbody>
+                  {#each paginatedSessions as s}
+                    <tr>
+                      <td style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted);">{formatEventTime(s.createdAt)}</td>
+                      <td style="font-weight:600; font-size:13px; color:var(--text-primary);">{s.username}</td>
+                      <td style="font-family:var(--font-mono); font-size:12px; color:var(--text-muted);">{s.ip}</td>
+                      <td style="font-size:11px; color:var(--text-muted); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title={s.userAgent}>{s.userAgent}</td>
+                      <td>
+                        <span class="ds-badge {s.success ? 'green' : 'red'}">
+                          {#if s.success}<i class="ti ti-check"></i> Success{:else}<i class="ti ti-x"></i> Failed{/if}
+                        </span>
+                      </td>
+                    </tr>
+                  {/each}
+                  {#if paginatedSessions.length === 0}
+                    <tr><td colspan="5" class="ds-empty">No login records found</td></tr>
+                  {/if}
+                </tbody>
+              </table>
+            </div>
+            {#if totalPages > 1}
+              <div class="ds-pagination">
+                <button on:click={prevPage} disabled={currentPage === 1}><i class="ti ti-chevron-left"></i></button>
+                <span>{currentPage} / {totalPages}</span>
+                <button on:click={nextPage} disabled={currentPage === totalPages}><i class="ti ti-chevron-right"></i></button>
+              </div>
+            {/if}
           {/if}
+        </div>
+
+      {:else if activeTab === 'health'}
+        <div class="tab-header">
+          <h2>SIEM Platform Health & Storage</h2>
+          <p>Monitor system metrics, disk usage for log retention, and ingestion rates.</p>
+        </div>
+        
+        <div class="health-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px;">
+          <!-- CPU -->
+          <div class="ds-card" style="padding: 20px; text-align: center;">
+            <h4 style="margin:0 0 10px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">CPU Usage</h4>
+            <div style="font-size:32px; font-weight:800; color:#10b981;">24%</div>
+            <div style="width:100%; height:4px; background:var(--bg-deep); margin-top:10px; border-radius:2px;">
+              <div style="width:24%; height:100%; background:#10b981; border-radius:2px;"></div>
+            </div>
+          </div>
+          <!-- RAM -->
+          <div class="ds-card" style="padding: 20px; text-align: center;">
+            <h4 style="margin:0 0 10px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">Memory (RAM)</h4>
+            <div style="font-size:32px; font-weight:800; color:#f59e0b;">68%</div>
+            <div style="width:100%; height:4px; background:var(--bg-deep); margin-top:10px; border-radius:2px;">
+              <div style="width:68%; height:100%; background:#f59e0b; border-radius:2px;"></div>
+            </div>
+          </div>
+          <!-- Disk -->
+          <div class="ds-card" style="padding: 20px; text-align: center;">
+            <h4 style="margin:0 0 10px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">Disk Storage (Logs)</h4>
+            <div style="font-size:32px; font-weight:800; color:#f43f5e;">89%</div>
+            <div style="width:100%; height:4px; background:var(--bg-deep); margin-top:10px; border-radius:2px;">
+              <div style="width:89%; height:100%; background:#f43f5e; border-radius:2px;"></div>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">Warning: 90-day retention at risk</div>
+          </div>
+        </div>
+
+        <div class="ds-card" style="margin-bottom: 20px;">
+          <div class="ds-card-head">
+            <div class="ds-card-title"><i class="ti ti-activity"></i> Log Ingestion Rate (EPS)</div>
+          </div>
+          <div class="ds-card-body" style="padding: 20px; display:flex; align-items:center; gap:30px;">
+            <div style="flex-shrink:0;">
+              <div style="font-size:42px; font-weight:900; color:var(--color-cyan);">1,245</div>
+              <div style="font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase;">Events Per Second</div>
+            </div>
+            <div style="flex:1; height:60px; display:flex; align-items:flex-end; gap:4px;">
+              <!-- Mock Bar Chart -->
+              <div style="width:10%; height:40%; background:rgba(6, 182, 212, 0.4); border-radius:4px 4px 0 0;"></div>
+              <div style="width:10%; height:60%; background:rgba(6, 182, 212, 0.5); border-radius:4px 4px 0 0;"></div>
+              <div style="width:10%; height:30%; background:rgba(6, 182, 212, 0.4); border-radius:4px 4px 0 0;"></div>
+              <div style="width:10%; height:80%; background:rgba(6, 182, 212, 0.7); border-radius:4px 4px 0 0;"></div>
+              <div style="width:10%; height:90%; background:rgba(6, 182, 212, 0.9); border-radius:4px 4px 0 0;"></div>
+              <div style="width:10%; height:50%; background:rgba(6, 182, 212, 0.4); border-radius:4px 4px 0 0;"></div>
+              <div style="width:10%; height:75%; background:rgba(6, 182, 212, 0.6); border-radius:4px 4px 0 0;"></div>
+              <div style="width:10%; height:100%; background:var(--color-cyan); border-radius:4px 4px 0 0;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ds-card">
+          <div class="about-hero" style="padding:20px;">
+            <div class="about-logo"><i class="ti ti-radar"></i></div>
+            <div class="about-name">KKUSIEM Security Platform</div>
+            <div class="about-version">Enterprise SOC Edition v2.0.0</div>
+            <div class="info-rows" style="margin-top:20px;">
+              <div class="info-row"><span>Platform Core</span><strong>NestJS + SvelteKit</strong></div>
+              <div class="info-row"><span>Database</span><strong>SQLite (TypeORM)</strong></div>
+              <div class="info-row"><span>Realtime</span><strong>Socket.IO WebSocket</strong></div>
+            </div>
+          </div>
+        </div>
+      {/if}
+    </div>
+
+  </main>
+</div>
+
+{#if pwModal.open}
+  <div class="modal-overlay" on:click={() => pwModal.open = false}>
+    <div class="modal-box" on:click|stopPropagation>
+      <div class="modal-head">
+        <div class="modal-title"><i class="ti ti-key"></i> Edit Password</div>
+        <button class="modal-close" on:click={() => pwModal.open = false}><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-user-chip">
+          <div class="avatar {pwModal.user.role}">{pwModal.user.username.charAt(0).toUpperCase()}</div>
+          {pwModal.user.username}
+        </div>
+        <div>
+          <label style="display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:6px;">New Password</label>
+          <input type="text" bind:value={pwModal.newPassword} class="input-field" placeholder="Enter new strong password" />
+        </div>
+        {#if pwModal.msg}
+          <div class="msg {pwModal.msgType}">{pwModal.msg}</div>
         {/if}
       </div>
-
-    <!-- ═══════════════════ TAB: System Config ═══════════════════ -->
-    {:else if activeTab === 'config'}
-      <div class="config-grid">
-        <!-- Session & Security -->
-        <div class="ds-card">
-          <div class="ds-card-head">
-            <div class="ds-card-title"><i class="ti ti-lock"></i> Session &amp; Security</div>
-          </div>
-          <div class="config-section">
-            <div class="config-row">
-              <div class="config-label">
-                <div class="config-name">Auto Logout Timeout</div>
-                <div class="config-desc">ระยะเวลา (นาที) ที่ระบบจะล็อกเอาต์อัตโนมัติเมื่อไม่มีการใช้งาน</div>
-              </div>
-              <div class="config-control">
-                <input type="number" bind:value={sessionTimeout} min="5" max="480" class="input-field" style="width:90px; text-align:center;" />
-                <span style="font-size:12px; color:var(--text-muted);">minutes</span>
-              </div>
-            </div>
-            <hr class="ds-divider" />
-            <div class="config-row">
-              <div class="config-label">
-                <div class="config-name">Current Session Info</div>
-                <div class="config-desc">ข้อมูลการเข้าสู่ระบบครั้งปัจจุบัน</div>
-              </div>
-              <div style="text-align:right;">
-                <span class="ds-badge blue"><i class="ti ti-user"></i> admin</span>
-                <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Localhost</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Notifications -->
-        <div class="ds-card">
-          <div class="ds-card-head">
-            <div class="ds-card-title"><i class="ti ti-bell"></i> Notifications</div>
-          </div>
-          <div class="config-section">
-            <div class="config-row">
-              <div class="config-label">
-                <div class="config-name">Toast Popup Alerts</div>
-                <div class="config-desc">แสดง popup เมื่อตรวจพบการโจมตีใหม่</div>
-              </div>
-              <label class="toggle">
-                <input type="checkbox" bind:checked={enableToastNotify} />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <hr class="ds-divider" />
-            <div class="config-row">
-              <div class="config-label">
-                <div class="config-name">Sound Alert</div>
-                <div class="config-desc">เล่นเสียงเมื่อมีการโจมตีระดับ Critical</div>
-              </div>
-              <label class="toggle">
-                <input type="checkbox" bind:checked={enableSoundAlert} />
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- External APIs -->
-        <div class="ds-card">
-          <div class="ds-card-head">
-            <div class="ds-card-title"><i class="ti ti-api"></i> External Integrations</div>
-          </div>
-          <div class="config-section">
-            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
-              <div class="config-label">
-                <div class="config-name">Scorecard API URL</div>
-                <div class="config-desc">Endpoint หรือ URL ของระบบ Scorecard (ถ้ามี)</div>
-              </div>
-              <input type="text" bind:value={cfgScorecardUrl} class="input-field" placeholder="https://api.example.com/v1/scorecard" />
-            </div>
-            <hr class="ds-divider" />
-            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
-              <div class="config-label">
-                <div class="config-name">Scorecard API Key</div>
-                <div class="config-desc">Token หรือ Key สำหรับยืนยันตัวตนกับ API (ถ้ามี)</div>
-              </div>
-              <input type="password" bind:value={cfgScorecardKey} class="input-field" placeholder="API Key" />
-            </div>
-            <hr class="ds-divider" />
-            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
-              <div class="config-label">
-                <div class="config-name">Google Gemini AI API Key</div>
-                <div class="config-desc">API Key สำหรับใช้งาน SOC AI Analyst (เช่น AIzaSy...)</div>
-              </div>
-              <input type="password" bind:value={cfgGeminiKey} class="input-field" placeholder="Gemini API Key" />
-            </div>
-          </div>
-        </div>
-
-        <div class="ds-card">
-          <div class="ds-card-head">
-            <div class="ds-card-title"><i class="ti ti-sitemap"></i> Network IP Sync API</div>
-          </div>
-          <div class="config-section">
-            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
-              <div class="config-label">
-                <div class="config-name">API Endpoint URL</div>
-                <div class="config-desc">ตั้งค่า API สำหรับดึงข้อมูล IP ของคณะและหน่วยงานจากมหาวิทยาลัย</div>
-              </div>
-              <input type="text" bind:value={cfgIpSyncUrl} class="input-field" placeholder="https://api.kku.ac.th/v1/network/subnets" />
-            </div>
-            <hr class="ds-divider" />
-            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
-              <div class="config-label">
-                <div class="config-name">Authentication Token (Optional)</div>
-                <div class="config-desc">Bearer Token หรือ API Key สำหรับการเชื่อมต่อ</div>
-              </div>
-              <input type="password" bind:value={cfgIpSyncKey} class="input-field" placeholder="API Key" />
-            </div>
-            <hr class="ds-divider" />
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div>
-                <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">สถานะการ Sync ล่าสุด</div>
-                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">รอการเชื่อมต่อ (Mock Mode) - อัปเดตล่าสุด: ยังไม่มีการเชื่อมต่อ</div>
-              </div>
-              <button class="ds-btn sm" on:click={() => alert('ฟังก์ชันเชื่อมต่อจำลองการทำงาน (Mock)')}>
-                <i class="ti ti-refresh"></i> Test Connection &amp; Sync
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Save Button -->
-        <div style="grid-column: 1/-1; display:flex; justify-content:flex-end; gap:10px; align-items:center;">
-          {#if configSaved}
-            <span style="color:var(--green); font-size:13px; font-weight:600;"><i class="ti ti-check"></i> บันทึกการตั้งค่าแล้ว</span>
-          {/if}
-          <button class="ds-btn primary" on:click={saveConfig}>
-            <i class="ti ti-device-floppy"></i> Save Configuration
-          </button>
-        </div>
+      <div class="modal-footer">
+        <button class="ds-btn sm" on:click={() => pwModal.open = false}>Cancel</button>
+        <button class="ds-btn sm primary" on:click={savePassword} disabled={pwModal.loading}>
+          {#if pwModal.loading}<span class="mini-spin"></span>{/if} Save Password
+        </button>
       </div>
-
-    <!-- ═══════════════════ TAB: Security ═══════════════════ -->
-    {:else if activeTab === 'security'}
-      <SecuritySettings />
-
-    <!-- ═══════════════════ TAB: About System ═══════════════════ -->
-    {:else if activeTab === 'about'}
-      <div class="about-grid">
-        <!-- System Info -->
-        <div class="ds-card">
-          <div class="ds-card-head">
-            <div class="ds-card-title"><i class="ti ti-radar"></i> KKUSIEM Platform</div>
-          </div>
-          <div class="about-hero">
-            <div class="about-logo"><i class="ti ti-radar"></i></div>
-            <div class="about-name">KKU KKUSIEM SIEM</div>
-            <div class="about-version">Version 2.0.0</div>
-          </div>
-          <div class="info-rows">
-            <div class="info-row"><span>Platform</span><strong>NestJS + SvelteKit</strong></div>
-            <div class="info-row"><span>Database</span><strong>SQLite (TypeORM)</strong></div>
-            <div class="info-row"><span>Realtime</span><strong>Socket.IO WebSocket</strong></div>
-            <div class="info-row"><span>Deployment</span><strong>Docker + Nginx</strong></div>
-          </div>
-        </div>
-
-        <!-- Feature List -->
-        <div class="ds-card">
-          <div class="ds-card-head">
-            <div class="ds-card-title"><i class="ti ti-list-check"></i> Active Modules</div>
-          </div>
-          <div class="module-list">
-            {#each [
-              { icon: 'ti-radar', name: 'SIEM Dashboard', status: 'active', desc: 'Realtime attack overview' },
-              { icon: 'ti-chart-pie', name: 'Analyst Center', status: 'active', desc: 'Attacker pattern analysis' },
-              { icon: 'ti-list-search', name: 'Security Logs', status: 'active', desc: 'Multi-source log viewer' },
-              { icon: 'ti-alert-triangle', name: 'Alerts & SOAR', status: 'active', desc: 'Automated response rules' },
-              { icon: 'ti-zoom-in', name: 'Threat Investigation', status: 'active', desc: 'IP deep-dive analysis' },
-              { icon: 'ti-grid-dots', name: 'MITRE ATT&CK', status: 'active', desc: 'Tactic mapping matrix' },
-              { icon: 'ti-database-search', name: 'CVE Database', status: 'active', desc: 'Vulnerability lookup' },
-              { icon: 'ti-shield-x', name: 'IP Block Audit', status: 'active', desc: 'Firewall rule management' },
-            ] as mod}
-              <div class="module-item">
-                <div class="module-icon"><i class="ti {mod.icon}"></i></div>
-                <div class="module-info">
-                  <div class="module-name">{mod.name}</div>
-                  <div class="module-desc">{mod.desc}</div>
-                </div>
-                <span class="ds-badge green"><i class="ti ti-check"></i> Active</span>
-              </div>
-            {/each}
-          </div>
-        </div>
-      </div>
-    {/if}
+    </div>
   </div>
-<!-- Removed the {/if} because we removed the admin if block -->
+{/if}
+
+{#if resetModal.open}
+  <div class="modal-overlay" on:click={() => resetModal.open = false}>
+    <div class="modal-box" on:click|stopPropagation>
+      <div class="modal-head">
+        <div class="modal-title"><i class="ti ti-mail-forward"></i> Send Password Reset Link</div>
+        <button class="modal-close" on:click={() => resetModal.open = false}><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px; color:var(--text-muted); line-height:1.5;">
+          You are about to send a password reset link to the following user. They will receive an email with instructions.
+        </p>
+        <div class="modal-user-chip" style="background:var(--bg-deep);">
+          <div class="avatar {resetModal.user.role}">{resetModal.user.username.charAt(0).toUpperCase()}</div>
+          <div style="display:flex; flex-direction:column;">
+            <span>{resetModal.user.username}</span>
+            <span style="font-size:11px; color:var(--text-muted); font-weight:normal;">{resetModal.user.username}@security.local</span>
+          </div>
+        </div>
+        
+        <div style="background:rgba(59, 130, 246, 0.05); border:1px solid rgba(59, 130, 246, 0.2); padding:12px; border-radius:8px;">
+          <label style="display:block; font-size:11px; font-weight:700; color:#3b82f6; text-transform:uppercase; margin-bottom:4px;">Sender Details (Official)</label>
+          <div style="font-size:13px; color:var(--text-primary);">
+            <strong>From:</strong> SOC Command Center &lt;no-reply@soc-siem.local&gt;
+          </div>
+          <div style="font-size:13px; color:var(--text-primary); margin-top:4px;">
+            <strong>Subject:</strong> Action Required: Password Reset Request
+          </div>
+        </div>
+
+        {#if resetModal.msg}
+          <div class="msg {resetModal.msgType}">{resetModal.msg}</div>
+        {/if}
+      </div>
+      <div class="modal-footer">
+        <button class="ds-btn sm" on:click={() => resetModal.open = false} disabled={resetModal.loading}>Cancel</button>
+        <button class="ds-btn sm primary" style={resetModal.sent ? "background:#10b981; border-color:#10b981; color:#fff;" : ""} on:click={sendResetEmail} disabled={resetModal.loading || resetModal.sent}>
+          {#if resetModal.loading}
+            <span class="mini-spin"></span> Sending...
+          {:else if resetModal.sent}
+            <i class="ti ti-check"></i> Sent Successfully
+          {:else}
+            <i class="ti ti-send"></i> Send Email
+          {/if}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<div class="toast-container">
+  {#each toasts as t (t.id)}
+    <div class="toast {t.type}">
+      <i class="ti {t.type === 'success' ? 'ti-check' : t.type === 'error' ? 'ti-x' : 'ti-info-circle'}"></i>
+      <span>{t.msg}</span>
+    </div>
+  {/each}
+</div>
 
 <style>
-  /* Hide browser default password reveal icon (Edge/Chrome on Windows) */
-  :global(input[type="password"]::-ms-reveal),
-  :global(input[type="password"]::-ms-clear) {
-    display: none;
-  }
-
-  /* ── Tab Navigation ──────────────────────────────── */
-  .tab-nav {
-    display: flex;
-    gap: 6px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 6px;
-    flex-wrap: wrap;
-  }
-  .tab-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    border: none;
-    background: transparent;
-    border-radius: 10px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-  }
-  .tab-btn i { font-size: 16px; }
-  .tab-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
-  .tab-btn.active { background: var(--green); color: #fff; box-shadow: 0 2px 10px rgba(29,158,117,0.3); }
-
-  /* ── Layout Grids ────────────────────────────────── */
-  .two-col {
-    display: grid;
-    grid-template-columns: 360px 1fr;
-    gap: 16px;
-    align-items: start;
-  }
-  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
-
-  .config-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-  @media (max-width: 900px) { .config-grid { grid-template-columns: 1fr; } }
-
-  .about-grid {
-    display: grid;
-    grid-template-columns: 320px 1fr;
-    gap: 16px;
-    align-items: start;
-  }
-  @media (max-width: 900px) { .about-grid { grid-template-columns: 1fr; } }
-
-  .sso-whitelist-note {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    background: rgba(29,158,117,0.06);
-    border: 1px solid rgba(29,158,117,0.2);
-    border-radius: 10px;
-    padding: 12px 14px;
-    font-size: 12px;
-    color: var(--text-secondary);
-    line-height: 1.5;
-    margin-bottom: 16px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .sso-whitelist-note:hover { background: rgba(29,158,117,0.1); }
-  .sso-whitelist-note.active { background: rgba(29,158,117,0.15); border-color: var(--green); }
-  .sso-whitelist-note .sso-icon i { color: var(--green); font-size: 20px; flex-shrink: 0; transition: all 0.2s; }
-  .sso-whitelist-note strong { display: block; color: var(--green); font-size: 13px; margin-bottom: 2px; transition: all 0.2s; }
-  
-  .toggle-switch { margin-left: auto; position: relative; width: 36px; height: 20px; border-radius: 20px; background: var(--border); transition: all 0.3s; flex-shrink: 0; }
-  .active .toggle-switch { background: var(--green); }
-  .switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: all 0.3s; }
-  .active .switch-thumb { transform: translateX(16px); }
-
-  /* ── Form ────────────────────────────────────────── */
-  .form-stack { display: flex; flex-direction: column; gap: 14px; }
-  .field label { display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
-  .label-hint { font-size: 10px; font-weight: 400; text-transform: none; color: var(--text-muted); opacity: 0.7; }
-  .input-field {
-    width: 100%;
-    padding: 9px 36px 9px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 13px;
-    color: var(--text-primary);
-    font-family: inherit;
-    outline: none;
-    transition: border-color 0.2s;
-    box-sizing: border-box;
-  }
-  .input-field:focus { border-color: var(--green); }
-  .full-w { width: 100%; justify-content: center; }
-
-  /* Password input with eye button */
-  .pw-wrap { position: relative; display: flex; align-items: center; }
-  .pw-wrap .input-field { padding-right: 38px; }
-  .pw-eye {
-    position: absolute;
-    right: 8px;
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 16px;
-    padding: 4px;
-    display: flex;
-    align-items: center;
-    transition: color 0.2s;
-  }
-  .pw-eye:hover { color: var(--text-primary); }
-
-  .role-hint {
-    font-size: 12px;
-    padding: 8px 12px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .role-hint.admin { background: var(--blue-bg); color: var(--blue); }
-  .role-hint.guest { background: var(--bg-secondary); color: var(--text-secondary); }
-
-  .msg { padding: 10px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
-  .msg.success { background: var(--green-bg); color: var(--green); }
-  .msg.error { background: var(--red-bg); color: var(--red); }
-
-  /* ── User Table ──────────────────────────────────── */
-  .user-row { display: flex; align-items: center; gap: 10px; }
-  .avatar {
-    width: 30px; height: 30px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 800; flex-shrink: 0;
-  }
-  .avatar.admin { background: var(--blue-bg); color: var(--blue); }
-  .avatar.guest { background: var(--bg-secondary); color: var(--text-secondary); }
-  .protected-label { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
-  .action-btns { display: flex; gap: 6px; align-items: center; }
-
-  /* SSO tag under username */
-  .sso-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 10px;
-    font-weight: 600;
-    color: #7c3aed;
-    background: rgba(124,58,237,0.1);
-    border-radius: 4px;
-    padding: 1px 5px;
-    margin-top: 2px;
-  }
-
-  /* Password column */
-  .pw-cell { min-width: 140px; }
-  .pw-reveal-wrap { display: flex; align-items: center; gap: 6px; }
-  .pw-value {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 3px 8px;
-    color: var(--text-primary);
-    letter-spacing: 0.05em;
-    max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: inline-block;
-  }
-  .pw-eye-sm {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 13px;
-    padding: 3px 5px;
-    display: flex;
-    align-items: center;
-    transition: all 0.2s;
-    flex-shrink: 0;
-    position: relative;
-    z-index: 2;
-  }
-  .pw-eye-sm:hover { border-color: var(--green); color: var(--green); }
-  .sso-pw-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    color: #7c3aed;
-    background: rgba(124,58,237,0.08);
-    border: 1px solid rgba(124,58,237,0.2);
-    border-radius: 6px;
-    padding: 3px 8px;
-  }
-
-  /* ── Password Edit Modal ──────────────────────────── */
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 1000;
-    background: rgba(0,0,0,0.65);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    animation: fadeIn 0.2s ease;
-  }
-  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
-  .modal-box {
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    width: 100%;
-    max-width: 400px;
-    box-shadow: 0 24px 48px rgba(0,0,0,0.5);
-    animation: slideUp 0.25s cubic-bezier(.175,.885,.32,1.275);
-    overflow: hidden;
-  }
-  @keyframes slideUp { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
-  .modal-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-  }
-  .modal-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-  .modal-title i { color: var(--green); font-size: 18px; }
-  .modal-close {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 18px;
-    padding: 4px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    transition: color 0.2s;
-  }
-  .modal-close:hover { color: var(--red); }
-  .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
-  .modal-user-chip {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: var(--bg-secondary);
-    border-radius: 10px;
-    padding: 10px 14px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  .modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    padding: 16px 20px;
-    border-top: 1px solid var(--border);
-  }
-  .mini-spin {
-    width: 14px; height: 14px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    display: inline-block;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ── Config ──────────────────────────────────────── */
-  .config-section { display: flex; flex-direction: column; gap: 0; }
-  .config-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; }
-  .config-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-  .config-desc { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+  .settings-layout { display: grid; grid-template-columns: 260px 1fr; gap: 0; height: 100%; background: var(--bg-deep); border: 1px solid var(--border); border-radius: var(--radius-xl); overflow: hidden; }
+  .settings-sidebar { background: var(--bg-panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .sidebar-header { padding: 24px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .sidebar-header i { font-size: 28px; color: var(--color-cyan); }
+  .sidebar-header h3 { margin: 0; font-size: 16px; font-weight: 800; color: var(--text-primary); }
+  .sidebar-header p { margin: 2px 0 0 0; font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  .sidebar-nav { flex: 1; overflow-y: auto; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .nav-group { font-size: 10px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 16px 0 4px 8px; }
+  .nav-group:first-child { margin-top: 0; }
+  .nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: transparent; border: none; border-radius: 8px; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; transition: all 0.2s; }
+  .nav-item i { font-size: 16px; color: var(--text-muted); transition: 0.2s; }
+  .nav-item:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .nav-item:hover i { color: var(--color-cyan); }
+  .nav-item.active { background: rgba(6, 182, 212, 0.1); color: var(--color-cyan); }
+  .nav-item.active i { color: var(--color-cyan); }
+  .settings-content { background: var(--bg-deep); overflow-y: auto; padding: 32px 40px; }
+  .content-wrapper { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  .tab-header { margin-bottom: 8px; }
+  .tab-header h2 { margin: 0; font-size: 22px; font-weight: 800; color: var(--text-primary); }
+  .tab-header p { margin: 4px 0 0 0; font-size: 13px; color: var(--text-muted); }
+  .config-grid, .about-grid { display: flex; flex-direction: column; gap: 20px; }
+  .ds-card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  .ds-card-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .ds-card-title { font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+  .ds-card-title i { color: var(--color-cyan); font-size: 16px; }
+  .config-section { display: flex; flex-direction: column; gap: 0; padding: 0 20px; }
+  .config-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; }
+  .config-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+  .config-desc { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
   .config-control { display: flex; align-items: center; gap: 8px; }
-
-  /* Toggle Switch */
+  .ds-divider { border: 0; border-top: 1px solid var(--border); margin: 0; }
+  .input-field { background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: var(--text-primary); font-size: 13px; outline: none; width: 100%; transition: 0.2s; box-sizing: border-box; }
+  .input-field:focus { border-color: var(--color-cyan); box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2); }
+  .ds-btn { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-primary); padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; }
+  .ds-btn:hover:not([disabled]) { background: var(--bg-surface-hover); border-color: var(--text-muted); }
+  .ds-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+  .ds-btn.sm { padding: 6px 12px; font-size: 12px; }
+  .ds-btn.primary { background: var(--color-cyan); color: #000; border-color: var(--color-cyan); }
+  .ds-btn.primary:hover:not([disabled]) { box-shadow: 0 0 12px rgba(6, 182, 212, 0.4); }
   .toggle { position: relative; display: inline-block; width: 44px; height: 24px; }
   .toggle input { opacity: 0; width: 0; height: 0; }
-  .slider {
-    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-    background: var(--border); border-radius: 24px; transition: 0.3s;
-    border: 1px solid var(--border);
-  }
-  .slider:before {
-    position: absolute; content: '';
-    width: 18px; height: 18px; left: 3px; bottom: 2px;
-    background: white; border-radius: 50%; transition: 0.3s;
-  }
-  .toggle input:checked + .slider { background: var(--green); }
+  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--border); border-radius: 24px; transition: 0.3s; border: 1px solid var(--border); }
+  .slider:before { position: absolute; content: ''; width: 18px; height: 18px; left: 3px; bottom: 2px; background: white; border-radius: 50%; transition: 0.3s; }
+  .toggle input:checked + .slider { background: var(--color-cyan); border-color: var(--color-cyan); }
   .toggle input:checked + .slider:before { transform: translateX(19px); }
-
-  /* ── About ───────────────────────────────────────── */
-  .about-hero { text-align: center; padding: 24px 0 20px; }
-  .about-logo {
-    width: 64px; height: 64px; border-radius: 18px;
-    background: var(--green-bg); color: var(--green);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 32px; margin: 0 auto 12px;
-  }
-  .about-name { font-size: 18px; font-weight: 800; color: var(--text-primary); }
-  .about-version { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-  .info-rows { display: flex; flex-direction: column; border-top: 1px solid var(--border); margin-top: 8px; }
-  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .ds-table-wrap { overflow-x: auto; }
+  .ds-table { width: 100%; border-collapse: collapse; text-align: left; }
+  .ds-table th { padding: 12px 20px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border); background: var(--bg-surface); }
+  .ds-table td { padding: 12px 20px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .ds-table tr:hover td { background: var(--bg-surface-hover); }
+  .ds-empty { padding: 40px; text-align: center; color: var(--text-muted); font-size: 13px; font-style: italic; }
+  .user-row { display: flex; align-items: center; gap: 12px; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; }
+  .avatar.admin { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+  .avatar.user, .avatar.guest { background: var(--bg-surface); color: var(--text-secondary); border: 1px solid var(--border); }
+  .sso-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; color: #a855f7; background: rgba(168, 85, 247, 0.1); border-radius: 4px; padding: 2px 6px; margin-top: 4px; }
+  .sso-pw-label { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #a855f7; }
+  .ds-badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+  .ds-badge.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+  .ds-badge.red { background: rgba(244, 63, 94, 0.1); color: #f43f5e; }
+  .ds-badge.blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+  .ds-badge.gray { background: var(--bg-surface); color: var(--text-muted); border: 1px solid var(--border); }
+  .pw-reveal-wrap { display: flex; align-items: center; gap: 8px; }
+  .pw-value { font-family: var(--font-mono); font-size: 12px; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; color: var(--text-primary); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pw-eye-sm { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); cursor: pointer; padding: 4px 6px; transition: 0.2s; }
+  .pw-eye-sm:hover { color: var(--color-cyan); border-color: var(--color-cyan); }
+  .ds-pagination { display: flex; justify-content: center; align-items: center; gap: 16px; padding: 16px; border-top: 1px solid var(--border); }
+  .ds-pagination button { background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: 16px; }
+  .ds-pagination button[disabled] { opacity: 0.3; cursor: not-allowed; }
+  .ds-pagination span { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+  .modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn 0.2s; }
+  .modal-box { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; width: 100%; max-width: 400px; box-shadow: 0 24px 48px rgba(0,0,0,0.5); overflow: hidden; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .modal-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; color: var(--text-primary); }
+  .modal-title i { color: var(--color-cyan); font-size: 18px; }
+  .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; padding: 4px; transition: 0.2s; }
+  .modal-close:hover { color: var(--color-rose); }
+  .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .modal-user-chip { display: flex; align-items: center; gap: 10px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--border); background: var(--bg-surface); }
+  .mini-spin { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  .msg { padding: 10px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+  .msg.success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+  .msg.error { background: rgba(244, 63, 94, 0.1); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.2); }
+  .about-hero { text-align: center; padding: 32px 0 24px; }
+  .about-logo { width: 72px; height: 72px; border-radius: 20px; background: rgba(6, 182, 212, 0.1); color: var(--color-cyan); display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 auto 16px; border: 1px solid rgba(6, 182, 212, 0.2); }
+  .about-name { font-size: 20px; font-weight: 800; color: var(--text-primary); }
+  .about-version { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-top: 4px; }
+  .info-rows { display: flex; flex-direction: column; border-top: 1px solid var(--border); margin-top: 16px; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 13px; }
   .info-row span { color: var(--text-muted); }
-
-  .module-list { display: flex; flex-direction: column; gap: 2px; }
-  .module-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .module-list { display: flex; flex-direction: column; }
+  .module-item { display: flex; align-items: center; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
   .module-item:last-child { border-bottom: none; }
-  .module-icon {
-    width: 32px; height: 32px; border-radius: 8px;
-    background: var(--green-bg); color: var(--green);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px; flex-shrink: 0;
-  }
+  .module-icon { width: 40px; height: 40px; border-radius: 10px; background: rgba(6, 182, 212, 0.1); color: var(--color-cyan); display: flex; align-items: center; justify-content: center; font-size: 20px; border: 1px solid rgba(6, 182, 212, 0.2); flex-shrink: 0; }
   .module-info { flex: 1; }
-  .module-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-  .module-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .module-name { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+  .module-desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 </style>

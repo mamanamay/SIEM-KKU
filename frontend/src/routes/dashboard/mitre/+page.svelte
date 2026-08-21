@@ -1,6 +1,7 @@
-<svelte:head><title>MITRE ATT&CK - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { eventsStore } from '../../../stores/events';
+
+  import { downloadHTML, downloadPDF } from '../../../lib/utils/export';
   $: events = $eventsStore;
 
   // Categorize events by MITRE Tactics & Techniques
@@ -36,13 +37,59 @@
   })();
 
   $: uniqueSources = new Set(events.filter(e => e.type.includes('Scan') || e.type.includes('SQL') || e.type.includes('Brute') || e.type.includes('Command')).map(e => e.ip)).size;
-</script>
 
-<div style="display:flex;flex-direction:column;gap:16px;padding-bottom:2rem;">
-  <div class="ds-card-head" style="margin-bottom: 0;">
-    <div class="ds-card-title"><i class="ti ti-grid-dots"></i> MITRE ATT&CK® Matrix Mapping</div>
-    <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Mapping real-time KKUSIEM alerts to adversary tactics, techniques, and procedures (TTPs).</div>
+  $: mitreExportRows = [
+    { Tactic: 'Reconnaissance', Code: 'T1046/T1595', Events: String(reconEvents.length) },
+    { Tactic: 'Initial Access', Code: 'T1190', Events: String(accessEvents.length) },
+    { Tactic: 'Credential Access', Code: 'T1110', Events: String(credEvents.length) },
+    { Tactic: 'Execution', Code: 'T1059', Events: String(execEvents.length) },
+    { Tactic: 'Command & Control', Code: 'T1043', Events: String(ccEvents.length) },
+  ];
+  const mitreExportCols = ['Tactic', 'Code', 'Events'];
+  
+  let showExportMenu = false;
+  
+  function handleExportPDF() {
+    downloadPDF(mitreExportRows, mitreExportCols, 'mitre-mapping.pdf', 'MITRE ATT&CK® Mapping Report');
+    showExportMenu = false;
+  }
+  function handleExportHTML() {
+    downloadHTML(mitreExportRows, mitreExportCols, 'mitre-mapping.html', 'MITRE ATT&CK® Mapping Report');
+    showExportMenu = false;
+  }
+</script>
+<svelte:head><title>MITRE ATT&CK Matrix - KKUSIEM</title></svelte:head>
+
+<div style="display:flex;flex-direction:column;gap:16px;padding:24px 32px 2rem;max-width:1400px;margin:0 auto;">
+  <!-- Page Header -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div style="width:44px;height:44px;background:rgba(168,85,247,0.12);color:#a855f7;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;">
+        <i class="ti ti-grid-dots"></i>
+      </div>
+      <div>
+        <h1 style="font-size:22px;font-weight:800;color:#0f1117;margin:0 0 4px;">MITRE ATT&amp;CK® Matrix</h1>
+        <p style="font-size:13px;color:#64748b;margin:0;">Mapping real-time KKUSIEM alerts to adversary Tactics, Techniques &amp; Procedures (TTPs)</p>
+      </div>
+    </div>
+    <div style="position:relative;">
+      <button class="btn-outline" on:click={() => showExportMenu = !showExportMenu}
+        style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer;">
+        <i class="ti ti-upload"></i> Export <i class="ti ti-chevron-down" style="font-size:11px;"></i>
+      </button>
+      {#if showExportMenu}
+        <div style="position:absolute;top:calc(100% + 6px);right:0;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.12);z-index:200;min-width:160px;overflow:hidden;" on:mouseleave={() => showExportMenu = false}>
+          <button class="export-option" on:click={handleExportPDF} style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:none;border:none;font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;transition:0.15s;">
+            <i class="ti ti-file-type-pdf" style="color:#ef4444;"></i> PDF Report
+          </button>
+          <button class="export-option" on:click={handleExportHTML} style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:none;border:none;font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;border-top:1px solid var(--border);transition:0.15s;">
+            <i class="ti ti-file-type-html" style="color:#3b82f6;"></i> HTML Report
+          </button>
+        </div>
+      {/if}
+    </div>
   </div>
+
 
   <!-- KPI Summary Cards -->
   <div class="ds-kpi-row">
@@ -272,12 +319,12 @@
   }
   
   .tactic-header {
-    background: rgba(0,0,0,0.15); padding: 15px; 
+    background: var(--bg-secondary); padding: 15px; 
     border-bottom: 1px solid var(--border);
   }
-  .tactic-header h4 { margin: 0 0 5px 0; font-size: 14px; color: var(--text-primary); font-weight: 700; }
+  .tactic-header h4 { margin: 0 0 5px 0; font-size: 14px; color: var(--text-primary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
   .tactic-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 10px; }
-  .tactic-stats { font-size: 11px; color: var(--green); font-weight: 600; display: flex; align-items: center; gap: 4px; }
+  .tactic-stats { font-size: 11px; color: var(--cyan); font-weight: 600; display: flex; align-items: center; gap: 4px; }
 
   .technique-card {
     margin: 12px; padding: 15px; 
@@ -292,13 +339,13 @@
   .technique-card.empty i { font-size: 24px; opacity: 0.5; }
   .technique-card.placeholder { opacity: 0.5; border: 1px dashed var(--border); }
   
-  .technique-card.active { border-left: 3px solid var(--green); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .technique-card.active { border-left: 3px solid var(--blue); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
   .technique-card.active.warning { border-left-color: var(--orange); }
-  .technique-card.active.danger { border-left-color: var(--red); background: rgba(255,51,51,0.02); }
-  .technique-card.active.critical { border-left-color: #ff0000; background: rgba(255,0,0,0.05); border: 1px solid rgba(255,0,0,0.2); border-left: 4px solid #ff0000; }
+  .technique-card.active.danger { border-left-color: var(--red); background: rgba(239,68,68,0.05); }
+  .technique-card.active.critical { border-left-color: var(--red); background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-left: 4px solid var(--red); }
 
-  .t-id { font-size: 11px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; }
-  .t-name { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; line-height: 1.2; }
+  .t-id { font-size: 11px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; font-family: var(--font-mono); }
+  .t-name { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; line-height: 1.2; text-shadow: 0 0 8px currentColor; }
   .t-desc { font-size: 11px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4; }
   
   .t-body { display: flex; flex-direction: column; gap: 12px; }
@@ -307,8 +354,8 @@
 
   .top-attackers { padding-top: 10px; border-top: 1px dashed var(--border); }
   .top-attackers strong { display: block; font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 6px; }
-  .src-ip { font-family: monospace; font-size: 12px; color: var(--text-primary); display: flex; justify-content: space-between; margin-bottom: 4px; background: var(--bg); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); }
-  .hit-count { color: var(--green); font-weight: 600; }
+  .src-ip { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); display: flex; justify-content: space-between; margin-bottom: 4px; background: var(--bg-panel); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); }
+  .hit-count { color: var(--cyan); font-weight: 600; }
   
   .text-muted { color: var(--text-muted); font-size: 11px; }
 

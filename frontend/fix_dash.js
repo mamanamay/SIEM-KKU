@@ -1,0 +1,1 @@
+import fs from "fs"; let c = fs.readFileSync("src/routes/dashboard/+page.svelte", "utf8"); c = c.replace("import { eventsStore } from \"../../stores/events\";", "import { eventsStore } from \"../../stores/events\";\n  import { themeStore } from \"../../stores/theme\";"); fs.writeFileSync("src/routes/dashboard/+page.svelte", c);

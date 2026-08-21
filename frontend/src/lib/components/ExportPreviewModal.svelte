@@ -239,7 +239,7 @@
     z-index: 1000;
   }
   .modal-content {
-    background: var(--bg-panel); border: 1px solid var(--border);
+    background: var(--bg-surface-solid); border: 1px solid var(--border-subtle);
     border-radius: 12px; width: 90%; max-width: 680px;
     box-shadow: var(--shadow-md); overflow: hidden;
     animation: modalSlide 0.2s ease-out;
@@ -252,7 +252,7 @@
   }
   .modal-header {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    padding: 16px 20px; border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
   }
   .btn-close {
@@ -268,8 +268,8 @@
   
   /* Column Selection CSS */
   .column-selection {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 14px;
     margin-bottom: 15px;
@@ -280,24 +280,24 @@
   .col-title { font-size: 12px; font-weight: 700; color: var(--text-primary); }
   .col-actions { display: flex; gap: 8px; }
   .col-action-btn {
-    background: var(--bg-panel); border: 1px solid var(--border); color: var(--text-secondary);
+    background: var(--bg-surface-solid); border: 1px solid var(--border-subtle); color: var(--text-secondary);
     font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 4px; cursor: pointer;
     transition: all 0.2s;
   }
-  .col-action-btn:hover { background: var(--border); color: var(--text-primary); }
+  .col-action-btn:hover { background: var(--border-subtle); color: var(--text-primary); }
   
   .col-grid {
     display: flex; flex-wrap: wrap; gap: 8px;
   }
   .col-checkbox {
     display: inline-flex; align-items: center; gap: 8px;
-    padding: 6px 12px; background: var(--bg-panel); border: 1px solid var(--border);
+    padding: 6px 12px; background: var(--bg-surface-solid); border: 1px solid var(--border-subtle);
     border-radius: 20px; cursor: pointer; user-select: none; transition: all 0.2s;
   }
   .col-checkbox input { display: none; }
   .chk-box {
-    width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center; background: var(--bg-panel);
+    width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: center; background: var(--bg-surface-solid);
     transition: all 0.2s;
   }
   .chk-box i { font-size: 11px; color: transparent; transition: 0.2s; }
@@ -309,22 +309,22 @@
 
   /* IP Filter Dropdown */
   .ip-filter-btn {
-    background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary);
+    background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary);
     padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
     display: flex; align-items: center; gap: 6px; transition: all 0.2s;
   }
   .ip-filter-btn:hover { border-color: var(--green); color: var(--green); }
   .ip-dropdown-menu {
     position: absolute; right: 0; top: 100%; margin-top: 6px; width: 300px; max-height: 320px;
-    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg-surface-solid); border: 1px solid var(--border-subtle); border-radius: 8px;
     box-shadow: var(--shadow-md); z-index: 100; display: flex; flex-direction: column; overflow: hidden;
   }
   .ip-dropdown-header {
-    padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex;
-    background: var(--bg-secondary);
+    padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); display: flex;
+    background: var(--bg-surface);
   }
   .ip-search-input {
-    width: 100%; background: var(--bg-panel); border: 1px solid var(--border);
+    width: 100%; background: var(--bg-surface-solid); border: 1px solid var(--border-subtle);
     color: var(--text-primary); padding: 6px 10px; border-radius: 4px; font-size: 12px;
     outline: none; transition: border-color 0.2s;
   }
@@ -335,11 +335,11 @@
   }
 
   .table-wrap {
-    border: 1px solid var(--border); border-radius: 8px; overflow-x: auto;
+    border: 1px solid var(--border-subtle); border-radius: 8px; overflow-x: auto;
     margin-bottom: 20px; max-height: 250px; overflow-y: auto;
   }
   .preview-table { margin: 0; width: 100%; border-collapse: collapse; }
-  .preview-table th { position: sticky; top: 0; background: var(--bg-secondary); z-index: 10; box-shadow: 0 1px 0 var(--border); }
+  .preview-table th { position: sticky; top: 0; background: var(--bg-surface); z-index: 10; box-shadow: 0 1px 0 var(--border-subtle); }
   .preview-table th, .preview-table td { padding: 8px 12px; font-size: 12px; white-space: nowrap; }
   
   .export-options {
@@ -349,8 +349,8 @@
   .radio-label input { display: none; }
   .radio-box {
     display: flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 12px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--bg-secondary); color: var(--text-secondary);
+    padding: 12px; border: 1px solid var(--border-subtle); border-radius: 8px;
+    background: var(--bg-surface); color: var(--text-secondary);
     font-size: 13px; font-weight: 600; transition: all 0.2s;
   }
   .radio-label input:checked + .radio-box {
@@ -359,7 +359,7 @@
   
   .modal-footer {
     display: flex; justify-content: flex-end; gap: 10px;
-    padding: 16px 20px; border-top: 1px solid var(--border);
-    background: var(--bg-secondary); flex-shrink: 0;
+    padding: 16px 20px; border-top: 1px solid var(--border-subtle);
+    background: var(--bg-surface); flex-shrink: 0;
   }
 </style>

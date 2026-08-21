@@ -1,6 +1,9 @@
+<svelte:head>
+  <title>API History - KKUSIEM</title>
+</svelte:head>
+
 <script lang="ts">
   import { onMount } from 'svelte';
-  import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
   import { formatEventTime } from '../../../lib/formatTime';
 
   // ── State ────────────────────────────────────────────────────────────────────
@@ -74,35 +77,6 @@
     filterMethod = filterStatus = filterPath = filterFrom = filterTo = '';
     fetchLogs(1);
   }
-  
-  import { downloadCSV, downloadPDF } from '../../../lib/utils/export';
-  let showExportModal = false;
-  let showToast = false;
-  function handleExport(e: CustomEvent) {
-    const { format, selectedColumns, filteredData } = e.detail;
-
-    if (format === 'csv') {
-      downloadCSV(filteredData, selectedColumns, 'api_history.csv');
-    } else if (format === 'pdf') {
-      downloadPDF(filteredData, selectedColumns, 'api_history.pdf', 'KKUSIEM - API History Report');
-    } else {
-      window.open('/api/admin/api-logs/export', '_blank');
-    }
-    showExportModal = false;
-    showToast = true;
-    setTimeout(() => showToast = false, 3000);
-  }
-
-  $: fullExportData = (logs || []).map(log => ({
-    "Timestamp": formatEventTime(log.timestamp),
-    "Method": log.method,
-    "Path": log.path,
-    "Status": log.status || log.statusCode,
-    "Duration": formatMs(log.duration_ms || log.duration),
-    "Client IP": log.ip || log.clientIp || '-',
-    "Response Size (Bytes)": log.responseSize || log.contentLength || '-',
-    "User Agent": log.userAgent || '-'
-  }));
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
   function methodClass(m: string) {
@@ -147,9 +121,6 @@
       </div>
       <div class="ds-page-subtitle">ประวัติการเรียก API ทั้งขาเข้าและขาออกของระบบ SIEM</div>
     </div>
-    <button class="ds-btn primary" on:click={() => showExportModal = true}>
-      <i class="ti ti-download"></i> Export Report
-    </button>
   </div>
 
   <!-- ── KPI Stats ───────────────────────────────────────────────────────── -->
@@ -271,9 +242,6 @@
         <i class="ti ti-list-details"></i> รายการ API Requests
         {#if !loading}<span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:8px">พบ {totalCount.toLocaleString()} รายการ</span>{/if}
       </div>
-      <button class="ds-btn primary" on:click={() => showExportModal = true}>
-        <i class="ti ti-download"></i> Export Report
-      </button>
     </div>
 
     {#if error}
@@ -340,20 +308,6 @@
   </div>
 </div>
 
-<ExportPreviewModal 
-  show={showExportModal} 
-  title="ส่งออกประวัติ API" 
-  columns={["Timestamp", "Method", "Path", "Status", "Duration", "Client IP", "Response Size (Bytes)", "User Agent"]}
-  data={fullExportData}
-  ipColumn="Client IP"
-  on:close={() => showExportModal = false}
-  on:confirm={handleExport}
-/>
-
-<div class="toast {showToast ? 'show' : ''}">
-  <i class="ti ti-check" style="color:var(--green)"></i>
-  <span>ส่งออกข้อมูลสำเร็จ</span>
-</div>
 
 <style>
   /* ── Filter Grid ─────────────────────────────── */
