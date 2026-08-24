@@ -1,0 +1,1 @@
+const fs = require('fs'); let c = fs.readFileSync('src/lib/components/AiKeyModal.svelte', 'utf8'); c = c.replace('bind:value={apiKey}', 'value={apiKey} on:input={(e) => apiKey = e.target.value}'); fs.writeFileSync('src/lib/components/AiKeyModal.svelte', c);

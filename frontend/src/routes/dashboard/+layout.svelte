@@ -437,7 +437,7 @@
 /* Base Global Styles based closely on HTML mockup but adapted for Layout */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:global(:root), :global([data-theme="light"]) {
+:global(:root), :global([data-theme="fake-light-removed"]) {
   --bg: #f5f6f7;
   --bg-panel: #ffffff;
   --bg-secondary: #f0f1f3;
@@ -465,7 +465,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :global(:root:not([data-theme="light"])) {
+  :global(:root) {
     --bg: #0f1117;
     --bg-panel: #181b24;
     --bg-secondary: #1f2330;
