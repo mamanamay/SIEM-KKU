@@ -211,7 +211,7 @@
   .admin-tools { display: flex; align-items: center; gap: 15px; }
   
   .btn-primary {
-    background: var(--accent); color: #000; border: none; padding: 8px 16px; border-radius: 6px;
+    background: var(--accent); color: var(--text-primary); border: none; padding: 8px 16px; border-radius: 6px;
     font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;
     transition: 0.2s; box-shadow: 0 4px 10px rgba(0,212,255,0.3);
   }
@@ -237,7 +237,7 @@
   .tab-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
   .tab-btn.active { background: rgba(0,212,255,0.15); color: var(--accent); border: 1px solid rgba(0,212,255,0.3); }
   .tab-badge { background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 12px; font-size: 11px; }
-  .tab-btn.active .tab-badge { background: var(--accent); color: #000; }
+  .tab-btn.active .tab-badge { background: var(--accent); color: var(--text-primary); }
 
   /* Table */
   .data-panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 0; box-shadow: var(--shadow-sm); overflow: hidden; }
@@ -264,7 +264,7 @@
   .pagination { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(0,0,0,0.1); border-top: 1px solid var(--border); }
   .page-btn { cursor: pointer; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; transition: 0.2s; }
   .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .page-btn:not(:disabled):hover { background: var(--accent); color: #000; border-color: var(--accent); }
+  .page-btn:not(:disabled):hover { background: var(--accent); color: var(--text-primary); border-color: var(--accent); }
 
   /* Modal */
   .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; }
@@ -325,7 +325,7 @@
         {#each ['ALL', 'LAN', 'WiFi', 'Server', 'FTTX', 'Eduroam'] as t}
           <button on:click={() => selectedType = t} 
                   class="badge" 
-                  style="cursor:pointer; transition:0.2s; {selectedType === t ? 'background:var(--accent); color:#000; border-color:var(--accent);' : ''}">
+                  style="cursor:pointer; transition:0.2s; {selectedType === t ? 'background:var(--accent); color: var(--text-primary); border-color:var(--accent);' : ''}">
             {t}
           </button>
         {/each}

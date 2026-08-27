@@ -240,7 +240,7 @@
 </div>
 
 <style>
-  .soar-triage { display: flex; height: 100%; width: 100%; background: #030711; font-family: 'Inter', sans-serif; color: #e8eaf0; overflow: hidden; }
+  .soar-triage { display: flex; height: 100%; width: 100%; background: #030711; font-family: 'Inter', sans-serif; color: var(--text-primary); overflow: hidden; }
   
   /* COL 1 */
   .col-list { width: 320px; background: var(--bg-panel, #181b24); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }

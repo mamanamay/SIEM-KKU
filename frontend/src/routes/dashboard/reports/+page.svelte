@@ -132,7 +132,7 @@
   .reports-page { padding: 24px; max-width: 1200px; margin: 0 auto; }
   .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; display: inline-block; }
   .btn-primary { 
-    background: var(--cyan); color: #000; border: none; padding: 10px 16px; 
+    background: var(--cyan); color: var(--text-primary); border: none; padding: 10px 16px; 
     border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s;
   }
   .btn-primary:hover { filter: brightness(1.1); box-shadow: 0 0 10px rgba(0,212,255,0.3); }

@@ -168,5 +168,5 @@
     background: var(--bg-panel, #0f172a); color: var(--text-primary);
   }
   .ds-btn:hover { filter: brightness(1.2); }
-  .ds-btn.primary { background: var(--cyan, #00d4ff); color: #000; border: none; }
+  .ds-btn.primary { background: var(--cyan, #00d4ff); color: var(--text-primary); border: none; }
 </style>

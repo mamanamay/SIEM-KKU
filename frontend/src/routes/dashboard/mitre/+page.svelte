@@ -64,7 +64,7 @@
   <!-- Header -->
   <div class="header-row">
     <div>
-      <h1 class="page-title">MITRE ATT&CK® Enterprise Matrix</h1>
+      <h1 class="page-title">MITRE ATT&CKï¿½ Enterprise Matrix</h1>
       <p class="page-sub">Mapping observed threat events to the globally accessible knowledge base of adversary tactics and techniques.</p>
     </div>
     <div style="display:flex; gap:12px;">
@@ -125,7 +125,7 @@
 </div>
 
 <style>
-  .mitre-page { display: flex; flex-direction: column; height: 100%; padding: 24px; gap: 24px; overflow: hidden; font-family: 'Inter', sans-serif; color: #e8eaf0; }
+  .mitre-page { display: flex; flex-direction: column; height: 100%; padding: 24px; gap: 24px; overflow: hidden; font-family: 'Inter', sans-serif; color: var(--text-primary); }
   
   .header-row { display: flex; justify-content: space-between; align-items: flex-end; flex-shrink: 0; }
   .page-title { margin: 0; font-size: 24px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }

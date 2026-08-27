@@ -285,7 +285,7 @@
             
             <div class="dropdown-header" style="padding: 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border);">
               <div style="display: flex; align-items: center; gap: 12px;">
-                <div class="avatar" style="width: 40px; height: 40px; border-radius: 50%; background: var(--color-cyan); color: #000; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">N</div>
+                <div class="avatar" style="width: 40px; height: 40px; border-radius: 50%; background: var(--color-cyan); color: var(--text-primary); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">N</div>
                 <div style="overflow: hidden;">
                   <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">นภัสวรรณ ชัยบาล</div>
                   <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">napatwan.c@kkumail.com</div>
@@ -978,7 +978,7 @@
 
 .profile-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; text-align: left; transition: 0.2s; }
 .profile-btn:hover { background: var(--border); }
-.profile-btn .avatar { width: 32px; height: 32px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; border: 1px solid var(--border); }
+.profile-btn .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--bg-panel); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; border: 1px solid var(--border); }
 .profile-info { display: flex; flex-direction: column; overflow: hidden; }
 .p-name { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .p-role { font-size: 11px; color: var(--text-muted); }

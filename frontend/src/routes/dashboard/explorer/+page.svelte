@@ -162,7 +162,7 @@
   .kql-input::placeholder { color: rgba(255,255,255,0.2); }
   
   .kql-date-picker {
-    background: rgba(255,255,255,0.05); border: none; border-left: 1px solid var(--border); color: #e8eaf0; padding: 0 16px; outline: none; cursor: pointer; font-size: 13px; font-weight: 600;
+    background: rgba(255,255,255,0.05); border: none; border-left: 1px solid var(--border); color: var(--text-primary); padding: 0 16px; outline: none; cursor: pointer; font-size: 13px; font-weight: 600;
   }
   .btn-search {
     background: #3b82f6; color: white; border: none; padding: 0 24px; font-weight: 700; font-size: 14px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center;
@@ -189,7 +189,7 @@
     position: sticky; top: 0; background: rgba(15,23,42,0.95); backdrop-filter: blur(4px); color: var(--text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 24px; border-bottom: 1px solid var(--border); z-index: 10;
   }
   .kql-table td {
-    padding: 12px 24px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; color: #e8eaf0;
+    padding: 12px 24px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; color: var(--text-primary);
   }
   .kql-table tr:hover td { background: rgba(255,255,255,0.02); }
   

@@ -132,7 +132,7 @@
   .icon-box { font-size: 20px; }
   
   /* A4 Preview Style */
-  .a4-preview { width: 100%; aspect-ratio: 1 / 1.414; background: white; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); overflow: hidden; display: flex; flex-direction: column; font-family: 'Times New Roman', serif; color: #000; transform-origin: top center; transform: scale(0.85); }
+  .a4-preview { width: 100%; aspect-ratio: 1 / 1.414; background: white; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); overflow: hidden; display: flex; flex-direction: column; font-family: 'Times New Roman', serif; color: var(--text-primary); transform-origin: top center; transform: scale(0.85); }
     .a4-header { padding: 24px; background: #1e293b; color: white; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #10b981; }
     .a4-header h1 { font-size: 16px; margin: 0; font-family: 'Arial', sans-serif; }
     .a4-badge { font-size: 8px; padding: 4px 8px; background: #ef4444; color: white; font-weight: bold; border-radius: 2px; }

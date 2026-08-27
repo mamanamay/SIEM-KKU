@@ -168,7 +168,7 @@
 .term-input-wrap input::placeholder { color: rgba(16, 185, 129, 0.3); }
 
 .bento-btn { background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-main); padding: 8px 16px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; }
-.bento-btn.glow-cyan { color: #000; background: var(--color-cyan); border-color: var(--color-cyan); padding: 14px 32px; font-size: 14px; font-weight: 800; font-family: var(--font-mono); border-radius: 6px; }
+.bento-btn.glow-cyan { color: var(--text-primary); background: var(--color-cyan); border-color: var(--color-cyan); padding: 14px 32px; font-size: 14px; font-weight: 800; font-family: var(--font-mono); border-radius: 6px; }
 .bento-btn.glow-cyan:hover:not([disabled]) { box-shadow: 0 0 24px var(--glow-cyan); filter: brightness(1.2); }
 .bento-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 

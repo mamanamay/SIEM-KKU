@@ -465,14 +465,14 @@
   .form-hint-block code { font-family: 'Inter', monospace; background: #f1f4f8; padding: 1px 5px; border-radius: 4px; font-size: 11px; }
   .form-input {
     padding: 9px 13px; font-size: 13px; border: 1px solid var(--acc-border);
-    border-radius: 8px; background: #fff; color: var(--acc-text);
+    border-radius: 8px; background: var(--bg-panel); color: var(--acc-text);
     outline: none; transition: border-color 0.18s; font-family: inherit; width: 100%;
   }
   .form-input:focus { border-color: var(--acc-accent); box-shadow: 0 0 0 3px rgba(29,158,117,0.1); }
   .form-input.disabled { background: #f8f9fb; color: var(--acc-muted); cursor: not-allowed; }
   .form-select {
     padding: 9px 13px; font-size: 13px; border: 1px solid var(--acc-border);
-    border-radius: 8px; background: #fff; color: var(--acc-text);
+    border-radius: 8px; background: var(--bg-panel); color: var(--acc-text);
     outline: none; font-family: inherit; cursor: pointer; width: 100%;
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -526,7 +526,7 @@
     border-radius: 99px; border: 1px solid; white-space: nowrap;
   }
   .badge.green { background: var(--acc-accent-bg); color: var(--acc-accent); border-color: rgba(29,158,117,0.3); }
-  .badge.gray { background: #f1f4f8; color: #6b7280; border-color: #e5e9f0; }
+  .badge.gray { background: #f1f4f8; color: var(--text-secondary); border-color: #e5e9f0; }
   .badge.blue { background: var(--acc-blue-bg); color: var(--acc-blue); border-color: rgba(59,130,246,0.3); }
   .badge.orange { background: var(--acc-orange-bg); color: var(--acc-orange); border-color: rgba(234,88,12,0.3); }
   .badge-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -559,7 +559,7 @@
   /* Sub-tabs */
   .sub-tabs { display: flex; gap: 4px; background: #f1f4f8; border: 1px solid var(--acc-border); border-radius: 8px; padding: 4px; margin-bottom: 12px; width: fit-content; }
   .sub-tab { padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 6px; border: none; background: none; cursor: pointer; color: var(--acc-text-2); transition: all 0.16s; }
-  .sub-tab.active { background: #fff; color: var(--acc-accent); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .sub-tab.active { background: var(--bg-panel); color: var(--acc-accent); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
   /* Method Card */
   .method-card { padding: 20px 24px; }
@@ -575,7 +575,7 @@
   .method-note { font-size: 11px; color: var(--acc-muted); line-height: 1.5; }
   .method-status { flex-shrink: 0; }
   .method-status-col { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
-  .btn-dots { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--acc-border); background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; color: var(--acc-muted); }
+  .btn-dots { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--acc-border); background: var(--bg-panel); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; color: var(--acc-muted); }
   .btn-dots:hover { background: #f1f4f8; color: var(--acc-text); }
 
   /* Device Card */
@@ -613,9 +613,9 @@
   :global([data-theme="dark"]) .acc-page { --acc-text: #e8eaf0; --acc-text-2: #8b95a8; --acc-muted: #5a6478; --acc-border: rgba(255,255,255,0.08); --acc-card: #181b24; }
   :global([data-theme="dark"]) .acc-title,
   :global([data-theme="dark"]) .device-name,
-  :global([data-theme="dark"]) .method-name { color: #e8eaf0; }
+  :global([data-theme="dark"]) .method-name { color: var(--text-primary); }
   :global([data-theme="dark"]) .form-input,
-  :global([data-theme="dark"]) .form-select { background: #1f2330; color: #e8eaf0; border-color: rgba(255,255,255,0.1); }
+  :global([data-theme="dark"]) .form-select { background: #1f2330; color: var(--text-primary); border-color: rgba(255,255,255,0.1); }
   :global([data-theme="dark"]) .btn-local-login,
   :global([data-theme="dark"]) .btn-dots { background: #1f2330; border-color: rgba(255,255,255,0.1); color: #8b95a8; }
   :global([data-theme="dark"]) .acc-nav-item:hover { background: rgba(255,255,255,0.05); }

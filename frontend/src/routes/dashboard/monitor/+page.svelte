@@ -1,9 +1,9 @@
 <svelte:head><title>Threat Monitor - KKUSIEM</title></svelte:head>
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import { eventsStore } from '../../../stores/events';
-  import ExportPreviewModal from '../../../lib/components/ExportPreviewModal.svelte';
-  import AiAnalysisBlock from '$lib/components/AiAnalysisBlock.svelte';
-  import { downloadCSV, downloadPDF } from '../../../lib/utils/export';
+  import ExportReportBtn from '../../../lib/components/ExportReportBtn.svelte';
+  import AiAnalysisBlock from '../../../lib/components/AiAnalysisBlock.svelte';
 
   // Toggle mode
   let mode: 'logs' | 'alerts' = 'alerts'; // 'logs' = All logs, 'alerts' = High/Critical
@@ -88,26 +88,8 @@
 
   $: displayTime = selectedRange === 'all' ? "ทั้งหมด (All Time)" : formatDate(timeLimit) + " - " + formatDate(Date.now());
 
-  // Export
-  let showExportModal = false;
-  let showToast = false;
-  function handleExport(e: any) {
-    const { format, selectedColumns, filteredData } = e.detail;
-    const title = mode === 'alerts' ? 'Critical Alerts Report' : 'Security Logs Report';
-    const filename = mode === 'alerts' ? 'alert_logs' : 'security_logs';
-
-    if (format === 'csv') {
-      downloadCSV(filteredData, selectedColumns, `${filename}.csv`);
-    } else if (format === 'pdf') {
-      downloadPDF(filteredData, selectedColumns, `${filename}.pdf`, `KKUSIEM - ${title}`);
-    }
-    
-    showExportModal = false;
-    showToast = true;
-    setTimeout(() => showToast = false, 3000);
-  }
-
-  $: fullExportData = (filteredEvents || []).map(event => ({
+  // Export data (for ExportReportBtn - same format as other pages)
+  $: exportData = filteredEvents.map(event => ({
     "Time": event.time || event.timeStr || formatDate(event.createdAt),
     "Source IP": event.ip,
     "Country": event.country || 'Unknown',
@@ -116,7 +98,12 @@
     "Status": event.status || 'NEW',
     "Target/Destination": event.path || 'Internal Network'
   }));
+
+  const exportColumns = ["Time", "Source IP", "Country", "Event Type", "Severity", "Status", "Target/Destination"];
 </script>
+
+
+
 
 <div class="monitor-page">
   <!-- Header & Mode Toggle -->
@@ -138,13 +125,19 @@
       </div>
     </div>
     
-    <div style="display: flex; gap: 8px;">
+    <div style="display: flex; gap: 8px; align-items: center;">
       <button class="ds-btn" on:click={refreshLogs} disabled={isRefreshing}>
         <i class="ti ti-refresh" style={isRefreshing ? 'animation: spin 0.6s linear infinite;' : ''}></i>
         {isRefreshing ? 'Refreshing...' : 'Refresh'}
       </button>
-      <button class="ds-btn primary" on:click={() => showExportModal = true}><i class="ti ti-download"></i> Export Report</button>
+      <ExportReportBtn
+        data={exportData}
+        columns={exportColumns}
+        title={mode === 'alerts' ? 'Critical Alerts Report' : 'Security Logs Report'}
+        filename={mode === 'alerts' ? 'alert-logs' : 'security-logs'}
+      />
     </div>
+
   </div>
   
   <div style="font-size:12px;color:var(--text-muted); padding: 0 16px;">
@@ -219,9 +212,9 @@
             {/if}
 
             <td style="text-align:right;">
-              <a href="/dashboard/soar?ip={event.ip}&time={event.createdAt || event.timestamp || event.time}" class="ds-btn sm" on:click|stopPropagation>
+              <button class="ds-btn sm" on:click|stopPropagation={() => goto(`/dashboard/soar?ip=${event.ip}&time=${event.createdAt || event.timestamp || event.time}`)}>
                 <i class="ti ti-zoom-in"></i> Investigate
-              </a>
+              </button>
             </td>
           </tr>
           {#if expandedRows.has(i)}
@@ -266,20 +259,7 @@
   </div>
 </div>
 
-<ExportPreviewModal 
-  show={showExportModal} 
-  title={mode === 'alerts' ? "Critical Alerts" : "Security Logs"} 
-  columns={["Time", "Source IP", "Country", "Event Type", "Severity", "Status", "Target/Destination"]}
-  data={fullExportData}
-  ipColumn="Source IP"
-  on:close={() => showExportModal = false}
-  on:confirm={handleExport}
-/>
 
-<div class="toast {showToast ? 'show' : ''}">
-  <i class="ti ti-check" style="color:var(--green)"></i>
-  <span>Export Successful</span>
-</div>
 
 <style>
 .monitor-page {

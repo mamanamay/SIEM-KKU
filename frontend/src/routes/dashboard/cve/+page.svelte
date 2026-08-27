@@ -200,7 +200,7 @@ Affected: ${affected.join(', ')}`;
     flex: 1; background: transparent; border: none; color: #ffffff; font-size: 15px; outline: none;
   }
   .btn-search {
-    background: #00d4ff; color: #000; border: none; padding: 10px 24px; border-radius: 6px;
+    background: #00d4ff; color: var(--text-primary); border: none; padding: 10px 24px; border-radius: 6px;
     font-size: 14px; font-weight: 800; cursor: pointer; transition: 0.2s; box-shadow: 0 0 10px rgba(0,212,255,0.4);
   }
   .btn-search:hover { filter: brightness(1.2); }
@@ -229,7 +229,7 @@ Affected: ${affected.join(', ')}`;
   .vector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
   .v-box { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 10px; border-radius: 8px; text-align: center; }
   .v-box-lbl { font-size: 9px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; }
-  .v-box-val { font-size: 12px; font-weight: 700; color: #e8eaf0; }
+  .v-box-val { font-size: 12px; font-weight: 700; color: var(--text-primary); }
   .v-box.danger .v-box-val { color: #ef4444; }
 
   .brief-section-title { font-size: 13px; font-weight: 800; color: #a855f7; text-transform: uppercase; letter-spacing: 0.1em; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }

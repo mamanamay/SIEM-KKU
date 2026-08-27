@@ -267,7 +267,7 @@
   /* Buttons */
   .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
   .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-primary); }
-  .btn-primary { background: var(--color-cyan, #22d3ee); color: #000; }
+  .btn-primary { background: var(--color-cyan, #22d3ee); color: var(--text-primary); }
   .btn-primary:hover { background: #06b6d4; }
   .btn-sm { display: inline-flex; align-items: center; justify-content: center; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; text-decoration: none; }
 
