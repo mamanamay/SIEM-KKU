@@ -1,670 +1,994 @@
-<svelte:head><title>System Settings - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { roleStore, usernameStore } from '../../../stores/events';
-  import { get } from 'svelte/store';
+  import { roleStore } from '../../../stores/events';
 
-  let activeTab = 'account';
-  let isSaving = false;
+  let activeTab = 'users';
 
-  // Modals
-  let show2FAModal = false;
-  let showConfirmModal = false;
-  let confirmAction: Function | null = null;
-  let confirmTitle = '';
-  let confirmDesc = '';
-  let confirmDanger = false;
+  // === User Management State ===
+  let users: any[] = [];
+  let newUsername = '';
+  let newPassword = '';
+  let newRole = 'guest';
+  let newIsSso = false;
+  let showNewPassword = false;
+  let userMsg = '';
+  let userErr = '';
+  let userLoading = false;
 
-  // Account
-    let webhookConfig = { slackUrl: "", teamsUrl: "", lineToken: "" };
-  let showBackupModal = false;
-  let generatedBackupCodes = [];
-  let accountForm = { firstname: '', lastname: '', email: 'admin@kku.ac.th' };
+  // Password visibility per-user (map of username -> boolean)
+  let visiblePasswords: Record<string, boolean> = {};
+
+  // === Edit Password Modal ===
+  let editModal: { open: boolean; username: string; newPw: string; showPw: boolean; loading: boolean; msg: string; err: string } = {
+    open: false, username: '', newPw: '', showPw: false, loading: false, msg: '', err: ''
+  };
+
+  // === Login Audit State ===
+  let sessions: any[] = [];
+  let sessionLoading = true;
+  let currentPage = 1;
+  const itemsPerPage = 20;
+  let sessionFilter = '';
+
+  // === System Config State ===
+  let sessionTimeout = 60;
+  let enableToastNotify = true;
+  let enableSoundAlert = false;
+  let configSaved = false;
+  let cfgScorecardUrl = '';
+  let cfgScorecardKey = '';
+  let cfgIpSyncUrl = '';
+  let cfgIpSyncKey = '';
+  let cfgGeminiKey = '';
+
   onMount(() => {
-    const name = get(usernameStore) || 'System Admin';
-    const parts = name.split(' ');
-    accountForm.firstname = parts[0];
-    accountForm.lastname = parts.slice(1).join(' ');
+    if ($roleStore !== 'admin') return;
+    loadUsers();
+    loadSessions();
+    loadConfig();
   });
 
-  function saveProfile() {
-    isSaving = true;
-    setTimeout(() => {
-      const fullName = `${accountForm.firstname} ${accountForm.lastname}`.trim();
-      usernameStore.set(fullName);
-      isSaving = false;
-      alert('Profile updated! New reports will use this name.');
-    }, 500);
-  }
-
-  // 2FA
-  let twoFactorEnabled = false;
-  let code2fa = ['', '', '', '', '', ''];
-  
-  function handle2FAInput(e: any, index: number) {
-    const val = e.target.value.replace(/\D/g, '');
-    code2fa[index] = val.slice(0, 1);
-    if (val && index < 5) {
-      document.getElementById('mfa-' + (index + 1))?.focus();
-    }
-  }
-  function handle2FAKeyDown(e: KeyboardEvent, index: number) {
-    if (e.key === 'Backspace' && !code2fa[index] && index > 0) {
-      document.getElementById('mfa-' + (index - 1))?.focus();
-    }
-  }
-    let qrCodeData = '';
-  let setupMessage = '';
-  let mfaSecret = '';
-
-  async function start2FASetup() {
-    isSaving = true;
-    setupMessage = '';
-    const un = localStorage.getItem('username') || 'admin';
+  // ---------- User Management ----------
+  async function loadUsers() {
+    userLoading = true;
     try {
-      // 1. Init 2FA (Sets pre_auth_token cookie)
-      const resInit = await fetch(`/api/auth/users/${un}/init-2fa`, { method: 'POST' });
-      if (!resInit.ok) throw new Error('Failed to init 2FA');
-
-      // 2. Get QR Code
-      const resSetup = await fetch('/api/auth/2fa/setup', { method: 'POST' });
-      if (!resSetup.ok) throw new Error('Failed to load QR Code');
-      const setupData = await resSetup.json();
-      
-      qrCodeData = setupData.qrCodeDataUrl;
-      mfaSecret = setupData.secret;
-      show2FAModal = true;
-    } catch(err: any) {
-      alert('Error: ' + err.message);
-    }
-    isSaving = false;
+      const res = await fetch('/api/auth/users');
+      if (res.ok) users = await res.json();
+    } catch(e) {}
+    userLoading = false;
   }
 
-  async function verify2FA() {
-    isSaving = true;
-    const code = code2fa.join('');
+  async function createUser() {
+    userMsg = ''; userErr = '';
+    if (!newUsername.trim()) { userErr = 'กรุณากรอก Username'; return; }
+    if (!newIsSso && !newPassword.trim()) { userErr = 'กรุณากรอก Password'; return; }
     try {
-      const res = await fetch('/api/auth/2fa/setup/confirm', {
+      const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code })
+        body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole, isSso: newIsSso })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Invalid code');
-      
-      twoFactorEnabled = true;
-      show2FAModal = false;
-      code2fa = ['', '', '', '', '', ''];
-      
-      if (data.backupCodes && data.backupCodes.length > 0) {
-        generatedBackupCodes = data.backupCodes;
-        showBackupModal = true;
+      if (res.ok) {
+        userMsg = `✓ สร้างบัญชี "${newUsername}" สำเร็จ`;
+        newUsername = ''; newPassword = ''; newRole = 'guest'; showNewPassword = false; newIsSso = false;
+        await loadUsers();
       } else {
-        alert('2FA Enabled successfully!');
+        userErr = data.message || 'เกิดข้อผิดพลาด';
       }
-    } catch(err: any) {
-      alert('Error verifying code: ' + err.message);
-      code2fa = ['', '', '', '', '', ''];
-      document.getElementById('mfa-0')?.focus();
-    }
-    isSaving = false;
+    } catch(e) { userErr = 'Network error'; }
   }
 
-  async function disable2FA() {
-    if(!confirm('Are you sure you want to disable 2FA? This reduces your account security.')) return;
-    const un = localStorage.getItem('username') || 'admin';
+  async function deleteUser(username: string) {
+    if (!confirm(`ยืนยันการลบบัญชี "${username}" ?`)) return;
     try {
-      const res = await fetch(`/api/auth/users/${un}/disable-2fa`, { method: 'POST' });
-      if(res.ok) {
-        twoFactorEnabled = false;
-        alert('2FA has been disabled.');
-      }
-    } catch(err: any) {
-      alert('Failed to disable 2FA');
+      const res = await fetch(`/api/auth/users/${username}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) { await loadUsers(); }
+      else { alert(data.message || 'ไม่สามารถลบได้'); }
+    } catch(e) { alert('Network error'); }
+  }
+
+  function togglePasswordVisibility(username: string) {
+    visiblePasswords = { ...visiblePasswords, [username]: !visiblePasswords[username] };
+  }
+
+  // ── Edit Password Modal ──
+  function openEditModal(username: string) {
+    editModal = { open: true, username, newPw: '', showPw: false, loading: false, msg: '', err: '' };
+  }
+  function closeEditModal() {
+    editModal = { ...editModal, open: false };
+  }
+  async function submitPasswordChange() {
+    editModal.msg = ''; editModal.err = '';
+    if (!editModal.newPw.trim() || editModal.newPw.length < 4) {
+      editModal.err = 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร'; return;
     }
+    editModal.loading = true;
+    try {
+      const res = await fetch(`/api/auth/users/${editModal.username}/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: editModal.newPw })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        editModal.msg = data.message;
+        await loadUsers();
+        setTimeout(() => closeEditModal(), 1500);
+      } else {
+        editModal.err = data.message || 'เกิดข้อผิดพลาด';
+      }
+    } catch(e) { editModal.err = 'Network error'; }
+    editModal.loading = false;
   }
 
-  // System Configs
-  let sysConfig = {
-    retentionDays: 90,
-    criticalThreshold: 85,
-    autoBlockEnabled: true,
-    alertEmail: 'soc@kku.ac.th',
-    autoLogout: 30
-  };
-
-  function promptSaveConfig() {
-    confirmTitle = 'Save System Configurations?';
-    confirmDesc = 'These changes will affect how incidents are scored and retained across the platform.';
-    confirmDanger = false;
-    confirmAction = () => {
-      isSaving = true;
-      setTimeout(() => { isSaving = false; showConfirmModal = false; }, 600);
-    };
-    showConfirmModal = true;
+  // ---------- Login Audit ----------
+  async function loadSessions() {
+    sessionLoading = true;
+    try {
+      const res = await fetch('/api/auth/sessions');
+      if (res.ok) sessions = await res.json();
+    } catch(e) {}
+    sessionLoading = false;
+    currentPage = 1;
   }
 
-  // API Configs
-  let apiConfig = {
-    aiKey: 'kku-ai-secret-xyz-789',
-    scorecardKey: 'sec-scorecard-live-112',
-    networkMapApi: 'https://api.map.kku.ac.th/v1',
-    aiApiUrl: '',
-    scorecardApiUrl: ''
-  };
+  $: filteredSessions = sessions.filter(s =>
+    !sessionFilter || s.username.toLowerCase().includes(sessionFilter.toLowerCase()) || s.ipAddress?.includes(sessionFilter)
+  );
+  $: totalPages = Math.max(1, Math.ceil(filteredSessions.length / itemsPerPage));
+  $: {
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+  }
+  $: pagedSessions = filteredSessions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  function promptSaveApi() {
-    confirmTitle = 'Update API Integrations?';
-    confirmDesc = 'These keys grant access to external KKU AI and mapping services.';
-    confirmDanger = false;
-    confirmAction = () => {
-      isSaving = true;
-      setTimeout(() => { isSaving = false; showConfirmModal = false; }, 600);
-    };
-    showConfirmModal = true;
+  // ---------- System Config ----------
+  function loadConfig() {
+    sessionTimeout = parseInt(localStorage.getItem('cfg_session_timeout') || '60');
+    enableToastNotify = localStorage.getItem('cfg_toast') !== 'false';
+    enableSoundAlert = localStorage.getItem('cfg_sound') === 'true';
+    cfgScorecardUrl = localStorage.getItem('cfg_scorecard_url') || 'https://10.101.118.184:4333/dashboard';
+    cfgScorecardKey = localStorage.getItem('cfg_scorecard_key') || '4c25eebe1323386cca6319b3b4516d3f';
+    cfgIpSyncUrl = localStorage.getItem('cfg_ip_sync_url') || '';
+    cfgIpSyncKey = localStorage.getItem('cfg_ip_sync_key') || '';
+    cfgGeminiKey = localStorage.getItem('cfg_gemini_key') || '';
+  }
+  function saveConfig() {
+    localStorage.setItem('cfg_session_timeout', sessionTimeout.toString());
+    localStorage.setItem('cfg_toast', enableToastNotify.toString());
+    localStorage.setItem('cfg_sound', enableSoundAlert.toString());
+    localStorage.setItem('cfg_scorecard_url', cfgScorecardUrl);
+    localStorage.setItem('cfg_scorecard_key', cfgScorecardKey);
+    localStorage.setItem('cfg_ip_sync_url', cfgIpSyncUrl);
+    localStorage.setItem('cfg_ip_sync_key', cfgIpSyncKey);
+    localStorage.setItem('cfg_gemini_key', cfgGeminiKey);
+    configSaved = true;
+    setTimeout(() => configSaved = false, 3000);
   }
 
-  // User Management
-  let usersList = [
-    { id: 1, name: 'Admin User', role: 'ADMIN', lastLogin: 'Just now', status: 'Active', type: 'Normal' },
-    { id: 2, name: 'SOC Analyst', role: 'ANALYST', lastLogin: '2 hours ago', status: 'Active', type: 'KKU SSO' },
-    { id: 3, name: 'Guest Viewer', role: 'VIEWER', lastLogin: '5 days ago', status: 'Inactive', type: 'Normal' }
-  ];
-  
-  let newUser = { ssoWhitelist: false, username: '', password: '', role: 'VIEWER' };
-
-  function promptDeleteUser(user: any) {
-    confirmTitle = `Remove User ${user.name}?`;
-    confirmDesc = `Are you sure you want to permanently delete this user? They will lose access to KKUSIEM immediately.`;
-    confirmDanger = true;
-    confirmAction = () => {
-      isSaving = true;
-      setTimeout(() => {
-        usersList = usersList.filter(u => u.id !== user.id);
-        isSaving = false;
-        showConfirmModal = false;
-      }, 500);
-    };
-    showConfirmModal = true;
-  }
-
-  function createUser() {
-    if(!newUser.username) return alert('Username is required');
-    usersList = [...usersList, {
-      id: Date.now(),
-      name: newUser.username.split('@')[0],
-      role: newUser.role,
-      lastLogin: 'Never',
-      status: 'Active',
-      type: newUser.ssoWhitelist ? 'KKU SSO' : 'Normal'
-    }];
-    newUser = { ssoWhitelist: false, username: '', password: '', role: 'VIEWER' };
-    alert('User account created successfully!');
-  }
-
-  // Audit Trail
-  let auditLogs = [
-    { id: 'AD-991', user: 'Admin User', action: 'Modified System Config', resource: 'Thresholds', status: 'SUCCESS', ip: '10.0.0.5', time: new Date().toISOString(), type: 'Normal' },
-    { id: 'AD-990', user: 'SOC Analyst', action: 'Executed Playbook', resource: 'Block IP', status: 'SUCCESS', ip: '10.0.0.12', time: new Date(Date.now() - 3600000).toISOString(), type: 'KKU SSO' },
-    { id: 'AD-989', user: 'Unknown', action: 'Failed Login', resource: 'Authentication', status: 'FAILED', ip: '112.54.33.2', time: new Date(Date.now() - 7200000).toISOString(), type: 'Normal' }
+  const tabs = [
+    { id: 'users',  label: 'User Management', icon: 'ti-users' },
+    { id: 'audit',  label: 'Login Audit',      icon: 'ti-history' },
+    { id: 'config', label: 'System Config',    icon: 'ti-adjustments' },
+    { id: 'about',  label: 'About System',     icon: 'ti-info-circle' },
   ];
 </script>
 
-<div class="settings-page">
-  <div class="st-sidebar">
-    <h2><i class="ti ti-settings"></i> Settings</h2>
-    <div class="st-nav">
-      <button class:active={activeTab === 'account'} on:click={() => activeTab = 'account'}><i class="ti ti-user"></i> My Account</button>
-      <button class:active={activeTab === 'system'} on:click={() => activeTab = 'system'}><i class="ti ti-server"></i> System Configs</button>
-      <button class:active={activeTab === 'api'} on:click={() => activeTab = 'api'}><i class="ti ti-api-app"></i> Configure API</button>
-      <button class:active={activeTab === 'users'} on:click={() => activeTab = 'users'}><i class="ti ti-users"></i> Users & SSO</button>
-      <button class:active={activeTab === 'audit'} on:click={() => activeTab = 'audit'}><i class="ti ti-clipboard-list"></i> Audit Trail</button>
+<svelte:head>
+  <title>KKUSIEM</title>
+</svelte:head>
+
+<div class="ds-page">
+  <!-- Page Header -->
+  <div class="ds-page-header">
+    <div>
+      <h1 class="ds-page-title"><i class="ti ti-settings"></i> System Settings</h1>
+      <div class="ds-page-subtitle">Administration panel — accessible by Admin only</div>
     </div>
   </div>
 
-  <div class="st-content custom-scrollbar">
-    
-    {#if activeTab === 'account'}
-      <div class="st-panel">
-        <div class="panel-head">
-          <h3>Profile Details</h3>
-          <p>Your personal information and report display name.</p>
-        </div>
-        <div class="panel-body">
-          <div class="form-grid">
-            <div class="form-group">
-              <label>First Name</label>
-              <input type="text" class="st-input" bind:value={accountForm.firstname} />
-            </div>
-            <div class="form-group">
-              <label>Last Name</label>
-              <input type="text" class="st-input" bind:value={accountForm.lastname} />
-            </div>
-            <div class="form-group">
-              <label>Email Address</label>
-              <input type="email" class="st-input" bind:value={accountForm.email} />
-            </div>
-          </div>
-          <div style="margin-top: 24px;">
-            <button class="st-btn primary" on:click={saveProfile} disabled={isSaving}>
-              {#if isSaving}<i class="ti ti-loader ti-spin"></i>{:else}<i class="ti ti-device-floppy"></i>{/if} Save Profile
-            </button>
-          </div>
-        </div>
-      </div>
+  {#if $roleStore !== 'admin'}
+    <div class="ds-card" style="text-align:center; padding: 5rem 2rem;">
+      <i class="ti ti-lock" style="font-size:3.5rem; color: var(--red); display:block; margin-bottom:1rem;"></i>
+      <div style="font-size:1.2rem; font-weight:700; color:var(--red); margin-bottom:.5rem;">Access Denied</div>
+      <div style="color:var(--text-muted); font-size:13px;">You do not have permission to view System Settings.</div>
+    </div>
+  {:else}
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+      {#each tabs as tab}
+        <button
+          class="tab-btn {activeTab === tab.id ? 'active' : ''}"
+          on:click={() => activeTab = tab.id}
+        >
+          <i class="ti {tab.icon}"></i>
+          <span>{tab.label}</span>
+        </button>
+      {/each}
+    </div>
 
-      <div class="st-panel">
-        <div class="panel-head">
-          <h3>Two-Factor Authentication (2FA)</h3>
-          <p>Add an extra layer of security to your account.</p>
-        </div>
-        <div class="panel-body">
-          {#if twoFactorEnabled}
-            <div class="badge green" style="margin-bottom: 12px; font-size: 14px; padding: 8px 12px;"><i class="ti ti-shield-check"></i> 2FA is Currently Enabled</div>
-            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">Your account is protected with Authenticator App codes.</p>
-            <button class="st-btn outline" on:click={disable2FA}>Disable 2FA</button>
-          {:else}
-            <div class="badge red" style="margin-bottom: 12px; font-size: 14px; padding: 8px 12px;"><i class="ti ti-shield-x"></i> 2FA is Disabled</div>
-            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">We highly recommend enabling 2FA for administrative accounts.</p>
-            <button class="st-btn primary" on:click={start2FASetup} disabled={isSaving}>Setup 2FA Now</button>
-          {/if}
-        </div>
-      </div>
-    {/if}
+    <!-- ═══════════════════ TAB: User Management ═══════════════════ -->
+    {#if activeTab === 'users'}
 
-    {#if activeTab === 'system'}
-      <div class="st-panel">
-        <div class="panel-head">
-          <h3>Global Event Settings</h3>
-          <p>Configure how KKUSIEM handles and retains data.</p>
-        </div>
-        <div class="panel-body">
-          <div class="form-grid">
-            <div class="form-group">
-              <label>Data Retention (Days)</label>
-              <input type="number" class="st-input" bind:value={sysConfig.retentionDays} />
+      <!-- Password Edit Modal -->
+      {#if editModal.open}
+        <div class="modal-overlay" on:click|self={closeEditModal}>
+          <div class="modal-box">
+            <div class="modal-head">
+              <div class="modal-title"><i class="ti ti-key"></i> เปลี่ยนรหัสผ่าน</div>
+              <button class="modal-close" on:click={closeEditModal}><i class="ti ti-x"></i></button>
             </div>
-            <div class="form-group">
-              <label>Critical Threat Threshold (Score)</label>
-              <input type="number" class="st-input" bind:value={sysConfig.criticalThreshold} />
-            </div>
-            <div class="form-group">
-              <label>SOC Alert Email Group</label>
-              <input type="text" class="st-input" bind:value={sysConfig.alertEmail} />
-            </div>
-          </div>
-          <div class="form-group checkbox-wrap" style="margin-top: 20px;">
-            <input type="checkbox" id="autoblock" bind:checked={sysConfig.autoBlockEnabled} />
-            <label for="autoblock">Enable Auto-Block via WAF Playbook for Critical Threats</label>
-          </div>
-        </div>
-      </div>
-
-      <div class="st-panel">
-        <div class="panel-head">
-          <h3 style="color:#10b981;"><i class="ti ti-lock"></i> SESSION & SECURITY</h3>
-        </div>
-        <div class="panel-body">
-          <div class="form-group" style="flex-direction:row; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.2); padding:20px; border-radius:8px; border:1px solid var(--border);">
-            <div>
-              <div style="font-weight:600; font-size:14px; color:#fff;">Auto Logout Timeout</div>
-              <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">???????? (????) ??????????????????????????????????????????????</div>
-            </div>
-            <div style="display:flex; align-items:center; gap:12px;">
-              <input type="number" class="st-input" style="width:80px; text-align:center;" bind:value={sysConfig.autoLogout} />
-              <span style="color:var(--text-muted); font-size:13px;">minutes</span>
-            </div>
-          </div>
-          <div style="margin-top: 24px;">
-            <button class="st-btn primary" on:click={promptSaveConfig}>Save Configurations</button>
-          </div>
-        </div>
-      </div>
-    {/if}
-
-          {#if activeTab === 'api'}
-        <div class="st-panel" style="margin-bottom: 24px;">
-          <div class="panel-head">
-            <h3 style="color:#a855f7;"><i class="ti ti-api-app"></i> Platform Integrations</h3>
-            <p>Manage external API keys and endpoints for intelligent analysis.</p>
-          </div>
-          <div class="panel-body">
-            <div class="form-grid">
-              <div class="form-group">
-                <label>KKU AI Endpoint URL</label>
-                <input type="text" class="st-input" bind:value={apiConfig.aiApiUrl} />
+            <div class="modal-body">
+              <div class="modal-user-chip">
+                <div class="avatar admin">{editModal.username[0]?.toUpperCase()}</div>
+                <span>{editModal.username}</span>
               </div>
-              <div class="form-group">
-                <label>KKU AI API Key</label>
-                <input type="password" class="st-input" bind:value={apiConfig.aiKey} />
-              </div>
-              <div class="form-group">
-                <label>Scorecard Endpoint URL</label>
-                <input type="text" class="st-input" bind:value={apiConfig.scorecardApiUrl} />
-              </div>
-              <div class="form-group">
-                <label>Scorecard API Key</label>
-                <input type="password" class="st-input" bind:value={apiConfig.scorecardKey} />
-              </div>
-              <div class="form-group" style="grid-column: 1 / -1;">
-                <label>IP Network Map Endpoint URL</label>
-                <input type="text" class="st-input" bind:value={apiConfig.networkMapApi} />
+              {#if editModal.msg}<div class="msg success">{editModal.msg}</div>{/if}
+              {#if editModal.err}<div class="msg error">{editModal.err}</div>{/if}
+              <div class="field">
+                <label>รหัสผ่านใหม่</label>
+                <div class="pw-wrap">
+                  {#if editModal.showPw}
+                    <input type="text" bind:value={editModal.newPw} class="input-field" placeholder="กรอกรหัสผ่านใหม่" autofocus />
+                  {:else}
+                    <input type="password" bind:value={editModal.newPw} class="input-field" placeholder="กรอกรหัสผ่านใหม่" autofocus />
+                  {/if}
+                  <button type="button" class="pw-eye" on:click={() => editModal.showPw = !editModal.showPw}>
+                    <i class="ti {editModal.showPw ? 'ti-eye-off' : 'ti-eye'}"></i>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div class="st-panel">
-          <div class="panel-head">
-            <h3 style="color:#3b82f6;"><i class="ti ti-bell-ringing"></i> Webhook Notifications</h3>
-            <p>Send critical alerts and playbook results to your team's communication channels.</p>
-          </div>
-          <div class="panel-body">
-            <div class="form-group" style="margin-bottom:20px;">
-              <label><i class="ti ti-brand-slack" style="color:#e01e5a;"></i> Slack Webhook URL</label>
-              <input type="text" class="st-input" bind:value={webhookConfig.slackUrl} />
-            </div>
-            <div class="form-group" style="margin-bottom:20px;">
-              <label><i class="ti ti-brand-teams" style="color:#6264a7;"></i> Microsoft Teams Webhook URL</label>
-              <input type="text" class="st-input" bind:value={webhookConfig.teamsUrl} />
-            </div>
-            <div class="form-group" style="margin-bottom:20px;">
-              <label><i class="ti ti-message-circle" style="color:#00c300;"></i> LINE Notify Token</label>
-              <input type="password" class="st-input" bind:value={webhookConfig.lineToken} />
-            </div>
-            <div style="margin-top: 24px;">
-              <button class="st-btn primary" on:click={promptSaveApi}>Save Integrations</button>
+            <div class="modal-footer">
+              <button class="ds-btn sm" on:click={closeEditModal}>ยกเลิก</button>
+              <button class="ds-btn primary" on:click={submitPasswordChange} disabled={editModal.loading}>
+                {#if editModal.loading}<span class="mini-spin"></span>{/if}
+                <i class="ti ti-check"></i> บันทึกรหัสผ่าน
+              </button>
             </div>
           </div>
         </div>
       {/if}
 
-
-    {#if activeTab === 'users'}
-      <div class="form-grid">
-        <!-- New Account Form -->
-        <div class="st-panel">
-          <div class="panel-head">
-            <h3 style="color:#10b981;"><i class="ti ti-user-plus"></i> CREATE NEW ACCOUNT</h3>
+      <div class="two-col">
+        <!-- Create Form -->
+        <div class="ds-card">
+          <div class="ds-card-head">
+            <div class="ds-card-title"><i class="ti ti-user-plus"></i> Create New Account</div>
           </div>
-          <div class="panel-body">
-            
-            <div style="background:rgba(16,185,129,0.05); border:1px solid rgba(16,185,129,0.2); border-radius:8px; padding:16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <div style="color:#10b981; font-weight:600; font-size:14px; margin-bottom:4px;"><i class="ti ti-shield"></i> KKU SSO Whitelist</div>
-                <div style="font-size:11px; color:var(--text-muted);">?????? KKU SSO ???????????????</div>
+          <label class="sso-whitelist-note toggle-box" class:active={newIsSso}>
+            <input type="checkbox" bind:checked={newIsSso} style="display:none;" />
+            <div class="sso-icon">
+              <i class="ti {newIsSso ? 'ti-shield-check' : 'ti-shield-lock'}"></i>
+            </div>
+            <div>
+              <strong>KKU SSO Whitelist</strong><br>
+              <span>{newIsSso ? 'ผูกบัญชีด้วย KKU SSO (ไม่ต้องตั้งรหัสผ่าน)' : 'ใช้งาน KKU SSO เปิดตัวเลือกนี้'}</span>
+            </div>
+            <div class="toggle-switch">
+              <div class="switch-track"></div>
+              <div class="switch-thumb"></div>
+            </div>
+          </label>
+          {#if userMsg}<div class="msg success">{userMsg}</div>{/if}
+          {#if userErr}<div class="msg error">{userErr}</div>{/if}
+          <form on:submit|preventDefault={createUser} class="form-stack">
+            <div class="field">
+              <label>Username <span class="label-hint">(Email เต็ม — สำหรับผูกกับ SSO)</span></label>
+              <input type="text" bind:value={newUsername} placeholder="e.g. user@anydomain.com" class="input-field" style="padding-right:12px;" />
+            </div>
+            {#if !newIsSso}
+            <div class="field">
+              <label>Password <span class="label-hint">(สำหรับล็อกอินแบบปกติ)</span></label>
+              <div class="pw-wrap">
+                {#if showNewPassword}
+                  <input type="text" bind:value={newPassword} placeholder="Min 4 characters" class="input-field" />
+                {:else}
+                  <input type="password" bind:value={newPassword} placeholder="Min 4 characters" class="input-field" />
+                {/if}
+                <button type="button" class="pw-eye" on:click={() => showNewPassword = !showNewPassword}>
+                  <i class="ti {showNewPassword ? 'ti-eye-off' : 'ti-eye'}"></i>
+                </button>
               </div>
-              <label class="switch">
-                <input type="checkbox" bind:checked={newUser.ssoWhitelist}>
-                <span class="slider round"></span>
-              </label>
             </div>
-
-            <div class="form-group" style="margin-bottom:16px;">
-              <label>USERNAME <span style="color:var(--text-muted);font-weight:normal;">(Email ???? - ???????????? SSO)</span></label>
-              <input type="text" class="st-input" placeholder="e.g. user@anydomain.com" bind:value={newUser.username} />
-            </div>
-
-            <div class="form-group" style="margin-bottom:16px;">
-              <label>PASSWORD <span style="color:var(--text-muted);font-weight:normal;">(????????????????????)</span></label>
-              <div style="position:relative;">
-                <input type="password" class="st-input" style="width:100%;" placeholder="Min 4 characters" bind:value={newUser.password} disabled={newUser.ssoWhitelist} />
-                <i class="ti ti-eye" style="position:absolute; right:12px; top:12px; color:var(--text-muted);"></i>
-              </div>
-            </div>
-
-            <div class="form-group" style="margin-bottom:24px;">
-              <label>ROLE</label>
-              <select class="st-input" bind:value={newUser.role}>
-                <option value="VIEWER">Guest � Minimal Access</option>
-                <option value="ANALYST">Analyst � Read & Respond</option>
-                <option value="ADMIN">Admin � Full Control</option>
+            {/if}
+            <div class="field">
+              <label>Role</label>
+              <select bind:value={newRole} class="ds-select">
+                <option value="guest">🔵 Guest — View Only</option>
+                <option value="admin">🔴 Admin — Full Access</option>
               </select>
-              <div style="margin-top:8px; background:rgba(0,0,0,0.2); border-radius:6px; padding:10px; font-size:12px; color:var(--text-muted);">
-                {#if newUser.role === 'VIEWER'} <i class="ti ti-user"></i> Guest: ?????????????????????? ?????????????????? {/if}
-                {#if newUser.role === 'ANALYST'} <i class="ti ti-user-check"></i> Analyst: ??????? Log ??????? Playbook ??? {/if}
-                {#if newUser.role === 'ADMIN'} <i class="ti ti-user-exclamation"></i> Admin: ???????????????? {/if}
-              </div>
             </div>
-
-            <button class="st-btn primary" style="width:100%; background:#10b981; color:#fff;" on:click={createUser}>
+            <div class="role-hint {newRole}">
+              {#if newRole === 'admin'}
+                <i class="ti ti-shield-check"></i> Admin เข้าถึงทุกเมนูและจัดการบัญชีได้
+              {:else}
+                <i class="ti ti-eye"></i> Guest ดูข้อมูลได้เท่านั้น ไม่สามารถแก้ไขได้
+              {/if}
+            </div>
+            <button type="submit" class="ds-btn primary full-w">
               <i class="ti ti-plus"></i> Create Account
             </button>
-          </div>
+          </form>
         </div>
 
         <!-- User List -->
-        <div class="st-panel">
-          <div class="panel-head">
-            <h3>Registered Users</h3>
+        <div class="ds-card" style="padding:0; overflow:hidden;">
+          <div class="ds-card-head" style="padding:16px 20px; border-bottom:1px solid var(--border);">
+            <div class="ds-card-title"><i class="ti ti-list"></i> Active Accounts ({users.length})</div>
+            <button class="ds-btn sm" on:click={loadUsers}><i class="ti ti-refresh"></i></button>
           </div>
-          <div class="panel-body" style="padding: 0;">
-            <table class="st-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+          {#if userLoading}
+            <div class="ds-empty" style="padding:3rem;">Loading...</div>
+          {:else}
+            <div class="ds-table-wrap">
+              <table class="ds-table">
+                <thead><tr><th>#</th><th>Username</th><th>Role</th><th>Password</th><th>Action</th></tr></thead>
+                <tbody>
+                  {#each users as u, i}
+                    <tr>
+                      <td class="ds-mono" style="color:var(--text-muted);">{i + 1}</td>
+                      <td>
+                        <div class="user-row">
+                          <div class="avatar {u.role}">{u.username[0].toUpperCase()}</div>
+                          <div>
+                            <strong>{u.username}</strong>
+                            {#if u.isSso}
+                              <div class="sso-tag"><i class="ti ti-brand-oauth"></i> SSO</div>
+                            {/if}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="ds-badge {u.role === 'admin' ? 'blue' : 'gray'}">
+                          <i class="ti {u.role === 'admin' ? 'ti-shield' : 'ti-eye'}"></i>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td class="pw-cell">
+                        {#if u.isSso}
+                          <span class="sso-pw-label"><i class="ti ti-brand-oauth"></i> SSO Managed</span>
+                        {:else}
+                          <div class="pw-reveal-wrap">
+                            <code class="pw-value">
+                              {visiblePasswords[u.username] ? (u.passwordHash || '—') : '••••••••'}
+                            </code>
+                            <button
+                              type="button"
+                              class="pw-eye-sm"
+                              title={visiblePasswords[u.username] ? 'ซ่อน' : 'แสดงรหัสผ่าน'}
+                              on:click|stopPropagation={() => togglePasswordVisibility(u.username)}
+                            >
+                              <i class="ti {visiblePasswords[u.username] ? 'ti-eye-off' : 'ti-eye'}"></i>
+                            </button>
+                          </div>
+                        {/if}
+                      </td>
+                      <td>
+                        <div class="action-btns">
+                          {#if !u.isSso}
+                            <button class="ds-btn sm" title="เปลี่ยนรหัสผ่าน" on:click={() => openEditModal(u.username)}>
+                              <i class="ti ti-key"></i>
+                            </button>
+                          {/if}
+                          {#if u.username !== 'admin'}
+                            <button class="ds-btn danger sm" title="ลบบัญชี" on:click={() => deleteUser(u.username)}>
+                              <i class="ti ti-trash"></i>
+                            </button>
+                          {:else}
+                            <span class="protected-label"><i class="ti ti-lock"></i> Protected</span>
+                          {/if}
+                        </div>
+                      </td>
+                    </tr>
+                  {/each}
+                  {#if users.length === 0}
+                    <tr><td colspan="5"><div class="ds-empty">No accounts found</div></td></tr>
+                  {/if}
+                </tbody>
+              </table>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+    <!-- ═══════════════════ TAB: Login Audit ═══════════════════ -->
+    {:else if activeTab === 'audit'}
+      <div class="ds-card" style="padding:0; overflow:hidden;">
+        <div class="ds-card-head" style="padding:16px 20px; border-bottom:1px solid var(--border);">
+          <div class="ds-card-title"><i class="ti ti-history"></i> Login Audit Log ({filteredSessions.length})</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <div class="ds-search" style="min-width:200px;">
+              <i class="ti ti-search"></i>
+              <input type="text" bind:value={sessionFilter} placeholder="Search username or IP..." on:input={() => currentPage = 1} />
+            </div>
+            <button class="ds-btn sm" on:click={loadSessions}><i class="ti ti-refresh"></i> Refresh</button>
+          </div>
+        </div>
+        {#if sessionLoading}
+          <div class="ds-empty" style="padding:3rem;">Loading audit log...</div>
+        {:else}
+          <div class="ds-table-wrap">
+            <table class="ds-table">
+              <thead><tr>
+                <th>#</th><th>Date &amp; Time</th><th>Username</th><th>Role</th><th>IP Address</th>
+              </tr></thead>
               <tbody>
-                {#each usersList as u}
+                {#each pagedSessions as s, i}
                   <tr>
+                    <td class="ds-mono" style="color:var(--text-muted);">{(currentPage - 1) * itemsPerPage + i + 1}</td>
+                    <td class="ds-mono">{new Date(s.timestamp).toLocaleString('en-GB')}</td>
+                    <td><strong>{s.username}</strong></td>
                     <td>
-                      <div style="font-weight:600; color:#fff;">{u.name}</div>
-                      <div style="font-size:11px; color:var(--text-muted);">Last: {u.lastLogin}</div>
+                      <span class="ds-badge {s.role === 'admin' ? 'blue' : 'orange'}">
+                        {s.role}
+                      </span>
                     </td>
-                    <td><div class="badge blue">{u.role}</div></td>
-                    <td>
-                      {#if u.type === 'KKU SSO'}
-                        <div class="badge green"><i class="ti ti-brand-google"></i> SSO</div>
-                      {:else}
-                        <div class="badge gray"><i class="ti ti-key"></i> Normal</div>
-                      {/if}
-                    </td>
-                    <td>
-                      <div style="display:flex; align-items:center; gap:6px;">
-                        <div style="width:8px; height:8px; border-radius:50%; background:{u.status==='Active'?'#10b981':'#64748b'};"></div>
-                        {u.status}
-                      </div>
-                    </td>
-                    <td>
-                      <button class="icon-btn" style="color:#ef4444;" on:click={() => promptDeleteUser(u)}><i class="ti ti-trash"></i></button>
-                    </td>
+                    <td class="ds-mono">{s.ipAddress || '—'}</td>
                   </tr>
                 {/each}
+                {#if filteredSessions.length === 0}
+                  <tr><td colspan="5"><div class="ds-empty" style="padding:2rem;">
+                    <i class="ti ti-database-off"></i> No login records found
+                  </div></td></tr>
+                {/if}
               </tbody>
             </table>
           </div>
-        </div>
-      </div>
-    {/if}
-
-    {#if activeTab === 'audit'}
-      <div class="st-panel">
-        <div class="panel-head">
-          <h3>System Audit Trail</h3>
-          <p>Immutable log of administrative and platform actions.</p>
-        </div>
-        <div class="panel-body" style="padding: 0;">
-          <table class="st-table">
-            <thead>
-              <tr>
-                <th>Log ID / Time</th>
-                <th>User / Login Type</th>
-                <th>Action & Resource</th>
-                <th>Source IP</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each auditLogs as log}
-                <tr>
-                  <td>
-                    <div style="font-family:monospace; color:#fff;">{log.id}</div>
-                    <div style="font-size:11px; color:var(--text-muted);">{new Date(log.time).toLocaleString()}</div>
-                  </td>
-                  <td>
-                    <div style="font-weight:600;">{log.user}</div>
-                    <div style="font-size:11px; color:var(--text-muted);">{log.type}</div>
-                  </td>
-                  <td>
-                    <div style="color:#fff;">{log.action}</div>
-                    <div style="font-size:12px; color:var(--text-muted);">Target: {log.resource}</div>
-                  </td>
-                  <td style="font-family:monospace;">{log.ip}</td>
-                  <td>
-                    <div class="badge {log.status === 'SUCCESS' ? 'green' : 'red'}">{log.status}</div>
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    {/if}
-
-  </div>
-</div>
-
-<!-- Modals -->
-{#if show2FAModal}
-  <div class="modal-overlay">
-    <div class="modal-box">
-      <div class="modal-icon"><i class="ti ti-scan" style="font-size: 40px; color: #fff;"></i></div>
-      <h3>Configure Authenticator</h3>
-      <p style="margin-bottom: 12px;">Scan the QR code with Google Authenticator or Authy.</p>
-      
-            <div class="qr-placeholder" style="margin-bottom: 20px; background: white; padding: 10px;">
-        {#if qrCodeData}
-          <img src={qrCodeData} alt="QR Code" style="width:100%; height:100%;" />
-        {:else}
-          <i class="ti ti-qrcode" style="font-size: 80px; opacity:0.8;"></i>
+          {#if totalPages > 1}
+            <div class="ds-pagination">
+              <div class="ds-pagination-info">Showing {pagedSessions.length} of {filteredSessions.length} records — Page {currentPage} of {totalPages}</div>
+              <div class="ds-pagination-btns">
+                <button class="ds-page-btn" on:click={() => currentPage--} disabled={currentPage === 1}>
+                  <i class="ti ti-chevron-left"></i> Prev
+                </button>
+                <span class="ds-page-info">{currentPage} / {totalPages}</span>
+                <button class="ds-page-btn" on:click={() => currentPage++} disabled={currentPage === totalPages}>
+                  Next <i class="ti ti-chevron-right"></i>
+                </button>
+              </div>
+            </div>
+          {/if}
         {/if}
       </div>
-      <div style="font-size:11px; font-family:monospace; color:var(--text-muted); margin-bottom:20px; letter-spacing:1px;">SECRET: {mfaSecret || 'LOADING...'}</div>
 
-      
-      <p style="font-size:12px;">Enter the 6-digit code to verify:</p>
-      <div class="mfa-inputs" style="margin-bottom: 24px;">
-        {#each code2fa as val, i}
-          <input type="text" id={`mfa-${i}`} maxlength="1" bind:value={code2fa[i]} 
-            on:input={(e) => handle2FAInput(e, i)}
-            on:keydown={(e) => handle2FAKeyDown(e, i)} />
-        {/each}
-      </div>
-      
-      <div class="modal-actions">
-        <button class="st-btn outline" on:click={() => show2FAModal = false}>Cancel</button>
-        <button class="st-btn primary" on:click={verify2FA} disabled={isSaving}>
-          {#if isSaving}Verifying...{:else}Verify & Enable{/if}
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
+    <!-- ═══════════════════ TAB: System Config ═══════════════════ -->
+    {:else if activeTab === 'config'}
+      <div class="config-grid">
+        <!-- Session & Security -->
+        <div class="ds-card">
+          <div class="ds-card-head">
+            <div class="ds-card-title"><i class="ti ti-lock"></i> Session &amp; Security</div>
+          </div>
+          <div class="config-section">
+            <div class="config-row">
+              <div class="config-label">
+                <div class="config-name">Auto Logout Timeout</div>
+                <div class="config-desc">ระยะเวลา (นาที) ที่ระบบจะล็อกเอาต์อัตโนมัติเมื่อไม่มีการใช้งาน</div>
+              </div>
+              <div class="config-control">
+                <input type="number" bind:value={sessionTimeout} min="5" max="480" class="input-field" style="width:90px; text-align:center;" />
+                <span style="font-size:12px; color:var(--text-muted);">minutes</span>
+              </div>
+            </div>
+            <hr class="ds-divider" />
+            <div class="config-row">
+              <div class="config-label">
+                <div class="config-name">Current Session Info</div>
+                <div class="config-desc">ข้อมูลการเข้าสู่ระบบครั้งปัจจุบัน</div>
+              </div>
+              <div style="text-align:right;">
+                <span class="ds-badge blue"><i class="ti ti-user"></i> admin</span>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Localhost</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-{#if showConfirmModal}
-  <div class="modal-overlay">
-    <div class="modal-box">
-      <div class="modal-icon {confirmDanger ? 'danger' : 'warning'}">
-        <i class="ti {confirmDanger ? 'ti-alert-triangle' : 'ti-info-circle'}"></i>
+        <!-- Notifications -->
+        <div class="ds-card">
+          <div class="ds-card-head">
+            <div class="ds-card-title"><i class="ti ti-bell"></i> Notifications</div>
+          </div>
+          <div class="config-section">
+            <div class="config-row">
+              <div class="config-label">
+                <div class="config-name">Toast Popup Alerts</div>
+                <div class="config-desc">แสดง popup เมื่อตรวจพบการโจมตีใหม่</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" bind:checked={enableToastNotify} />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <hr class="ds-divider" />
+            <div class="config-row">
+              <div class="config-label">
+                <div class="config-name">Sound Alert</div>
+                <div class="config-desc">เล่นเสียงเมื่อมีการโจมตีระดับ Critical</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" bind:checked={enableSoundAlert} />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- External APIs -->
+        <div class="ds-card">
+          <div class="ds-card-head">
+            <div class="ds-card-title"><i class="ti ti-api"></i> External Integrations</div>
+          </div>
+          <div class="config-section">
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div class="config-label">
+                <div class="config-name">Scorecard API URL</div>
+                <div class="config-desc">Endpoint หรือ URL ของระบบ Scorecard (ถ้ามี)</div>
+              </div>
+              <input type="text" bind:value={cfgScorecardUrl} class="input-field" placeholder="https://api.example.com/v1/scorecard" />
+            </div>
+            <hr class="ds-divider" />
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div class="config-label">
+                <div class="config-name">Scorecard API Key</div>
+                <div class="config-desc">Token หรือ Key สำหรับยืนยันตัวตนกับ API (ถ้ามี)</div>
+              </div>
+              <input type="password" bind:value={cfgScorecardKey} class="input-field" placeholder="API Key" />
+            </div>
+            <hr class="ds-divider" />
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div class="config-label">
+                <div class="config-name">Google Gemini AI API Key</div>
+                <div class="config-desc">API Key สำหรับใช้งาน SOC AI Analyst (เช่น AIzaSy...)</div>
+              </div>
+              <input type="password" bind:value={cfgGeminiKey} class="input-field" placeholder="Gemini API Key" />
+            </div>
+          </div>
+        </div>
+
+        <div class="ds-card">
+          <div class="ds-card-head">
+            <div class="ds-card-title"><i class="ti ti-sitemap"></i> Network IP Sync API</div>
+          </div>
+          <div class="config-section">
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div class="config-label">
+                <div class="config-name">API Endpoint URL</div>
+                <div class="config-desc">ตั้งค่า API สำหรับดึงข้อมูล IP ของคณะและหน่วยงานจากมหาวิทยาลัย</div>
+              </div>
+              <input type="text" bind:value={cfgIpSyncUrl} class="input-field" placeholder="https://api.kku.ac.th/v1/network/subnets" />
+            </div>
+            <hr class="ds-divider" />
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div class="config-label">
+                <div class="config-name">Authentication Token (Optional)</div>
+                <div class="config-desc">Bearer Token หรือ API Key สำหรับการเชื่อมต่อ</div>
+              </div>
+              <input type="password" bind:value={cfgIpSyncKey} class="input-field" placeholder="API Key" />
+            </div>
+            <hr class="ds-divider" />
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">สถานะการ Sync ล่าสุด</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">รอการเชื่อมต่อ (Mock Mode) - อัปเดตล่าสุด: ยังไม่มีการเชื่อมต่อ</div>
+              </div>
+              <button class="ds-btn sm" on:click={() => alert('ฟังก์ชันเชื่อมต่อจำลองการทำงาน (Mock)')}>
+                <i class="ti ti-refresh"></i> Test Connection &amp; Sync
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Save Button -->
+        <div style="grid-column: 1/-1; display:flex; justify-content:flex-end; gap:10px; align-items:center;">
+          {#if configSaved}
+            <span style="color:var(--green); font-size:13px; font-weight:600;"><i class="ti ti-check"></i> บันทึกการตั้งค่าแล้ว</span>
+          {/if}
+          <button class="ds-btn primary" on:click={saveConfig}>
+            <i class="ti ti-device-floppy"></i> Save Configuration
+          </button>
+        </div>
       </div>
-      <h3>{confirmTitle}</h3>
-      <p>{confirmDesc}</p>
-      <div class="modal-actions">
-        <button class="st-btn outline" on:click={() => showConfirmModal = false}>Cancel</button>
-        <button class="st-btn {confirmDanger ? 'danger' : 'primary'}" on:click={() => confirmAction && confirmAction()} disabled={isSaving}>
-          {#if isSaving}<i class="ti ti-loader ti-spin"></i>{:else}Confirm{/if}
-        </button>
+
+    <!-- ═══════════════════ TAB: About System ═══════════════════ -->
+    {:else if activeTab === 'about'}
+      <div class="about-grid">
+        <!-- System Info -->
+        <div class="ds-card">
+          <div class="ds-card-head">
+            <div class="ds-card-title"><i class="ti ti-radar"></i> KKUSIEM Platform</div>
+          </div>
+          <div class="about-hero">
+            <div class="about-logo"><i class="ti ti-radar"></i></div>
+            <div class="about-name">KKU KKUSIEM SIEM</div>
+            <div class="about-version">Version 2.0.0</div>
+          </div>
+          <div class="info-rows">
+            <div class="info-row"><span>Platform</span><strong>NestJS + SvelteKit</strong></div>
+            <div class="info-row"><span>Database</span><strong>SQLite (TypeORM)</strong></div>
+            <div class="info-row"><span>Realtime</span><strong>Socket.IO WebSocket</strong></div>
+            <div class="info-row"><span>Deployment</span><strong>Docker + Nginx</strong></div>
+          </div>
+        </div>
+
+        <!-- Feature List -->
+        <div class="ds-card">
+          <div class="ds-card-head">
+            <div class="ds-card-title"><i class="ti ti-list-check"></i> Active Modules</div>
+          </div>
+          <div class="module-list">
+            {#each [
+              { icon: 'ti-radar', name: 'SIEM Dashboard', status: 'active', desc: 'Realtime attack overview' },
+              { icon: 'ti-chart-pie', name: 'Analyst Center', status: 'active', desc: 'Attacker pattern analysis' },
+              { icon: 'ti-list-search', name: 'Security Logs', status: 'active', desc: 'Multi-source log viewer' },
+              { icon: 'ti-alert-triangle', name: 'Alerts & SOAR', status: 'active', desc: 'Automated response rules' },
+              { icon: 'ti-zoom-in', name: 'Threat Investigation', status: 'active', desc: 'IP deep-dive analysis' },
+              { icon: 'ti-grid-dots', name: 'MITRE ATT&CK', status: 'active', desc: 'Tactic mapping matrix' },
+              { icon: 'ti-database-search', name: 'CVE Database', status: 'active', desc: 'Vulnerability lookup' },
+              { icon: 'ti-shield-x', name: 'IP Block Audit', status: 'active', desc: 'Firewall rule management' },
+            ] as mod}
+              <div class="module-item">
+                <div class="module-icon"><i class="ti {mod.icon}"></i></div>
+                <div class="module-info">
+                  <div class="module-name">{mod.name}</div>
+                  <div class="module-desc">{mod.desc}</div>
+                </div>
+                <span class="ds-badge green"><i class="ti ti-check"></i> Active</span>
+              </div>
+            {/each}
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-{/if}
+    {/if}
+  {/if}
+</div>
 
 <style>
-  /* Switch Toggle CSS */
-  .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.2); transition: .4s; border-radius: 20px; }
-  .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
-  input:checked + .slider { background-color: #10b981; }
-  input:checked + .slider:before { transform: translateX(20px); }
+  /* Hide browser default password reveal icon (Edge/Chrome on Windows) */
+  :global(input[type="password"]::-ms-reveal),
+  :global(input[type="password"]::-ms-clear) {
+    display: none;
+  }
 
-  .settings-page { display: flex; height: 100%; max-width: 1400px; margin: 0 auto; padding: 24px; gap: 32px; font-family: 'Inter', sans-serif; color: #e8eaf0; }
-  .st-sidebar { width: 280px; flex-shrink: 0; }
-  .st-sidebar h2 { font-size: 24px; font-weight: 700; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
-  .st-nav { display: flex; flex-direction: column; gap: 8px; }
-  .st-nav button { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: transparent; border: none; border-radius: 8px; color: var(--text-muted, #9ca3af); font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; transition: 0.2s; }
-  .st-nav button:hover { background: rgba(255,255,255,0.05); color: #fff; }
-  .st-nav button.active { background: rgba(59, 130, 246, 0.1); color: #3b82f6; border-left: 3px solid #3b82f6; }
+  /* ── Tab Navigation ──────────────────────────────── */
+  .tab-nav {
+    display: flex;
+    gap: 6px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 6px;
+    flex-wrap: wrap;
+  }
+  .tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border: none;
+    background: transparent;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .tab-btn i { font-size: 16px; }
+  .tab-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
+  .tab-btn.active { background: var(--green); color: #fff; box-shadow: 0 2px 10px rgba(29,158,117,0.3); }
+
+  /* ── Layout Grids ────────────────────────────────── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  .config-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 900px) { .config-grid { grid-template-columns: 1fr; } }
+
+  .about-grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .about-grid { grid-template-columns: 1fr; } }
+
+  .sso-whitelist-note {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    background: rgba(29,158,117,0.06);
+    border: 1px solid rgba(29,158,117,0.2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .sso-whitelist-note:hover { background: rgba(29,158,117,0.1); }
+  .sso-whitelist-note.active { background: rgba(29,158,117,0.15); border-color: var(--green); }
+  .sso-whitelist-note .sso-icon i { color: var(--green); font-size: 20px; flex-shrink: 0; transition: all 0.2s; }
+  .sso-whitelist-note strong { display: block; color: var(--green); font-size: 13px; margin-bottom: 2px; transition: all 0.2s; }
   
-  .st-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; padding-right: 12px; }
-  .st-panel { background: var(--bg-panel, #181b24); border: 1px solid var(--border, rgba(255,255,255,0.1)); border-radius: 12px; overflow: hidden; }
-  .panel-head { padding: 20px 24px; border-bottom: 1px solid var(--border); }
-  .panel-head h3 { margin: 0 0 4px; font-size: 18px; color: #fff; display:flex; align-items:center; gap:8px;}
-  .panel-head p { margin: 0; font-size: 13px; color: var(--text-muted); }
-  .panel-body { padding: 24px; }
-  
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  .form-group { display: flex; flex-direction: column; gap: 8px; }
-  .form-group label { font-size: 11px; font-weight: 700; color: var(--text-secondary); letter-spacing:0.5px;}
-  .st-input { padding: 10px 14px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px; color: #fff; font-size: 13px; outline: none; transition: 0.2s; }
-  .st-input:focus { border-color: #3b82f6; }
-  .checkbox-wrap { flex-direction: row; align-items: center; gap: 12px; }
-  .checkbox-wrap input { width: 18px; height: 18px; }
-  
-  .st-btn { padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; border: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-  .st-btn.primary { background: #3b82f6; color: white; }
-  .st-btn.primary:hover { background: #2563eb; }
-  .st-btn.primary:disabled { opacity: 0.6; cursor: not-allowed; }
-  .st-btn.outline { background: transparent; border: 1px solid var(--border); color: #fff; }
-  .st-btn.outline:hover { background: rgba(255,255,255,0.05); }
-  .st-btn.danger { background: #ef4444; color: white; }
-  .st-btn.danger:hover { background: #dc2626; }
-  .icon-btn { background: transparent; border: none; cursor: pointer; font-size: 18px; color: var(--text-muted); padding: 4px; border-radius: 4px; transition:0.2s; }
-  .icon-btn:hover { background: rgba(255,255,255,0.1); }
-  
-  .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
-  .badge.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-  .badge.red { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-  .badge.blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-  .badge.gray { background: rgba(255, 255, 255, 0.1); color: #9ca3af; }
-  
-  .st-table { width: 100%; border-collapse: collapse; text-align: left; }
-  .st-table th { padding: 12px 24px; font-size: 11px; font-weight: 700; color: var(--text-muted); border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.2); text-transform:uppercase; letter-spacing:0.5px;}
-  .st-table td { padding: 14px 24px; font-size: 13px; border-bottom: 1px solid var(--border); }
-  
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; }
-  .modal-box { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 400px; max-width: 90%; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
-  .modal-icon { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; margin: 0 auto 16px; }
-  .modal-icon.warning { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-  .modal-icon.danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-  .modal-box h3 { margin: 0 0 12px; font-size: 20px; }
-  .modal-box p { margin: 0 0 24px; font-size: 14px; color: var(--text-muted); line-height: 1.5; }
-  .modal-actions { display: flex; justify-content: center; gap: 12px; }
-  
-  .qr-placeholder { background: white; color: black; width: 150px; height: 150px; margin: 0 auto; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-  .mfa-inputs { display: flex; justify-content: center; align-items: center; gap: 8px; }
-  .mfa-inputs input { width: 40px; height: 50px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.3); color: white; font-size: 24px; text-align: center; font-weight: bold; outline: none; transition: 0.2s; }
-  .mfa-inputs input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
-  
-  .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-  .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .toggle-switch { margin-left: auto; position: relative; width: 36px; height: 20px; border-radius: 20px; background: var(--border); transition: all 0.3s; flex-shrink: 0; }
+  .active .toggle-switch { background: var(--green); }
+  .switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: all 0.3s; }
+  .active .switch-thumb { transform: translateX(16px); }
+
+  /* ── Form ────────────────────────────────────────── */
+  .form-stack { display: flex; flex-direction: column; gap: 14px; }
+  .field label { display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .label-hint { font-size: 10px; font-weight: 400; text-transform: none; color: var(--text-muted); opacity: 0.7; }
+  .input-field {
+    width: 100%;
+    padding: 9px 36px 9px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-primary);
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+  }
+  .input-field:focus { border-color: var(--green); }
+  .full-w { width: 100%; justify-content: center; }
+
+  /* Password input with eye button */
+  .pw-wrap { position: relative; display: flex; align-items: center; }
+  .pw-wrap .input-field { padding-right: 38px; }
+  .pw-eye {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+  }
+  .pw-eye:hover { color: var(--text-primary); }
+
+  .role-hint {
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .role-hint.admin { background: var(--blue-bg); color: var(--blue); }
+  .role-hint.guest { background: var(--bg-secondary); color: var(--text-secondary); }
+
+  .msg { padding: 10px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .msg.success { background: var(--green-bg); color: var(--green); }
+  .msg.error { background: var(--red-bg); color: var(--red); }
+
+  /* ── User Table ──────────────────────────────────── */
+  .user-row { display: flex; align-items: center; gap: 10px; }
+  .avatar {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; flex-shrink: 0;
+  }
+  .avatar.admin { background: var(--blue-bg); color: var(--blue); }
+  .avatar.guest { background: var(--bg-secondary); color: var(--text-secondary); }
+  .protected-label { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+  .action-btns { display: flex; gap: 6px; align-items: center; }
+
+  /* SSO tag under username */
+  .sso-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #7c3aed;
+    background: rgba(124,58,237,0.1);
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-top: 2px;
+  }
+
+  /* Password column */
+  .pw-cell { min-width: 140px; }
+  .pw-reveal-wrap { display: flex; align-items: center; gap: 6px; }
+  .pw-value {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    color: var(--text-primary);
+    letter-spacing: 0.05em;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+  }
+  .pw-eye-sm {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 3px 5px;
+    display: flex;
+    align-items: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .pw-eye-sm:hover { border-color: var(--green); color: var(--green); }
+  .sso-pw-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #7c3aed;
+    background: rgba(124,58,237,0.08);
+    border: 1px solid rgba(124,58,237,0.2);
+    border-radius: 6px;
+    padding: 3px 8px;
+  }
+
+  /* ── Password Edit Modal ──────────────────────────── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.2s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  .modal-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.5);
+    animation: slideUp 0.25s cubic-bezier(.175,.885,.32,1.275);
+    overflow: hidden;
+  }
+  @keyframes slideUp { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+  .modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .modal-title i { color: var(--green); font-size: 18px; }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+  }
+  .modal-close:hover { color: var(--red); }
+  .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .modal-user-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .mini-spin {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Config ──────────────────────────────────────── */
+  .config-section { display: flex; flex-direction: column; gap: 0; }
+  .config-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; }
+  .config-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+  .config-desc { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+  .config-control { display: flex; align-items: center; gap: 8px; }
+
+  /* Toggle Switch */
+  .toggle { position: relative; display: inline-block; width: 44px; height: 24px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--border); border-radius: 24px; transition: 0.3s;
+    border: 1px solid var(--border);
+  }
+  .slider:before {
+    position: absolute; content: '';
+    width: 18px; height: 18px; left: 3px; bottom: 2px;
+    background: white; border-radius: 50%; transition: 0.3s;
+  }
+  .toggle input:checked + .slider { background: var(--green); }
+  .toggle input:checked + .slider:before { transform: translateX(19px); }
+
+  /* ── About ───────────────────────────────────────── */
+  .about-hero { text-align: center; padding: 24px 0 20px; }
+  .about-logo {
+    width: 64px; height: 64px; border-radius: 18px;
+    background: var(--green-bg); color: var(--green);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; margin: 0 auto 12px;
+  }
+  .about-name { font-size: 18px; font-weight: 800; color: var(--text-primary); }
+  .about-version { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .info-rows { display: flex; flex-direction: column; border-top: 1px solid var(--border); margin-top: 8px; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .info-row span { color: var(--text-muted); }
+
+  .module-list { display: flex; flex-direction: column; gap: 2px; }
+  .module-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .module-item:last-child { border-bottom: none; }
+  .module-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--green-bg); color: var(--green);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .module-info { flex: 1; }
+  .module-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+  .module-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 </style>
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -400,9 +400,6 @@
           <div style="color:var(--text-muted);font-size:11px">Server Time</div>
           <div class="ts-val">{currentTime}</div>
         </div>
-        <button on:click={logout} class="btn-logout" title="Logout">
-          <i class="ti ti-logout"></i>
-        </button>
       </div>
     </header>
 
