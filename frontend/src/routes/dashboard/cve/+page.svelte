@@ -1,30 +1,21 @@
 <script lang="ts">
   import { callKKUAI, getKKUAIKey, getKKUAIModel } from '../../../lib/utils/kkuai';
-  import { eventsStore } from '../../../stores/events';
-  
+  import AiKeyModal from '../../../lib/components/AiKeyModal.svelte';
   let searchQuery = '';
-  
+  let showAiKeyModal = false;
+
   let loading = false;
   let analyzing = false;
   let cveData: any = null;
   let aiBriefing: any = null;
   let errorMsg = '';
-  
-  $: mappedCVEs = $eventsStore
-    .filter(e => e.type.includes('Log4j') || e.type.includes('SQL') || e.type.includes('Traversal'))
-    .map(e => {
-       if (e.type.includes('Log4j')) return { id: 'CVE-2021-44228', score: 10.0, severity: 'critical', type: 'Log4j RCE' };
-       if (e.type.includes('SQL')) return { id: 'CVE-2023-XXXX', score: 7.5, severity: 'high', type: 'SQL Injection' };
-       return { id: 'CVE-2022-XXXX', score: 5.3, severity: 'medium', type: 'Path Traversal' };
-    })
-    .filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i); // unique
 
   // Real functional structure: We will fetch from public APIs (MITRE/NVD)
   async function searchVulnerability(query: string) {
     if (!query) return;
     const apiKey = getKKUAIKey();
     if (!apiKey) {
-      alert("???????????? KKU AI API Key ?????????????????????? (Settings) ??????????");
+      showAiKeyModal = true;
       return;
     }
     
@@ -107,7 +98,7 @@ Affected: ${affected.join(', ')}`;
   }
 </script>
 
-
+<AiKeyModal show={showAiKeyModal} onClose={() => showAiKeyModal = false} onSaved={() => { showAiKeyModal = false; searchVulnerability(searchQuery); }} />
 
 <svelte:head><title>CVE Database - KKUSIEM</title></svelte:head>
 
@@ -161,7 +152,7 @@ Affected: ${affected.join(', ')}`;
   .trending-title i { color: var(--orange); font-size: 16px; }
   
   .trend-item {
-    padding: 10px; border-radius: 8px; background: var(--bg-secondary);
+    padding: 10px; border-radius: 8px; background: rgba(0,0,0,0.2);
     margin-bottom: 8px; cursor: pointer; border: 1px solid transparent;
     transition: 0.2s;
   }
@@ -227,7 +218,7 @@ Affected: ${affected.join(', ')}`;
   .cvss-lbl { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; color: var(--text-muted); margin-top: 4px; }
   
   .vector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
-  .v-box { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 10px; border-radius: 8px; text-align: center; }
+  .v-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); padding: 10px; border-radius: 8px; text-align: center; }
   .v-box-lbl { font-size: 9px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; }
   .v-box-val { font-size: 12px; font-weight: 700; color: #e8eaf0; }
   .v-box.danger .v-box-val { color: #ef4444; }
@@ -242,7 +233,7 @@ Affected: ${affected.join(', ')}`;
   .mitigation-list li::before { content: '✓'; position: absolute; left: -20px; color: #10b981; font-weight: 900; }
 
   .affected-tags { display: flex; gap: 8px; flex-wrap: wrap; }
-  .aff-tag { background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-secondary); font-size: 11px; padding: 4px 10px; border-radius: 4px; }
+  .aff-tag { background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text-secondary); font-size: 11px; padding: 4px 10px; border-radius: 4px; }
   
   .am-i-affected { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); padding: 16px; border-radius: 8px; display: flex; align-items: center; gap: 15px; margin-top: 10px; }
   .aia-icon { font-size: 32px; color: #ef4444; }
@@ -272,23 +263,6 @@ Affected: ${affected.join(', ')}`;
       <div style="font-size:12px; color:var(--text-secondary); line-height:1.5;">
         Natural Language Search is disabled. Please enter an exact CVE ID (e.g., CVE-2021-44228) to fetch live data from the MITRE API.
       </div>
-    </div>
-
-    <div class="trending-card" style="margin-top:20px;">
-      <div class="trending-title" style="color: #a855f7;"><i class="ti ti-link"></i> Mapped CVEs from Attacks</div>
-      {#each mappedCVEs as cve}
-        <div class="trend-item" on:click={() => searchVulnerability(cve.id)}>
-          <div class="t-head">
-            <span class="t-name" style="font-family: monospace;">{cve.id}</span>
-            <span class="t-score {cve.severity}">{cve.score}</span>
-          </div>
-          <div style="font-size:11px; color:var(--text-muted);">{cve.type}</div>
-        </div>
-      {:else}
-        <div style="font-size:12px; color:var(--text-secondary); text-align: center; padding: 10px;">
-          No CVEs mapped from recent attacks.
-        </div>
-      {/each}
     </div>
   </div>
 
@@ -360,7 +334,7 @@ Affected: ${affected.join(', ')}`;
             </div>
           {/if}
           
-          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
             <div class="v-box-lbl">Published Date</div>
             <div style="color:var(--text-primary); font-size:13px;">{aiBriefing.published}</div>
             <div class="v-box-lbl" style="margin-top:10px;">Assigner</div>

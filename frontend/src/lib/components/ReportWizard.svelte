@@ -160,7 +160,7 @@
   
   .wizard-footer {
     display: flex; justify-content: space-between; padding: 16px 20px;
-    border-top: 1px solid var(--border, #334155); background: var(--bg-secondary);
+    border-top: 1px solid var(--border, #334155); background: rgba(0,0,0,0.2);
   }
   .ds-btn {
     padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 13px;
