@@ -50,6 +50,10 @@ export class LogService implements OnModuleInit {
     this.logger.log('🚀 SIEM Correlation Engine ready (Single-Ingest Mode)');
     this.logger.log('[✓] POST /api/ingest  — accepts ALL sources (auto-detect)');
     this.logger.log('[✓] POST /api/wazuh   — redirected → /api/ingest (legacy compat)');
+    
+    // Tailing log files directly instead of listening on UDP
+    this.startFileTail('/var/log/firewall/firewall.log', 'forti');
+    this.startFileTail('/var/log/revproxy/revproxy-c.log', 'reproxy');
   }
 
   // ─── IP Map Registration ──────────────────────────────────────────────────
@@ -359,6 +363,189 @@ export class LogService implements OnModuleInit {
       this.logger.log(`[SIEM] ${payload.type} | ${payload.ip} | ${payload.severity} | src=${payload.source}`);
     } catch (err) {
       this.logger.error(`[!] Failed to save attack: ${err}`);
+    }
+  }
+  // ─── File Tailer (Replaces UDP receiver) ──────────────────────────────────
+  private startFileTail(filePath: string, sourceName: string) {
+    const fs = require('fs');
+    
+    // ตรวจสอบว่าไฟล์มีอยู่จริงไหม ถ้ายังไม่มีให้วนรอจนกว่าจะสร้าง
+    if (!fs.existsSync(filePath)) {
+      this.logger.warn(`[${sourceName}] File not found yet: ${filePath}. Retrying in 10s...`);
+      setTimeout(() => this.startFileTail(filePath, sourceName), 10000);
+      return;
+    }
+
+    try {
+      this.logger.log(`[✓] Started tailing log file (Node.js polling): ${filePath} [${sourceName}]`);
+      let fileSize = fs.statSync(filePath).size;
+
+      // ใช้ fs.watchFile (Polling) เพื่อแก้บั๊ก Docker Volume ไม่ส่ง Event inotify ทะลุเข้ามา
+      fs.watchFile(filePath, { interval: 1000 }, (curr: any, prev: any) => {
+        if (curr.size === prev.size) return;
+        
+        // ถ้าขนาดไฟล์เล็กลง แปลว่าเกิด Log Rotation (ไฟล์ถูกตัดขึ้นวันใหม่)
+        if (curr.size < prev.size) {
+          fileSize = 0; // เริ่มอ่านใหม่จากต้นไฟล์
+        }
+        
+        const stream = fs.createReadStream(filePath, {
+          encoding: 'utf8',
+          start: fileSize,
+          end: curr.size
+        });
+
+        let data = '';
+        stream.on('data', (chunk: Buffer) => {
+          data += chunk.toString();
+        });
+
+        stream.on('end', () => {
+          const lines = data.split('\\n');
+          for (const line of lines) {
+            if (line.trim()) {
+              this.processSyslogMessage(line.trim(), '127.0.0.1', sourceName);
+            }
+          }
+        });
+
+        stream.on('error', (err: any) => {
+          this.logger.error(`[${sourceName}] Error reading file stream: ${err.message}`);
+        });
+        
+        fileSize = curr.size;
+      });
+
+    } catch (e) {
+      this.logger.error(`[${sourceName}] Exception starting tail: ${e.message}`);
+    }
+  }
+
+  private processSyslogMessage(logString: string, sourceIp: string, sourceName: string = 'syslog') {
+    try {
+      const lower = logString.toLowerCase();
+      
+      // 1. FILTERING: คัดกรองเฉพาะ Log ที่มีความรุนแรง เพื่อลดภาระระบบ
+      let severity = 'info';
+      
+      if (lower.includes('crit') || lower.includes('fatal') || lower.includes('alert')) {
+        severity = 'critical';
+      } else if (lower.includes('error') || lower.includes('fail') || lower.includes('deny') || lower.includes('block') || lower.includes('drop')) {
+        severity = 'high';
+      } else if (lower.includes('warn') || lower.includes('timeout')) {
+        severity = 'medium';
+      }
+
+      // ถ้าเป็นแค่ info (การเชื่อมต่อปกติ) ให้ข้ามไปเลย ไม่ต้องบันทึกลงฐานข้อมูล
+      // [TEMPORARY DISABLED FOR TESTING]
+      /*
+      if (severity === 'info') {
+        return;
+      }
+      */
+
+      // 2. EXTRACT IP: ดึง IP จริงออกมาจากข้อความ Log
+      let realIp = sourceIp;
+      
+      const srcIpMatch = logString.match(/(?:srcip|src_ip|client_ip|client|c-ip|source)[=:]\s*"?([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})"?/i);
+      if (srcIpMatch && srcIpMatch[1]) {
+         realIp = srcIpMatch[1];
+      } else {
+         const ipRegex = /\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g;
+         const ips = logString.match(ipRegex);
+         if (ips) {
+            for (const ip of ips) {
+                if (ip !== '127.0.0.1' && ip !== '0.0.0.0') {
+                    realIp = ip;
+                    break;
+                }
+            }
+            if (realIp === sourceIp && ips.length > 0) realIp = ips[0];
+         }
+      }
+
+      // ตัดข้อความที่ยาวเกินไป
+      const detail = logString.length > 300 ? logString.substring(0, 300) + '...' : logString;
+
+      // 3. SMART CLASSIFICATION & MITRE MAPPING
+      let attackType = 'Suspicious Activity';
+      let mitreCode = 'Unknown';
+      let threatScore = severity === 'critical' ? 90 : severity === 'high' ? 70 : 40;
+
+      const msgMatch = logString.match(/msg="([^"]+)"/i);
+      const attackMatch = logString.match(/attack="([^"]+)"/i);
+      const typeMatch = logString.match(/type="?([a-zA-Z0-9_]+)"?/i);
+      const subtypeMatch = logString.match(/subtype="?([a-zA-Z0-9_]+)"?/i);
+      const actionMatch = logString.match(/action="?([a-zA-Z0-9_]+)"?/i);
+
+      if (attackMatch && attackMatch[1]) {
+         attackType = attackMatch[1];
+      } else if (msgMatch && msgMatch[1]) {
+         attackType = msgMatch[1];
+      } else {
+         if (typeMatch && typeMatch[1] === 'traffic' && actionMatch && actionMatch[1] === 'deny') {
+             attackType = 'Firewall Rule Violation';
+         } else if (subtypeMatch && subtypeMatch[1] === 'ips') {
+             attackType = 'Intrusion Prevention Alert';
+         } else if (subtypeMatch && subtypeMatch[1] === 'webfilter') {
+             attackType = 'Web Filter Violation';
+         } else if (sourceName === 'reproxy') {
+             if (lower.includes(' 404 ')) attackType = 'Resource Not Found (404)';
+             else if (lower.includes(' 403 ')) attackType = 'Access Forbidden (403)';
+             else if (lower.includes(' 500 ') || lower.includes(' 502 ') || lower.includes(' 503 ')) attackType = 'Web Server Error';
+             else attackType = 'HTTP Traffic Anomaly';
+         }
+      }
+
+      if (lower.includes('sql') || lower.includes('select ') || lower.includes('union ') || lower.includes('%27') || lower.includes('sleep(')) {
+         attackType = 'SQL Injection (SQLi)';
+         mitreCode = 'T1190';
+         threatScore = Math.max(threatScore, 85);
+      } else if (lower.includes('xss') || lower.includes('<script>') || lower.includes('alert(') || lower.includes('%3cscript')) {
+         attackType = 'Cross-Site Scripting (XSS)';
+         mitreCode = 'T1189';
+         threatScore = Math.max(threatScore, 75);
+      } else if (lower.includes('dirb') || lower.includes('nmap') || lower.includes('nikto') || lower.includes('zmap') || lower.includes('scan')) {
+         attackType = 'Network / Vulnerability Scanning';
+         mitreCode = 'T1595';
+         threatScore = Math.max(threatScore, 50);
+      } else if (lower.includes('login') || lower.includes('auth') || lower.includes('brute') || lower.includes('password') || lower.includes('credential')) {
+         attackType = 'Authentication Brute Force';
+         mitreCode = 'T1110';
+         threatScore = Math.max(threatScore, 80);
+      } else if (lower.includes('cmd=') || lower.includes('wget ') || lower.includes('curl ') || lower.includes('bash ') || lower.includes('exec(')) {
+         attackType = 'Command Injection (RCE)';
+         mitreCode = 'T1059';
+         threatScore = Math.max(threatScore, 95);
+      } else if (lower.includes('traversal') || lower.includes('../') || lower.includes('..%2f') || lower.includes('etc/passwd')) {
+         attackType = 'Path Traversal / LFI';
+         mitreCode = 'T1190';
+         threatScore = Math.max(threatScore, 80);
+      } else if (lower.includes('ddos') || lower.includes('flood')) {
+         attackType = 'Denial of Service (DoS)';
+         mitreCode = 'T1498';
+         threatScore = Math.max(threatScore, 85);
+      }
+
+      if (attackType.length > 0) {
+          attackType = attackType.charAt(0).toUpperCase() + attackType.slice(1);
+      }
+
+      const payload = {
+        source: sourceName.toLowerCase(),
+        src_ip: realIp,
+        message: detail,
+        timestamp: new Date().toISOString(),
+        type: attackType,
+        severity: severity,
+        mitre: mitreCode,
+        score: threatScore,
+        raw_log: logString
+      };
+      
+      this.ingestLog([payload]);
+    } catch (e) {
+      this.logger.error(`Error processing syslog from ${sourceName}: ${e.message}`);
     }
   }
 }

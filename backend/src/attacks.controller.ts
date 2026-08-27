@@ -1,6 +1,6 @@
-import { Controller, Patch, Post, Param, Body, HttpException, HttpStatus, Get, Headers, Delete } from '@nestjs/common';
+import { Controller, Patch, Post, Param, Body, HttpException, HttpStatus, Get, Headers, Delete, Query } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Between } from 'typeorm';
 import { Attack } from './entities/attack.entity';
 import { EventsGateway } from './events.gateway';
 import { LogService } from './log.service';
@@ -39,6 +39,28 @@ export class AttacksController {
   ) {}
 
   // ── IP Map Registration (from proxy.js) ───────────────────────────────────
+  
+  // --- Case Management (Update Incident) ---
+  @Patch(":id/case")
+  async updateCase(
+    @Param("id") id: number,
+    @Body() body: { status?: string; assignee?: string; notes?: string }
+  ) {
+    const attack = await this.attackRepository.findOne({ where: { id } });
+    if (!attack) throw new HttpException("Attack not found", HttpStatus.NOT_FOUND);
+
+    if (body.status !== undefined) attack.status = body.status;
+    if (body.assignee !== undefined) attack.assignee = body.assignee;
+    if (body.notes !== undefined) attack.notes = body.notes;
+
+    await this.attackRepository.save(attack);
+    
+    // Broadcast case update
+    this.eventsGateway.broadcastAttack(attack);
+    
+    return { success: true, attack };
+  }
+
   @Post('ip-map')
   mapIp(@Body() body: { realIp: string; faculty?: any; service?: string; timestamp?: string }) {
     if (body.realIp) {
@@ -64,6 +86,34 @@ export class AttacksController {
   //     Array    → [{ ... }, { ... }]  ← Batch ingest
   //
 
+
+  // ── Get Historical Attacks ────────────────────────────────────────────────
+  @Get('history')
+  async getHistory(@Query('date') dateStr?: string) {
+    if (!dateStr) {
+      // Default to today if no date provided
+      dateStr = new Date().toISOString().split('T')[0];
+    }
+    
+    // Parse date and create range for the whole day in UTC
+    // dateStr format: YYYY-MM-DD
+    const startDate = new Date(`${dateStr}T00:00:00.000Z`);
+    const endDate = new Date(`${dateStr}T23:59:59.999Z`);
+    
+    if (isNaN(startDate.getTime())) {
+      throw new HttpException('Invalid date format. Use YYYY-MM-DD', HttpStatus.BAD_REQUEST);
+    }
+    
+    const attacks = await this.attackRepository.find({
+      where: {
+        createdAt: Between(startDate, endDate)
+      },
+      order: { id: 'DESC' },
+      take: 1000 // Limit to 1000 to prevent massive payloads
+    });
+    
+    return attacks;
+  }
 
   // ── Update Attack Status ──────────────────────────────────────────────────
   @Patch(':id/status')

@@ -1,8 +1,9 @@
 <script lang="ts">
   import { eventsStore } from '../../../stores/events';
-  import { downloadHTML, downloadPDF } from '../../../lib/utils/export';
+  import { downloadHTML, downloadPDF, downloadCSV } from '../../../lib/utils/export';
   import Chart from 'chart.js/auto';
   import { onMount } from 'svelte';
+  import ReportModal from '../../../lib/components/ReportModal.svelte';
 
   $: events = $eventsStore;
 
@@ -181,20 +182,25 @@
       </div>
     </div>
     <div style="position:relative;">
-      <button class="btn-outline" on:click={() => showExportMenu = !showExportMenu}
+      <button class="btn-outline" on:click={() => showExportMenu = true}
         style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer;">
-        <i class="ti ti-upload"></i> Export <i class="ti ti-chevron-down" style="font-size:11px;"></i>
+        <i class="ti ti-upload"></i> Export
       </button>
-      {#if showExportMenu}
-        <div style="position:absolute;top:calc(100% + 6px);right:0;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.12);z-index:200;min-width:160px;overflow:hidden;" on:mouseleave={() => showExportMenu = false}>
-          <button class="export-option" on:click={handleExportPDF} style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:none;border:none;font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;transition:0.15s;">
-            <i class="ti ti-file-type-pdf" style="color:#ef4444;"></i> PDF Report
-          </button>
-          <button class="export-option" on:click={handleExportHTML} style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:none;border:none;font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;border-top:1px solid var(--border);transition:0.15s;">
-            <i class="ti ti-file-type-html" style="color:#3b82f6;"></i> HTML Report
-          </button>
-        </div>
-      {/if}
+      <ReportModal 
+        bind:show={showExportMenu} 
+        reportTitle="Top Attack IPs Report"
+        availableFields={['IP', 'Hits', 'Percent']}
+        previewData={topIps.map(r => ({'ip': r.ip, 'hits': String(r.count), 'percent': r.percent+'%'}))}
+        on:export={(e) => {
+          const { format, fields } = e.detail;
+          const data = topIps.map(r => ({'IP': r.ip, 'Hits': String(r.count), 'Percent': r.percent+'%'}));
+          if (format === 'pdf') downloadPDF(data, fields, 'analytics-top-ips.pdf', 'Top Attack IPs Report');
+          else if (format === 'html') downloadHTML(data, fields, 'analytics-top-ips.html', 'Top Attack IPs Report');
+          else {
+            downloadCSV(data, fields, 'analytics-top-ips.csv');
+          }
+        }}
+      />
     </div>
   </div>
 
@@ -209,12 +215,6 @@
     </button>
     <button class="ds-btn {activeTab === 'vectors' ? 'primary' : ''}" on:click={() => activeTab = 'vectors'}>
       <i class="ti ti-target"></i> Attack Vectors
-    </button>
-    <button class="ds-btn {activeTab === 'payloads' ? 'primary' : ''}" on:click={() => activeTab = 'payloads'}>
-      <i class="ti ti-file-code"></i> Payloads
-      {#if payloadEvents.length > 0}
-        <span class="tab-badge">{payloadEvents.length}</span>
-      {/if}
     </button>
   </div>
 
@@ -386,42 +386,7 @@
     </div>
   {/if}
 
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!-- PAYLOADS TAB                                                          -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  {#if activeTab === 'payloads'}
-    <div class="ds-card" style="padding:0;overflow:hidden;">
-      <div class="ds-card-head" style="padding:16px;border-bottom:1px solid var(--border);">
-        <div class="ds-card-title"><i class="ti ti-terminal-2"></i> Extracted Credentials & Payloads</div>
-        <span class="panel-badge">{payloadEvents.length} records</span>
-      </div>
-
-
-      {#if payloadEvents.length === 0}
-        <div class="empty-state"><i class="ti ti-file-off"></i><br>ยังไม่มีการบันทึก Payload หรือคำสั่งใดๆ</div>
-      {:else}
-        <div class="payload-list">
-          {#each payloadEvents as event}
-            <div class="payload-row">
-              <div class="payload-meta">
-                <span class="p-ip"><i class="ti ti-device-desktop"></i> {event.ip}</span>
-                <span class="p-type" style="background:{getTypeBg(event.type)}; color:{getTypeColor(event.type)}">
-                  {event.type}
-                </span>
-                <span class="p-time"><i class="ti ti-clock"></i> {event.time || event.timeStr || ''}</span>
-              </div>
-              <div class="payload-code">
-                <i class="ti ti-chevron-right payload-prompt"></i>{event.detail}
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </div>
-  {/if}
-
 </div>
-
 <style>
 /* ─── Page ──────────────────────────────────────────────────────────────────── */
 .analytics-page {

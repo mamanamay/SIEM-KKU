@@ -5,7 +5,8 @@
   import { downloadCSV, downloadPDF, downloadHTML } from '../../../lib/utils/export';
   import { formatEventTime } from '../../../lib/formatTime';
   import { callKKUAI, KKU_AI_MODELS, getKKUAIKey, getKKUAIModel, setKKUAIModel } from '../../../lib/utils/kkuai';
-  import AiKeyModal from '../../../lib/components/AiKeyModal.svelte';
+  import ReportModal from '../../../lib/components/ReportModal.svelte';
+  
 
 
   $: events = $eventsStore;
@@ -19,8 +20,7 @@
   let selectedModel = 'typhoon-v2-70b-instruct';
   let analystNote = '';
   let showExportMenu = false;
-  let showAiKeyModal = false;  // shows AiKeyModal when API key is missing
-
+  
 
   onMount(() => {
     selectedModel = getKKUAIModel();
@@ -84,7 +84,7 @@
     const apiKey = getKKUAIKey();
     if (!apiKey) {
       // Show the API key setup modal instead of plain error text
-      showAiKeyModal = true;
+      alert("???????????? KKU AI API Key ?????????????????????? (Settings) ??????????");
       return;
     }
     isLoading = true; error = ''; briefingText = ''; streamingText = ''; mode = 'kku-ai';
@@ -102,9 +102,7 @@
   }
 
   // Called by AiKeyModal after the key is saved — retry AI generation automatically
-  function onAiKeySaved() {
-    generateWithKKUAI();
-  }
+  
 
 
   function generateRuleBased() {
@@ -115,6 +113,34 @@
       lastGenerated = new Date().toLocaleTimeString('th-TH');
       isLoading = false;
     }, 600);
+  }
+
+  let customPromptText = '';
+  let customAiResponse = '';
+  let isAskingCustom = false;
+  
+  async function askCustomPrompt() {
+    if (!customPromptText.trim()) return;
+    const apiKey = getKKUAIKey();
+    if (!apiKey) {
+      alert("กรุณาตั้งค่า KKU AI API Key ในหน้า Settings ก่อนใช้งาน");
+      return;
+    }
+    isAskingCustom = true;
+    customAiResponse = '';
+    const prompt = customPromptText;
+    customPromptText = '';
+    
+    try {
+      await callKKUAI(apiKey, selectedModel,
+        [{ role: 'user', content: prompt }],
+        (chunk) => { customAiResponse += chunk; }
+      );
+    } catch (e: any) {
+      customAiResponse = `**Error**: ${e.message || 'Failed to get AI response'}`;
+    } finally {
+      isAskingCustom = false;
+    }
   }
 
   function handleExportHTML() {
@@ -150,44 +176,33 @@
   onMount(() => { if ($eventsStore.length > 0) generateRuleBased(); });
 </script>
 
-<!-- KKU AI Key setup modal — shown when API key is missing -->
-<AiKeyModal
-  show={showAiKeyModal}
-  onClose={() => showAiKeyModal = false}
-  onSaved={onAiKeySaved}
-/>
+
 
 <div class="brief-page">
   <!-- Header -->
   <div class="brief-header">
     <div class="brief-header-left">
       <div class="brief-icon"><i class="ti ti-brain"></i></div>
-      <div>
-        <h1 class="brief-title">AI Daily Briefing</h1>
-        <p class="brief-desc">รายงานสรุปสถานการณ์ภัยคุกคามประจำวัน สร้างโดย KKU AI Platform</p>
-      </div>
     </div>
     <div class="brief-header-right">
-      <div class="model-wrap">
-        <label class="model-label"><i class="ti ti-cpu"></i> โมเดล AI</label>
-        <select class="model-select" bind:value={selectedModel} on:change={handleModelChange}>
-          {#each KKU_AI_MODELS as m}
-            <option value={m.id}>{m.name} — {m.provider}</option>
-          {/each}
-        </select>
-      </div>
+      
       <div style="position:relative;">
-        <button class="btn-outline" on:click={() => showExportMenu = !showExportMenu}>
-          <i class="ti ti-upload"></i> Export <i class="ti ti-chevron-down" style="font-size:11px;"></i>
+        <button class="btn-outline" on:click={() => showExportMenu = true}>
+          <i class="ti ti-upload"></i> Export
         </button>
-        {#if showExportMenu}
-          <div style="position:fixed;inset:0;z-index:49;" on:click={() => showExportMenu=false}></div>
-          <div class="export-dropdown">
-            <button class="export-item" on:click={() => { handleExportCSV(); showExportMenu=false; }}><i class="ti ti-table"></i> Export CSV</button>
-            <button class="export-item" on:click={() => { handleExportPDF(); showExportMenu=false; }}><i class="ti ti-file-type-pdf"></i> Export PDF</button>
-            <button class="export-item" on:click={() => { handleExportHTML(); showExportMenu=false; }}><i class="ti ti-file-type-html"></i> Export HTML Report</button>
-          </div>
-        {/if}
+        <ReportModal 
+          bind:show={showExportMenu} 
+          reportTitle="AI Daily Briefing Report"
+          availableFields={['Time', 'Source IP', 'Country', 'Event Type', 'Severity']}
+          previewData={events.map(e => ({ 'time': formatEventTime(e.time || e.createdAt), 'source ip': e.ip, 'country': e.country || 'Unknown', 'event type': e.type, 'severity': e.severity }))}
+          on:export={(e) => {
+            const { format, fields } = e.detail;
+            const data = events.map(ev => ({ 'Time': formatEventTime(ev.time || ev.createdAt), 'Source IP': ev.ip, 'Country': ev.country || 'Unknown', 'Event Type': ev.type, 'Severity': ev.severity }));
+            if (format === 'pdf') downloadPDF(data, fields, 'ai-briefing-events.pdf', 'AI Daily Briefing');
+            else if (format === 'html') downloadHTML(data, fields, 'ai-daily-briefing.html', 'AI Daily Briefing');
+            else downloadCSV(data, fields, 'ai-briefing-events.csv');
+          }}
+        />
       </div>
     </div>
   </div>
@@ -195,27 +210,27 @@
   <!-- KPI Stats Row -->
   <div class="stats-row">
     <div class="stat-card">
-      <div class="stat-icon" style="color:var(--text-muted);background:#f1f5f9;"><i class="ti ti-list"></i></div>
+      <div class="stat-icon" style="color:var(--text-muted);background:var(--bg-secondary);"><i class="ti ti-list"></i></div>
       <div class="stat-value">{stats.total.toLocaleString()}</div>
       <div class="stat-label">เหตุการณ์ทั้งหมด</div>
     </div>
     <div class="stat-card">
-      <div class="stat-icon" style="color:#dc2626;background:#fef2f2;"><i class="ti ti-alert-octagon"></i></div>
+      <div class="stat-icon" style="color:var(--red, #ef4444);background:var(--red-bg, rgba(239,68,68,0.1));"><i class="ti ti-alert-octagon"></i></div>
       <div class="stat-value sev-critical">{stats.critical}</div>
       <div class="stat-label">วิกฤต (Critical)</div>
     </div>
     <div class="stat-card">
-      <div class="stat-icon" style="color:#ea580c;background:var(--bg-panel)7ed;"><i class="ti ti-alert-triangle"></i></div>
+      <div class="stat-icon" style="color:var(--orange, #f59e0b);background:var(--orange-bg, rgba(245,158,11,0.1));"><i class="ti ti-alert-triangle"></i></div>
       <div class="stat-value sev-high">{stats.high}</div>
       <div class="stat-label">สูง (High)</div>
     </div>
     <div class="stat-card">
-      <div class="stat-icon" style="color:#3b82f6;background:#eff6ff;"><i class="ti ti-world"></i></div>
+      <div class="stat-icon" style="color:var(--blue, #3b82f6);background:var(--blue-bg, rgba(59,130,246,0.1));"><i class="ti ti-world"></i></div>
       <div class="stat-value">{stats.uniqueIPs}</div>
       <div class="stat-label">IP ไม่ซ้ำ</div>
     </div>
     <div class="stat-card">
-      <div class="stat-icon" style:background="rgba(0,0,0,0.05)" style:color={riskColor}><i class="ti ti-shield"></i></div>
+      <div class="stat-icon" style:background="var(--bg-secondary)" style:color={riskColor}><i class="ti ti-shield"></i></div>
       <div class="stat-value" style:color={riskColor}>{riskLevel}</div>
       <div class="stat-label">ระดับความเสี่ยง</div>
     </div>
@@ -259,9 +274,6 @@
                 <div class="ai-badge rule"><i class="ti ti-robot"></i> สร้างโดยกฎวิเคราะห์อัตโนมัติ</div>
               {/if}
               <div class="brief-text">{@html renderMarkdown(briefingText)}</div>
-              {#if analystNote}
-                <div class="analyst-note"><strong><i class="ti ti-pencil"></i> บันทึก Analyst:</strong><br>{analystNote}</div>
-              {/if}
             </div>
           {:else}
             <div class="brief-empty">
@@ -285,11 +297,28 @@
       </div>
 
       <!-- Analyst Note -->
+
+
+      <!-- AI Copilot Chat -->
       <div class="brief-card" style="margin-top:16px;">
-        <div class="brief-card-head"><div class="brief-card-title"><i class="ti ti-pencil"></i> บันทึกของ Analyst</div></div>
+        <div class="brief-card-head"><div class="brief-card-title"><i class="ti ti-message-chatbot"></i> KKU AI Copilot (Custom Prompt)</div></div>
         <div style="padding:16px;">
-          <textarea class="analyst-textarea" bind:value={analystNote}
-            placeholder="เพิ่มบันทึก ความเห็น หรือข้อสังเกตส่วนตัวที่นี่..."></textarea>
+          {#if customAiResponse}
+            <div class="ai-response-box mb-3">
+              <div class="ai-badge kku" style="margin-bottom:8px;"><i class="ti ti-sparkles"></i> AI Response</div>
+              <div class="brief-text">{@html renderMarkdown(customAiResponse)}</div>
+            </div>
+          {/if}
+          <div style="display: flex; gap: 8px;">
+            <input type="text" class="custom-prompt-input" bind:value={customPromptText} placeholder="Ask AI to analyze specific IP, explain an attack type, etc..." on:keydown={(e) => e.key === 'Enter' && askCustomPrompt()} />
+            <button class="btn-primary" on:click={askCustomPrompt} disabled={isAskingCustom}>
+              {#if isAskingCustom}
+                <span class="mini-spin"></span>
+              {:else}
+                <i class="ti ti-send"></i> ส่ง
+              {/if}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -409,5 +438,9 @@
   .side-fill.red { background: #dc2626; }
   .no-data { color: var(--text-muted); font-size: 12px; text-align: center; padding: 12px 0; margin: 0; }
   .mini-spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: var(--bg-panel); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  .custom-prompt-input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; outline: none; }
+  .custom-prompt-input:focus { border-color: #1d9e75; }
+  .ai-response-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .mb-3 { margin-bottom: 12px; }
   @media (max-width: 1024px) { .brief-body { grid-template-columns: 1fr; } .stats-row { grid-template-columns: repeat(3, 1fr); } }
 </style>

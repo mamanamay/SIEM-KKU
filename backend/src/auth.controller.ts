@@ -8,6 +8,7 @@ import type { Response } from 'express';
 import { User } from './entities/user.entity';
 import { LoginSession } from './entities/login-session.entity';
 import { TotpService } from './totp.service';
+import { JWT_SECRET } from './jwt.config';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 
@@ -30,15 +31,18 @@ function verifyPreAuth(token: string): { userId: number; stage: 'setup' | 'verif
 }
 
 function signAccessToken(user: { id: number; username: string; role: string }): string {
-  const secret = process.env.JWT_SECRET || 'dev-secret-change-in-production';
   return jwt.sign(
     { sub: user.id, username: user.username, role: user.role },
-    secret,
+    JWT_SECRET,
     { expiresIn: '8h' },
   );
 }
 
+import { UseGuards } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
+
 @Controller('api/auth')
+@UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(
     @InjectRepository(User)
@@ -62,7 +66,6 @@ export class AuthController {
         await this.sessionRepository.save({
           username: user.username,
           role: user.role,
-          status: 'success',
           ipAddress: Array.isArray(ip) ? ip[0] : ip,
         });
         // Important: clear any old pre-auth cookies
@@ -211,7 +214,9 @@ export class AuthController {
   // ── User: Init 2FA Setup (from Settings page) ───────────
   @Post('users/:username/init-2fa')
   async initTwoFa(@Param('username') username: string, @Res({ passthrough: true }) res: Response) {
-    const user = await this.userRepository.findOne({ where: { username } });
+    const user = await this.userRepository.createQueryBuilder('user')
+      .where('LOWER(user.username) = LOWER(:username)', { username })
+      .getOne();
     if (!user) throw new BadRequestException('ไม่พบผู้ใช้');
     
     // We set a pre_auth_token to reuse the existing setup flow
@@ -219,15 +224,17 @@ export class AuthController {
     res.cookie('pre_auth_token', preAuth, {
       httpOnly: true,
       sameSite: 'lax',
-      maxAge: 5 * 60 * 1000,
-    });
-    return { success: true, message: 'กรุณาตั้งค่า 2FA' };
+      path: '/',
+      maxAge: 10 * 60 * 1000, // 10 mins for setup
+    });return { success: true, message: 'กรุณาตั้งค่า 2FA' };
   }
 
   // ── User: Disable 2FA (from Settings page) ──────────────
   @Post('users/:username/disable-2fa')
   async disableTwoFa(@Param('username') username: string) {
-    const user = await this.userRepository.findOne({ where: { username } });
+    const user = await this.userRepository.createQueryBuilder('user')
+      .where('LOWER(user.username) = LOWER(:username)', { username })
+      .getOne();
     if (!user) throw new BadRequestException('ไม่พบผู้ใช้');
 
     user.totpSecretEnc = null;
@@ -283,10 +290,22 @@ export class AuthController {
 
     try {
       // 1. Exchange code for access token
+      const payload = {
+        code,
+        redirectUrl,
+        redirect_uri: redirectUrl, // Add snake_case for standard OAuth2
+        clientId,
+        client_id: clientId,       // Add snake_case for standard OAuth2
+        clientSecret,
+        client_secret: clientSecret // Add snake_case for standard OAuth2
+      };
+      
+      console.log(`[SSO Token Request] Sending to ${ssoApiUrl}/auth.token with redirectUrl: ${redirectUrl}`);
+      
       const tokenRes = await fetch(`${ssoApiUrl}/auth.token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, redirectUrl, clientId, clientSecret }),
+        body: JSON.stringify(payload),
       });
       const tokenData = await tokenRes.json();
 
@@ -309,13 +328,25 @@ export class AuthController {
         throw new UnauthorizedException('ไม่สามารถดึงข้อมูลโปรไฟล์จาก KKU SSO ได้');
       }
 
-      const email: string = profileData.profile.email;
+      const ssoProfile = profileData.profile || profileData || {};
+      const email: string = ssoProfile.email || ssoProfile.mail || ssoProfile.userPrincipalName || ssoProfile.username || ssoProfile.uid || '';
+      
+      if (!email) {
+        console.error(`[SSO Profile Warning]: No email/username in response`, JSON.stringify(profileData));
+        throw new UnauthorizedException('ไม่พบข้อมูลบัญชีผู้ใช้จากระบบ KKU SSO ข้อมูลที่ได้มาคือ: ' + JSON.stringify(profileData));
+      }
 
-      // *** WHITELIST CHECK *** — look up by FULL email stored as username
-      const user = await this.userRepository.findOne({ where: { username: email } });
+      const usernamePrefix = email.includes('@') ? email.split('@')[0] : email;
+
+      // *** WHITELIST CHECK *** — look up by FULL email or Prefix (Case-Insensitive)
+      const user = await this.userRepository.createQueryBuilder('user')
+        .where('LOWER(user.username) = LOWER(:email)', { email })
+        .orWhere('LOWER(user.username) = LOWER(:prefix)', { prefix: usernamePrefix })
+        .orWhere('LOWER(user.username) LIKE LOWER(:likePrefix)', { likePrefix: `${usernamePrefix}@%` })
+        .getOne();
       if (!user) {
         throw new UnauthorizedException(
-          `อีเมล "${email}" ยังไม่ได้รับอนุญาตให้เข้าสู่ระบบ กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มสิทธิ์`,
+          `บัญชี "${email}" ยังไม่ได้รับอนุญาตให้เข้าสู่ระบบ กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มสิทธิ์`,
         );
       }
 
@@ -333,6 +364,7 @@ export class AuthController {
         res.cookie('pre_auth_token', preAuth, {
           httpOnly: true,
           sameSite: 'lax',
+          path: '/',
           maxAge: 5 * 60 * 1000,
         });
         return { stage: 'verify', message: 'กรุณายืนยันรหัส 2FA' };
@@ -355,19 +387,20 @@ export class AuthController {
     if (!isSso && !password) {
       throw new BadRequestException('กรุณากรอก Username และ Password');
     }
-    const existing = await this.userRepository.findOne({ where: { username } });
+    const lowerUsername = username.toLowerCase();
+    const existing = await this.userRepository.findOne({ where: { username: lowerUsername } });
     if (existing) {
       throw new BadRequestException('Username นี้มีในระบบแล้ว');
     }
 
     const hash = isSso ? 'SSO_MANAGED' : await bcrypt.hash(password, 10);
     const user = this.userRepository.create({
-      username,
+      username: lowerUsername,
       passwordHash: hash,
       role: role || 'guest',
     });
     await this.userRepository.save(user);
-    return { success: true, message: `สร้างบัญชี "${username}" สำเร็จ` };
+    return { success: true, message: `สร้างบัญชี "${lowerUsername}" สำเร็จ` };
   }
 
   // ── List Users (includes password for non-SSO accounts) ─
@@ -383,6 +416,23 @@ export class AuthController {
       isSso: u.passwordHash === 'SSO_MANAGED',
       totpEnabled: u.totpEnabled,
     }));
+  }
+
+  // ── Update User Role ────────────────────────────────────
+  @Put('users/:username')
+  async updateUser(@Param('username') username: string, @Body() body: any) {
+    if (username === 'admin') {
+      throw new BadRequestException('ไม่สามารถเปลี่ยนสิทธิ์ของ admin หลักได้');
+    }
+    const user = await this.userRepository.findOne({ where: { username } });
+    if (!user) throw new BadRequestException('ไม่พบผู้ใช้');
+
+    if (body.role && ['admin', 'analyst', 'viewer', 'guest'].includes(body.role)) {
+      user.role = body.role;
+    }
+
+    await this.userRepository.save(user);
+    return { success: true, message: `เปลี่ยนสิทธิ์ของ "${username}" เป็น ${user.role} สำเร็จ` };
   }
 
   // ── Change Password ────────────────────────────────────

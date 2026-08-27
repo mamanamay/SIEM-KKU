@@ -1,1 +1,0 @@
-const fs = require('fs'); let code = fs.readFileSync('src/routes/dashboard/+layout.svelte', 'utf8'); code = code.replace(/import \{ onMount, onDestroy \} from 'svelte';/, "import { onMount, onDestroy } from 'svelte';\n  import { themeStore } from '../../stores/theme';"); fs.writeFileSync('src/routes/dashboard/+layout.svelte', code);

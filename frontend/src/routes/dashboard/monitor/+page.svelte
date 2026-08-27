@@ -1,13 +1,14 @@
+
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { eventsStore, connectionState, initSocket, disconnectSocket } from '../../../stores/events';
 
-  // ── State ─────────────────────────────────────────────────────────────────
+  // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let currentTime = '';
   let currentDate = '';
   let timeInterval: any;
 
-  // ── Data ──────────────────────────────────────────────────────────────────
+  // â”€â”€ Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   $: events = $eventsStore;
   $: connected = $connectionState;
 
@@ -71,7 +72,7 @@
     return Object.entries(c).sort((a, b) => b[1] - a[1]);
   })();
 
-  // Sparkline — last 20 values by minute buckets
+  // Sparkline â€” last 20 values by minute buckets
   $: sparkData = (() => {
     const buckets = new Array(20).fill(0);
     const now = Date.now();
@@ -98,18 +99,19 @@
     return '#6b7280';
   }
 
-  function countryFlag(country: string) {
+    function countryFlag(country: string) {
     const f: Record<string, string> = {
-      'Russia':'🇷🇺','China':'🇨🇳','United States':'🇺🇸','USA':'🇺🇸','Germany':'🇩🇪',
-      'Brazil':'🇧🇷','Japan':'🇯🇵','Korea':'🇰🇷','India':'🇮🇳','Singapore':'🇸🇬',
-      'Netherlands':'🇳🇱','France':'🇫🇷','United Kingdom':'🇬🇧','UK':'🇬🇧',
-      'Australia':'🇦🇺','Canada':'🇨🇦','Finland':'🇫🇮','Bulgaria':'🇧🇬',
-      'Indonesia':'🇮🇩','Vietnam':'🇻🇳','Local Network':'🏠',
+      'Russia':'[RU]','China':'[CN]','United States':'[US]','USA':'[US]','Germany':'[DE]',
+      'Brazil':'[BR]','Japan':'[JP]','Korea':'[KR]','India':'[IN]','Singapore':'[SG]',
+      'Netherlands':'[NL]','France':'[FR]','United Kingdom':'[UK]','UK':'[UK]',
+      'Australia':'[AU]','Canada':'[CA]','Finland':'[FI]','Bulgaria':'[BG]',
+      'Indonesia':'[ID]','Vietnam':'[VN]','Local Network':'[LOCAL]',
     };
-    return f[country] || '🌍';
+    return f[country] || '[UNK]';
   }
 
-  // ── Map State ──
+
+  // â”€â”€ Map State â”€â”€
   let mapEl: HTMLDivElement;
   let map: any;
   let L: any;
@@ -235,11 +237,11 @@
 </script>
 
 <svelte:head>
-  <title>SOC Monitor Wall - KKUSIEM</title>
+  <title>SOC Monitor - KKUSIEM</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    body { margin: 0; background: #030711; }
+    body { margin: 0; background: #030711; overflow: hidden; }
   </style>
 </svelte:head>
 
@@ -249,12 +251,12 @@
 
 <div class="monitor-wrap">
 
-  <!-- ═══ TOP BAR ═══════════════════════════════════════════════════════════ -->
+  <!-- â•â•â• TOP BAR â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <div class="top-bar">
     <div class="top-brand">
       <div class="brand-icon"><i class="ti ti-radar"></i></div>
       <div>
-        <div class="brand-name">KKUSIEM SOC</div>
+        <div class="brand-name">KKUSIEM SOC MONITOR</div>
         <div class="brand-sub">Real-Time Threat Intelligence</div>
       </div>
     </div>
@@ -280,7 +282,7 @@
     </div>
   </div>
 
-  <!-- ═══ DENSE GRID (3 Columns) ════════════════════════════════════════════ -->
+  <!-- â•â•â• DENSE GRID (3 Columns) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <div class="dense-grid">
     
     <!-- LEFT: Live Alerts Feed (High Priority) -->
@@ -353,7 +355,7 @@
       <div class="panel center-mid map-panel" style="flex: 1.8; min-height: 450px; margin-top: 12px; margin-bottom: 12px; position: relative; box-shadow: 0 0 40px rgba(0,212,255,0.15);">
         <div class="panel-head">
           <span><i class="ti ti-world"></i> Global Threat Map</span>
-          <span style="font-size: 11px; color: #00ff88; text-shadow: 0 0 10px #00ff88;">LIVE TRACKING</span>
+          <span style="font-size: 13px; color: #00ff88; text-shadow: 0 0 10px #00ff88;">LIVE TRACKING</span>
         </div>
         <div bind:this={mapEl} class="leaflet-map" style="width: 100%; height: calc(100% - 37px); background: #02050a; z-index: 1;"></div>
         {#if !events.length}
@@ -419,7 +421,7 @@
           <div class="port-row">
             <div class="port-num">:{port}</div>
             <div class="port-info">
-              <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:10px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size: 14px;">
                 <span style="color:#9ca3af;">{data.label}</span>
                 <span style="color:#e8eaf0; font-family:'JetBrains Mono';">{data.count}</span>
               </div>
@@ -448,23 +450,25 @@
     </div>
   </div>
 
-  <!-- ═══ BOTTOM BAR ═══════════════════════════════════════════════════════ -->
+  <!-- â•â•â• BOTTOM BAR â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <div class="bottom-bar">
-    <div class="bb-left">
-      <span class="bb-item"><i class="ti ti-radar"></i> KKUSIEM SOC Engine</span>
-      <span class="bb-sep">|</span>
-      <span class="bb-item">NODE: Alpha-1</span>
+    <div class="bb-left" style="display:flex; align-items:center; gap: 15px;">
+      <span class="bb-item" style="color: #64748b; font-weight: 500;"><span style="color:#1d9e75; margin-right:4px; font-size:10px;">●</span> Firewall Traffic Log</span>
+      <span class="bb-item" style="color: #64748b; font-weight: 500;"><span style="color:#1d9e75; margin-right:4px; font-size:10px;">●</span> Server Syslog</span>
+      <span class="bb-item" style="color: #64748b; font-weight: 500;"><span style="color:#1d9e75; margin-right:4px; font-size:10px;">●</span> NGINX Access Log</span>
+      <span class="bb-sep" style="color: #334155; margin: 0 5px;">|</span>
+      <span class="bb-item" style="color: #94a3b8; font-weight: 600;">INGESTION RATE <span style="color: #1d9e75; margin-left:6px;">1,240</span> <span style="color:#64748b;font-weight:400">EPS</span></span>
     </div>
     <div class="bb-right">
-      <a href="/dashboard" class="exit-btn"><i class="ti ti-layout-dashboard"></i> Back to Dashboard</a>
+      <!-- Back button removed per request -->
     </div>
   </div>
 </div>
 
 <style>
-  /* ── Base ── */
+  /* â”€â”€ Base â”€â”€ */
   .monitor-wrap {
-    min-height: 100vh;
+    height: 100vh; overflow: hidden;
     background: #030711;
     display: flex; flex-direction: column;
     font-family: 'Inter', 'Noto Sans Thai', sans-serif;
@@ -481,7 +485,7 @@
     background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 1px, rgba(0,0,0,0.02) 1px, rgba(0,0,0,0.02) 2px);
   }
 
-  /* ── Top Bar ── */
+  /* â”€â”€ Top Bar â”€â”€ */
   .top-bar {
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px 16px;
@@ -499,7 +503,7 @@
     box-shadow: 0 0 12px rgba(29,158,117,0.3);
   }
   .brand-name { font-size: 15px; font-weight: 900; letter-spacing: 0.15em; color: #1d9e75; }
-  .brand-sub { font-size: 9px; color: #5a6478; letter-spacing: 0.1em; text-transform: uppercase; }
+  .brand-sub { font-size: 13px; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; }
 
   .top-kpis { display: flex; gap: 8px; flex: 1; justify-content: center; }
   .top-kpi {
@@ -519,16 +523,16 @@
   .tkpi-num { font-size: 18px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; }
   .top-kpi.red .tkpi-num { color: #ef4444; } .top-kpi.orange .tkpi-num { color: #f97316; } .top-kpi.yellow .tkpi-num { color: #f59e0b; }
   .top-kpi.blue .tkpi-num { color: #3b82f6; } .top-kpi.green .tkpi-num { color: #10b981; } .top-kpi.purple .tkpi-num { color: #a855f7; }
-  .tkpi-lbl { font-size: 9px; color: #9ca3af; letter-spacing: 0.05em; margin-top: 4px; }
+  .tkpi-lbl { font-size: 13px; color: #9ca3af; letter-spacing: 0.05em; margin-top: 4px; }
 
   .top-right { display: flex; align-items: center; gap: 16px; min-width: 150px; justify-content: flex-end; }
-  .conn-status { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; }
+  .conn-status { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; letter-spacing: 0.05em; }
   .conn-dot { width: 8px; height: 8px; border-radius: 50%; }
   .conn-dot.on { background: #10b981; box-shadow: 0 0 8px #10b981; animation: blink 1.5s infinite; }
   .conn-dot.off { background: #ef4444; }
   @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.3} }
   .clock-time { font-size: 18px; font-weight: 900; font-family: 'JetBrains Mono', monospace; color: #00ff88; line-height: 1; text-align: right; }
-  .clock-date { font-size: 9px; color: #5a6478; margin-top: 2px; text-align: right; text-transform: uppercase; }
+  .clock-date { font-size: 13px; color: var(--text-muted); margin-top: 2px; text-align: right; text-transform: uppercase; }
 
   /* ── Dense Grid (3 Columns) ── */
   .dense-grid {
@@ -537,7 +541,9 @@
     grid-template-columns: 300px 1fr 280px; /* Left Narrow, Center Wide, Right Narrow */
     gap: 12px;
     padding: 12px;
-    min-height: 700px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }
   @media (max-width: 1200px) {
     .dense-grid {
@@ -566,7 +572,7 @@
   .panel-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 10px 14px;
-    font-size: 11px; font-weight: 800; text-transform: uppercase;
+    font-size: 13px; font-weight: 800; text-transform: uppercase;
     letter-spacing: 0.15em; color: #e8eaf0;
     border-bottom: 1px solid rgba(0, 212, 255, 0.2);
     background: linear-gradient(90deg, rgba(0,212,255,0.1) 0%, rgba(0,0,0,0) 100%);
@@ -576,26 +582,32 @@
   
   /* Scrollbar */
   .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-  .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+  .custom-scrollbar::-webkit-scrollbar-track { background: var(--bg-secondary); }
   .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(29,158,117,0.4); border-radius: 4px; }
 
-  /* ── LEFT: Alerts Feed ── */
-  .col-left { display: flex; flex-direction: column; min-height: 0; }
+  /* â”€â”€ LEFT: Alerts Feed â”€â”€ */
+    .col-left { display: flex; flex-direction: column; min-height: 0; }
   .feed-list { flex: 1; overflow-y: auto; padding: 4px 0; min-height: 200px; }
   .feed-item {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.02);
-    background: rgba(0,0,0,0.2);
-  }
+      display: grid;
+      grid-template-columns: 45px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      background: transparent;
+      transition: background 0.2s;
+    }
   .feed-item:hover { background: rgba(255,255,255,0.05); }
-  .feed-time { font-size: 10px; color: #6b7280; font-family: 'JetBrains Mono', monospace; width: 45px; }
-  .feed-body { flex: 1; min-width: 0; }
-  .feed-ip { font-size: 11px; font-weight: 700; color: #e8eaf0; font-family: 'JetBrains Mono', monospace; }
-  .feed-type { font-size: 9px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .feed-sev { font-size: 9px; font-weight: 800; padding: 2px 4px; border-radius: 4px; background: rgba(0,0,0,0.4); }
+  .feed-time { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; text-align: left; }
+  .feed-body { display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+  .feed-ip { font-size: 13px; font-weight: 700; color: var(--text-primary); font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+  .feed-flag { font-size: 10px; font-weight: 700; color: var(--text-muted); background: var(--bg-panel); padding: 2px 6px; border-radius: 4px; font-family: 'Inter', sans-serif; border: 1px solid var(--border); flex-shrink: 0; }
+  .feed-type { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .feed-sev { font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 4px; background: rgba(0,0,0,0.4); text-align: center; width: 45px; }
 
-  /* ── CENTER: Stats & Terminal ── */
+
+  /* â”€â”€ CENTER: Stats & Terminal â”€â”€ */
   .col-center { display: flex; flex-direction: column; gap: 12px; height: 100%; min-width: 0; }
   .center-top { flex: 0 0 auto; }
   .center-bottom { flex: 1; min-height: 0; }
@@ -603,56 +615,62 @@
   .big-stats { display: flex; align-items: center; justify-content: space-around; padding: 20px 12px 12px; }
   .big-stat { text-align: center; }
   .big-num { font-size: 48px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 0 20px currentColor; }
-  .big-lbl { font-size: 11px; font-weight: 800; color: #e8eaf0; margin-top: 10px; letter-spacing: 0.15em; text-transform: uppercase; }
+  .big-lbl { font-size: 13px; font-weight: 800; color: #e8eaf0; margin-top: 10px; letter-spacing: 0.15em; text-transform: uppercase; }
   .stat-divider { width: 1px; height: 50px; background: linear-gradient(180deg, transparent, rgba(0,212,255,0.4), transparent); }
 
   .spark-wrap { display: flex; flex-direction: column; padding: 0 20px 20px; height: 90px; }
   .sparkline { flex: 1; display: flex; align-items: flex-end; gap: 5px; border-bottom: 1px solid rgba(0,212,255,0.2); }
   .spark-bar-wrap { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
   .spark-bar { width: 100%; border-radius: 3px 3px 0 0; transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px currentColor; }
-  .spark-labels { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; color: #9ca3af; font-weight: 600; }
+  .spark-labels { display: flex; justify-content: space-between; margin-top: 6px; font-size: 14px; color: #9ca3af; font-weight: 600; }
 
   /* Terminal */
   .terminal-panel { background: rgba(0,0,0,0.6); border: 1px solid rgba(0,255,136,0.2); border-radius: 8px; box-shadow: inset 0 0 20px rgba(0,0,0,0.8); }
-  .terminal-body { flex: 1; overflow-y: auto; padding: 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6; display: flex; flex-direction: column-reverse; }
+  .terminal-body { flex: 1; overflow-y: auto; padding: 14px; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.6; display: flex; flex-direction: column-reverse; }
   .term-line { border-bottom: 1px dotted rgba(0,255,136,0.15); padding: 5px 0; word-break: break-all; transition: background 0.2s; }
   .term-line:hover { background: rgba(0,255,136,0.08); }
-  .t-time { color: #5a6478; margin-right: 8px; text-shadow: 0 0 5px rgba(90,100,120,0.5); }
+  .t-time { color: var(--text-muted); margin-right: 8px; text-shadow: 0 0 5px rgba(90,100,120,0.5); }
   .t-ip { color: #00d4ff; margin-right: 8px; text-shadow: 0 0 8px rgba(0,212,255,0.6); font-weight: bold; }
   .t-sev.critical { color: #ff003c; text-shadow: 0 0 8px #ff003c; } .t-sev.high { color: #ff7b00; text-shadow: 0 0 8px #ff7b00; } .t-sev.medium { color: #ffbb00; text-shadow: 0 0 8px #ffbb00; } .t-sev.low { color: #00ff88; text-shadow: 0 0 8px #00ff88; }
   .t-msg { color: #d1d5db; margin-left: 8px; }
 
-  /* ── RIGHT: Mini Panels ── */
+  /* â”€â”€ RIGHT: Mini Panels â”€â”€ */
   .col-right { display: flex; flex-direction: column; gap: 12px; height: 100%; }
   .right-box { flex: 1; min-height: 0; }
   
+  .leaderboard, .port-grid, .mitre-list { flex: 1; overflow-y: auto; }
   .leader-row { margin-bottom: 12px; display: flex; gap: 10px; align-items: center; }
   .leader-rank { font-size: 14px; font-weight: 900; width: 20px; text-align: center; text-shadow: 0 0 8px currentColor; }
   .leader-info { flex: 1; }
-  .leader-ip { font-size: 12px; font-family: 'JetBrains Mono'; color: #fff; font-weight: 700; }
-  .leader-count { font-size: 12px; font-family: 'JetBrains Mono'; color: #00d4ff; font-weight: bold; }
-  .leader-bar-wrap { height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; margin-top: 6px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); }
+  .leader-ip { font-size: 14px; font-family: 'JetBrains Mono'; color: #fff; font-weight: 700; }
+  .leader-count { font-size: 14px; font-family: 'JetBrains Mono'; color: #00d4ff; font-weight: bold; }
+  .leader-bar-wrap { height: 6px; background: var(--bg-secondary); border-radius: 3px; margin-top: 6px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); }
   .leader-bar { height: 100%; border-radius: 3px; box-shadow: 0 0 10px currentColor; }
 
   .port-row { margin-bottom: 12px; display: flex; gap: 10px; align-items: center; }
-  .port-num { font-size: 12px; font-weight: 900; color: #00ff88; font-family: 'JetBrains Mono'; width: 40px; text-shadow: 0 0 8px rgba(0,255,136,0.6); }
+  .port-num { font-size: 14px; font-weight: 900; color: #00ff88; font-family: 'JetBrains Mono'; width: 40px; text-shadow: 0 0 8px rgba(0,255,136,0.6); }
   .port-info { flex: 1; }
-  .port-bar-w { height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); }
+  .port-bar-w { height: 6px; background: var(--bg-secondary); border-radius: 3px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); }
   .port-bar { height: 100%; border-radius: 3px; box-shadow: 0 0 10px currentColor; }
 
   .mitre-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(0,212,255,0.1); }
-  .mitre-lbl { font-size: 11px; color: #e8eaf0; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
+  .mitre-lbl { font-size: 13px; color: #e8eaf0; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
   .mitre-val { font-size: 14px; font-weight: 900; font-family: 'JetBrains Mono'; color: #ff003c; text-shadow: 0 0 10px rgba(255,0,60,0.6); }
 
-  /* ── Bottom Bar ── */
+  /* â”€â”€ Bottom Bar â”€â”€ */
   .bottom-bar {
     display: flex; align-items: center; justify-content: space-between;
     padding: 6px 16px; background: rgba(0,0,0,0.8);
     border-top: 1px solid rgba(29,158,117,0.3);
-    font-size: 9px; font-weight: 700; letter-spacing: 0.05em; color: #5a6478;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.05em; color: var(--text-muted);
     flex-shrink: 0;
   }
   .bb-left { display: flex; align-items: center; gap: 10px; }
-  .exit-btn { color: #5a6478; text-decoration: none; transition: color 0.2s; }
+  .exit-btn { color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
   .exit-btn:hover { color: #e8eaf0; }
 </style>
+
+
+
+
+

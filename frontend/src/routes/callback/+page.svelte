@@ -204,7 +204,7 @@
 
   .cb-sub {
     font-size: 13px;
-    color: #5a6478;
+    color: var(--text-muted);
     line-height: 1.6;
     margin-bottom: 20px;
   }
@@ -311,7 +311,7 @@
     color: #3d4558;
     line-height: 1.5;
     text-align: left;
-    background: rgba(255,255,255,0.02);
+    background: var(--bg-hover);
     border: 1px solid rgba(255,255,255,0.05);
     border-radius: 8px;
     padding: 10px 12px;

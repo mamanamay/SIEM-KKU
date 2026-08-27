@@ -10,11 +10,18 @@ export class IngestController {
   ingestLog(
     @Body() body: any,
     @Headers('x-ingest-key') apiKey?: string,
+    @Headers('authorization') authHeader?: string,
   ) {
     // ── Optional API Key Guard ────────────────────────────────────────────
     const expectedKey = process.env.INGEST_API_KEY;
-    if (expectedKey && apiKey !== expectedKey) {
-      throw new HttpException('Unauthorized: Invalid Ingest API Key', HttpStatus.UNAUTHORIZED);
+    if (expectedKey) {
+      let providedKey = apiKey;
+      if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+        providedKey = authHeader.substring(7).trim();
+      }
+      if (providedKey !== expectedKey) {
+        throw new HttpException('Unauthorized: Invalid Ingest API Key', HttpStatus.UNAUTHORIZED);
+      }
     }
 
     if (!body || (Array.isArray(body) && body.length === 0)) {

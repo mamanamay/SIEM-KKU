@@ -28,7 +28,7 @@
   let searchTopIP = '';
   let searchBottomIP = '';
   let selectedType = 'ALL';
-  let activeTab: 'faculties' | 'departments' | 'general' = 'faculties';
+  let activeTab: 'all' | 'faculties' | 'departments' | 'general' = 'all';
 
   // Extract unique faculties dynamically from the current editableRecords
   $: dynamicFaculties = Array.from(new Set(editableRecords.map((r: any) => r['Faculty/Dept']).filter(Boolean))).map(name => {
@@ -106,10 +106,16 @@
     return !isFac && !isGen;
   });
 
-  let currentFacPage = 1, currentDeptPage = 1, currentGenPage = 1;
+  $: allRecords = filteredRecords;
+
+  let currentAllPage = 1, currentFacPage = 1, currentDeptPage = 1, currentGenPage = 1;
   const ipPerPage = 20;
 
   // Pagination Logic for Tabs
+  $: totalAllPages = Math.ceil(allRecords.length / ipPerPage) || 1;
+  $: { if (currentAllPage > totalAllPages) currentAllPage = Math.max(1, totalAllPages); }
+  $: paginatedAll = allRecords.slice((currentAllPage - 1) * ipPerPage, currentAllPage * ipPerPage);
+
   $: totalFacPages = Math.ceil(facultyRecords.length / ipPerPage) || 1;
   $: { if (currentFacPage > totalFacPages) currentFacPage = Math.max(1, totalFacPages); }
   $: paginatedFac = facultyRecords.slice((currentFacPage - 1) * ipPerPage, currentFacPage * ipPerPage);
@@ -154,18 +160,26 @@
     await persistData();
   }
 
+  let showSuccessPopup = false;
+  let successMessage = '';
+
   async function saveRecord() {
     if (!formData.Route.trim()) { alert('Route/CIDR is required!'); return; }
     
     if (modalMode === 'ADD') {
       // Add to front
       editableRecords = [formData, ...editableRecords];
+      successMessage = 'สร้าง IP ใหม่สำเร็จแล้ว';
     } else {
       // Update
       editableRecords = editableRecords.map(r => r._id === formData._id ? formData : r);
+      successMessage = 'อัปเดต IP สำเร็จแล้ว';
     }
     showModal = false;
     await persistData();
+    
+    showSuccessPopup = true;
+    setTimeout(() => showSuccessPopup = false, 3000);
   }
 
   async function persistData() {
@@ -283,7 +297,7 @@
     <div class="page-title"><i class="ti ti-network"></i> Network Map Database</div>
     <div class="admin-tools">
       <button class="btn-primary" on:click={openAddModal}>
-        <i class="ti ti-plus"></i> เพิ่มไอพีใหม่
+        <i class="ti ti-plus"></i> เพิ่ม IP ใหม่
       </button>
     </div>
   </div>
@@ -321,6 +335,10 @@
 
   <!-- Tabs -->
   <div class="tabs-container">
+    <button class="tab-btn {activeTab === 'all' ? 'active' : ''}" on:click={() => {activeTab = 'all'; currentAllPage = 1;}}>
+      <i class="ti ti-list"></i> All
+      <span class="tab-badge">{allRecords.length}</span>
+    </button>
     <button class="tab-btn {activeTab === 'faculties' ? 'active' : ''}" on:click={() => {activeTab = 'faculties'; currentFacPage = 1;}}>
       <i class="ti ti-building-community"></i> Faculties
       <span class="tab-badge">{facultyRecords.length}</span>
@@ -349,11 +367,11 @@
       </thead>
       <tbody>
         <!-- Select correct array based on active tab -->
-        {#each (activeTab === 'faculties' ? paginatedFac : activeTab === 'departments' ? paginatedDept : paginatedGen) as record (record._id)}
+        {#each (activeTab === 'all' ? paginatedAll : activeTab === 'faculties' ? paginatedFac : activeTab === 'departments' ? paginatedDept : paginatedGen) as record (record._id)}
           <tr>
             <td class="mono">{record.Route}</td>
             <td>
-              {#if activeTab === 'general' && (!record['Faculty/Dept'] || record['Faculty/Dept'] === '—')}
+              {#if (activeTab === 'general' || activeTab === 'all') && (!record['Faculty/Dept'] || record['Faculty/Dept'] === '—')}
                 <span style="color:var(--text-muted); font-style:italic;">Unassigned</span>
               {:else}
                 {record['Faculty/Dept']}
@@ -386,7 +404,7 @@
             </td>
           </tr>
         {/each}
-        {#if (activeTab === 'faculties' && facultyRecords.length === 0) || (activeTab === 'departments' && deptRecords.length === 0) || (activeTab === 'general' && generalRecords.length === 0)}
+        {#if (activeTab === 'all' && allRecords.length === 0) || (activeTab === 'faculties' && facultyRecords.length === 0) || (activeTab === 'departments' && deptRecords.length === 0) || (activeTab === 'general' && generalRecords.length === 0)}
           <tr>
             <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-muted);">
               <i class="ti ti-box-off" style="font-size: 32px; display: block; margin-bottom: 10px;"></i>
@@ -398,7 +416,16 @@
     </table>
 
     <!-- Generic Pagination Footer -->
-    {#if activeTab === 'faculties' && facultyRecords.length > 0}
+    {#if activeTab === 'all' && allRecords.length > 0}
+      <div class="pagination">
+        <div style="font-size:12px; color:var(--text-muted);">Showing {paginatedAll.length} of {allRecords.length} records</div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button class="page-btn" on:click={() => { if(currentAllPage > 1) currentAllPage--; }} disabled={currentAllPage === 1}>Prev</button>
+          <span style="font-size:12px; font-weight:600; padding:0 8px;">Page {currentAllPage} of {totalAllPages}</span>
+          <button class="page-btn" on:click={() => { if(currentAllPage < totalAllPages) currentAllPage++; }} disabled={currentAllPage === totalAllPages}>Next</button>
+        </div>
+      </div>
+    {:else if activeTab === 'faculties' && facultyRecords.length > 0}
       <div class="pagination">
         <div style="font-size:12px; color:var(--text-muted);">Showing {paginatedFac.length} of {facultyRecords.length} records</div>
         <div style="display:flex; gap:6px; align-items:center;">
@@ -498,4 +525,15 @@
       </div>
     </div>
   </div>
+{/if}
+
+<!-- Success Popup Toast -->
+{#if showSuccessPopup}
+  <div style="position: fixed; bottom: 24px; right: 24px; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; z-index: 9999; animation: slideIn 0.3s ease-out;">
+    <i class="ti ti-circle-check" style="font-size: 20px;"></i>
+    <span style="font-weight: 600; font-size: 14px;">{successMessage}</span>
+  </div>
+  <style>
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  </style>
 {/if}

@@ -36,7 +36,21 @@
 
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   
-  $: scorecardExportData = compliance.map(c => ({ Framework: c.name, Description: c.desc, Score: `${c.score}%`, Status: c.status }));
+  // API Mock for Faculty/Department Scores
+  const facultyScores = [
+    { name: 'วิทยาลัยการคอมพิวเตอร์ (CP)', score: 95, color: '#10b981' },
+    { name: 'คณะวิทยาศาสตร์ (Science)', score: 88, color: '#10b981' },
+    { name: 'คณะแพทยศาสตร์ (Medicine)', score: 76, color: '#f59e0b' },
+    { name: 'คณะวิศวกรรมศาสตร์ (Engineering)', score: 65, color: '#f59e0b' },
+    { name: 'ส่วนกลาง (Central Infra)', score: 45, color: '#ef4444' },
+  ];
+  
+  function getGrade(score: number) {
+    if (score >= 85) return 'A';
+    if (score >= 70) return 'B';
+    if (score >= 55) return 'C';
+    return 'D';
+  }
 </script>
 
 <div class="sc-page">
@@ -44,10 +58,6 @@
     title="Security Scorecard" 
     description="Executive CISO View — Overall Posture, Compliance Readiness & Risk Metrics" 
     icon="ti-shield-check"
-    exportData={scorecardExportData}
-    exportColumns={['Framework', 'Description', 'Score', 'Status']}
-    exportFilename="scorecard-report"
-    exportTitle="KKUSIEM Security Scorecard — Grade {scoreGrade}"
   />
 
   <!-- Top Row: Score + KPI -->
@@ -132,24 +142,55 @@
     </div>
   </div>
 
-  <!-- Bottom Row: Risk Layers -->
-  <div class="card">
-    <div class="card-head"><div class="card-title"><i class="ti ti-chart-pie-2"></i> Risk Distribution by Security Layer</div></div>
-    <div class="risk-body">
-      <div class="risk-bars">
-        {#each riskLayers as r}
-          <div class="risk-row">
-            <div class="risk-lbl"><span class="risk-dot" style="background:{r.color};"></span>{r.label}</div>
-            <div class="risk-bar-wrap">
-              <div class="risk-bar"><div class="risk-fill" style="width:{r.pct}%;background:{r.color};"></div></div>
+  <!-- Bottom Row: Risk & Faculty -->
+  <div class="bottom-row">
+    <!-- Risk Layers -->
+    <div class="card">
+      <div class="card-head"><div class="card-title"><i class="ti ti-chart-pie-2"></i> Risk Distribution by Security Layer</div></div>
+      <div class="risk-body">
+        <div class="risk-bars">
+          {#each riskLayers as r}
+            <div class="risk-row">
+              <div class="risk-lbl"><span class="risk-dot" style="background:{r.color};"></span>{r.label}</div>
+              <div class="risk-bar-wrap">
+                <div class="risk-bar"><div class="risk-fill" style="width:{r.pct}%;background:{r.color};"></div></div>
+              </div>
+              <div class="risk-pct">{r.pct}%</div>
             </div>
-            <div class="risk-pct">{r.pct}%</div>
-          </div>
-        {/each}
+          {/each}
+        </div>
+        <div class="multi-bar">
+          {#each riskLayers as r}
+            <div class="multi-seg" style="width:{r.pct}%;background:{r.color};" title="{r.label}: {r.pct}%"></div>
+          {/each}
+        </div>
       </div>
-      <div class="multi-bar">
-        {#each riskLayers as r}
-          <div class="multi-seg" style="width:{r.pct}%;background:{r.color};" title="{r.label}: {r.pct}%"></div>
+    </div>
+
+    <!-- Faculty / Department API Mock -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title" style="display:flex; justify-content:space-between; width:100%;">
+          <span><i class="ti ti-building-community"></i> Faculty & Department Readiness</span>
+          <span style="font-size:10px; font-weight:normal; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px; color:var(--text-muted);">API LIVE MOCK</span>
+        </div>
+      </div>
+      <div class="comp-list">
+        {#each facultyScores as f}
+          <div class="comp-row">
+            <div class="comp-left" style="width: 170px;">
+              <div class="comp-name" style="font-size: 12px;">{f.name}</div>
+            </div>
+            <div class="comp-bar-wrap">
+              <div class="comp-bar">
+                <div class="comp-fill" style="width:{f.score}%; background:{f.color};"></div>
+              </div>
+            </div>
+            <div class="comp-right" style="width: 60px; display:flex; align-items:center; gap:8px;">
+              <div class="comp-score" style="font-size:12px;">{f.score}%</div>
+              <span class="grade-badge grade-{getGrade(f.score)}" style="border-color:{f.color}; color:{f.color};">{getGrade(f.score)}</span>
+            </div>
+          </div>
         {/each}
       </div>
     </div>
@@ -220,7 +261,10 @@
   .multi-bar { display: flex; height: 28px; border-radius: 14px; overflow: hidden; background: var(--bg-secondary); margin-top: 4px; }
   .multi-seg { height: 100%; transition: width 1s; }
 
+  .bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grade-badge { font-size: 11px; font-weight: 800; border: 1px solid; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+
   @media (max-width: 900px) {
-    .top-row, .mid-row, .kpi-grid { grid-template-columns: 1fr; }
+    .top-row, .mid-row, .bottom-row, .kpi-grid { grid-template-columns: 1fr; }
   }
 </style>

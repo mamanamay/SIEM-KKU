@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Attack } from './entities/attack.entity';
 import * as jwt from 'jsonwebtoken';
+import { JWT_SECRET } from './jwt.config';
 
 @WebSocketGateway({
   cors: {
@@ -38,8 +39,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      const secret = process.env.JWT_SECRET || 'dev-secret-change-in-production';
-      jwt.verify(token, secret);
+      jwt.verify(token, JWT_SECRET);
     } catch (err) {
       // disconnect(true) = force disconnect → client จะเห็นเป็น connect_error
       client.disconnect(true);
@@ -48,13 +48,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     console.log(`[WS] ✅ Client connected: ${client.id}`);
 
-    // ส่งข้อมูลเดิมทั้งหมดให้ client ที่เพิ่ง connect
+    // ส่งข้อมูลเดิมทั้งหมดให้ client ที่เพิ่ง connect (จัดเรียงเก่าไปใหม่ เพื่อให้ Frontend นำไปต่อท้ายได้ถูกต้อง)
     try {
       const attacks = await this.attackRepository.find({
         order: { id: 'DESC' },
         take: 500, // จำกัดไม่ให้ส่งมากเกินไป
       });
-      client.emit('initial_data', attacks);
+      client.emit('initial_data', attacks.reverse());
     } catch (e) {
       console.error('[WS] Failed to load initial data:', e.message);
     }

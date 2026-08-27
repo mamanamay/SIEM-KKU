@@ -1,18 +1,24 @@
-export function downloadCSV(data, selectedColumns, filename = 'export.csv') {
+import { get } from 'svelte/store';
+import { usernameStore } from '../../stores/events';
+
+function getDatedFilename(baseFilename: string) {
+  const dateStr = new Date().toISOString().split('T')[0];
+  const parts = baseFilename.split('.');
+  const ext = parts.pop();
+  return `${parts.join('_')}_${dateStr}.${ext}`;
+}
+
+export function downloadCSV(data: any[], selectedColumns: string[], filename = 'export.csv') {
+  filename = getDatedFilename(filename);
   if (!data || data.length === 0 || !selectedColumns || selectedColumns.length === 0) return;
 
   try {
-    // Header row
     const header = selectedColumns.join(',');
-    
-    // Data rows
     const rows = data.map(row => {
       return selectedColumns.map(col => {
-        let val = row[col];
+        let val = row[col] || row[col.toLowerCase()];
         if (val === null || val === undefined) val = '';
-        val = String(val); // Convert everything to string safely
-        
-        // Escape commas and quotes for CSV
+        val = String(val);
         if (val.includes(',') || val.includes('"') || val.includes('\n')) {
           val = '"' + val.replace(/"/g, '""') + '"';
         }
@@ -21,15 +27,7 @@ export function downloadCSV(data, selectedColumns, filename = 'export.csv') {
     });
 
     const csvContent = [header, ...rows].join('\n');
-    
-    // Create Blob and trigger download
-    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM for UTF-8 Excel support
-    
-    // Fallback for older browsers
-    if (window.navigator && window.navigator.msSaveOrOpenBlob) {
-      window.navigator.msSaveOrOpenBlob(blob, filename);
-      return;
-    }
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
     
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -38,54 +36,13 @@ export function downloadCSV(data, selectedColumns, filename = 'export.csv') {
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-    
-    // Cleanup
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 100);
+    document.body.removeChild(link);
   } catch (err) {
-    console.error("CSV Download Error:", err);
-    alert("เกิดข้อผิดพลาดในการดาวน์โหลด CSV: " + err.message);
+    console.error('CSV Export Error:', err);
   }
 }
 
-
-export function downloadDOCX(data: any[], selectedColumns: string[], filename = 'export.doc', title = 'Report') {
-  if (!data || data.length === 0 || !selectedColumns || selectedColumns.length === 0) return;
-
-  const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head><meta charset='utf-8'><title>${title}</title>
-    <style>
-      body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-      table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-      th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-      th { background-color: #f2f2f2; font-weight: bold; }
-      h2 { color: #1d9e75; }
-    </style>
-    </head><body>
-    <h2>${title}</h2>
-    <p>Generated at: ${new Date().toLocaleString('en-GB')}</p>
-    <table>
-      <thead><tr>${selectedColumns.map(col => `<th>${col}</th>`).join('')}</tr></thead>
-      <tbody>
-        ${data.map(row => `<tr>${selectedColumns.map(col => `<td>${row[col] || '—'}</td>`).join('')}</tr>`).join('')}
-      </tbody>
-    </table>
-    </body></html>`;
-
-  const blob = new Blob(['\ufeff', header], { type: 'application/msword' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename.replace('.docx', '.doc');
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-function loadScript(src) {
+async function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) {
       resolve();
@@ -93,113 +50,141 @@ function loadScript(src) {
     }
     const script = document.createElement('script');
     script.src = src;
-    script.onload = resolve;
-    script.onerror = reject;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
     document.head.appendChild(script);
   });
 }
 
-export async function downloadPDF(data, selectedColumns, filename = 'export.pdf', title = 'Report') {
+export async function downloadPDF(data: any[], selectedColumns: string[], filename = 'export.pdf', title = 'Report', desc = '', dept = 'Digital Technology Office, KKU') {
+  filename = getDatedFilename(filename);
   if (!data || data.length === 0 || !selectedColumns || selectedColumns.length === 0) return;
 
   try {
     await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
     await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
 
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('landscape');
+    const { jsPDF } = (window as any).jspdf;
+    const doc = new jsPDF('landscape', 'mm', 'a4');
     
-    // Header
-    doc.setFontSize(16);
-    doc.setTextColor(40, 40, 40);
-    doc.text(title, 14, 20);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
+    const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+    const exporter = get(usernameStore) || 'System Administrator';
     const dateStr = new Date().toLocaleString('en-GB');
-    doc.text(`Generated at: ${dateStr}`, 14, 28);
 
-    // Extract table data
+    const addLetterhead = (dataConfig: any) => {
+      doc.setFillColor(15, 23, 42);
+      doc.rect(0, 0, pageWidth, 24, 'F');
+      
+      doc.setFontSize(16);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`KKUSIEM ${title}`, 14, 15);
+      
+      doc.setFillColor(220, 38, 38);
+      doc.rect(pageWidth - 54, 8, 40, 8, 'F');
+      doc.setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      doc.text('INTERNAL USE ONLY', pageWidth - 52, 13.5);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Exported By: ${exporter} | Date: ${dateStr}`, 14, 32);
+      
+      const str = `Page ${dataConfig.pageNumber}`;
+      doc.setFontSize(9);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`KKUSIEM Enterprise SOC Platform - Generated Report`, 14, pageHeight - 10);
+      doc.text(str, pageWidth - 20, pageHeight - 10);
+    };
+
     const head = [selectedColumns];
-    const body = data.map(row => selectedColumns.map(col => String(row[col] || '—')));
+    const body = data.map(row => selectedColumns.map(col => String(row[col] || row[col.toLowerCase()] || '-')));
 
-    // AutoTable
     doc.autoTable({
       head: head,
       body: body,
-      startY: 35,
-      theme: 'striped',
-      headStyles: { fillColor: [29, 158, 117], textColor: [255, 255, 255], fontStyle: 'bold' },
-      styles: { fontSize: 8, cellPadding: 3, textColor: [50, 50, 50], overflow: 'linebreak' },
-      alternateRowStyles: { fillColor: [245, 248, 250] },
+      startY: desc ? 45 : 40,
+      theme: 'grid',
+      headStyles: { fillColor: [29, 158, 117], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      styles: { fontSize: 9, cellPadding: 4, textColor: [30, 41, 59] },
+      didDrawPage: addLetterhead
     });
 
     doc.save(filename);
   } catch (err) {
-    console.error("Failed to load PDF libraries", err);
-    alert("ไม่สามารถสร้าง PDF ได้\n\nโปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ต (จำเป็นต้องโหลดไลบรารีจากภายนอก) หรือลอง Export เป็น CSV แทน");
+    console.error('PDF Export Error:', err);
+    alert('Failed to generate PDF report.');
   }
 }
 
-export function downloadHTML(data: any[], columns: string[], filename = 'report.html', title = 'KKUSIEM Report', subtitle = '') {
-  if (!data || data.length === 0) return;
-  const dateStr = new Date().toLocaleString('th-TH');
-  const rows = data.map(row => `<tr>${columns.map(c => `<td>${row[c] ?? ''}</td>`).join('')}</tr>`).join('');
-  const thead = `<tr>${columns.map(c => `<th>${c}</th>`).join('')}</tr>`;
-  const html = `<!DOCTYPE html>
-<html lang="th">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${title}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f1f4f8; color: #0f1117; padding: 32px; }
-  .report-header { background: #ffffff; border: 1px solid #e5e9f0; border-radius: 12px; padding: 24px 32px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; }
-  .logo { display: flex; align-items: center; gap: 12px; }
-  .logo-icon { width: 44px; height: 44px; background: linear-gradient(135deg, #1d9e75, #059669); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-size: 22px; font-weight: 900; }
-  .logo-name { font-size: 20px; font-weight: 800; color: #0f1117; }
-  .logo-sub { font-size: 12px; color: #64748b; margin-top: 2px; }
-  .meta { text-align: right; font-size: 12px; color: #64748b; line-height: 1.8; }
-  h1 { font-size: 22px; font-weight: 800; color: #0f1117; margin-bottom: 4px; }
-  p { font-size: 13px; color: #64748b; }
-  .card { background: #ffffff; border: 1px solid #e5e9f0; border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
-  .card-header { padding: 16px 20px; border-bottom: 1px solid #e5e9f0; font-weight: 700; font-size: 14px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { background: #f8fafc; padding: 10px 14px; font-weight: 700; color: #64748b; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; border-bottom: 1px solid #e5e9f0; text-align: left; }
-  td { padding: 10px 14px; border-bottom: 1px solid #f1f4f8; color: #0f1117; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: #f8fafc; }
-  .footer { text-align: center; font-size: 11px; color: #94a3b8; margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e9f0; }
-  @media print { body { background: white; padding: 16px; } }
-</style>
-</head>
-<body>
-  <div class="report-header">
-    <div class="logo">
-      <div class="logo-icon">K</div>
-      <div>
-        <div class="logo-name">KKUSIEM</div>
-        <div class="logo-sub">Enterprise SOC Platform</div>
+export function downloadHTML(data: any[], selectedColumns: string[], filename = 'export.html', title = 'Report') {
+  filename = getDatedFilename(filename);
+  if (!data || data.length === 0 || !selectedColumns || selectedColumns.length === 0) return;
+
+  const exporter = get(usernameStore) || 'System Administrator';
+  const dateStr = new Date().toLocaleString('en-GB');
+
+  const headers = selectedColumns.map(col => `<th>${col}</th>`).join('');
+  const rows = data.map(row => {
+    const tds = selectedColumns.map(col => `<td>${row[col] || row[col.toLowerCase()] || '-'}</td>`).join('');
+    return `<tr>${tds}</tr>`;
+  }).join('');
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>${title}</title>
+      <style>
+        body { font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }
+        .report-header { background: #0f172a; color: white; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; }
+        .report-header h1 { margin: 0; font-size: 24px; }
+        .badge { background: #ef4444; color: white; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; letter-spacing: 1px; }
+        .meta-info { padding: 16px 32px; background: white; border-bottom: 1px solid #e2e8f0; display: flex; gap: 32px; font-size: 14px; color: #64748b; }
+        .meta-info strong { color: #334155; }
+        .table-container { padding: 32px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #1d9e75; color: white; font-weight: 600; }
+        tr:hover { background: #f1f5f9; }
+      </style>
+    </head>
+    <body>
+      <div class="report-header">
+        <h1>KKUSIEM: ${title}</h1>
+        <div class="badge">INTERNAL USE ONLY</div>
       </div>
-    </div>
-    <div class="meta">
-      <strong>${title}</strong><br>
-      ${subtitle ? subtitle + '<br>' : ''}\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e40\u0e21\u0e37\u0e48\u0e2d: ${dateStr}<br>
-      \u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23: ${data.length} \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-header">${title}</div>
-    <table><thead>${thead}</thead><tbody>${rows}</tbody></table>
-  </div>
-  <div class="footer">KKUSIEM Enterprise SOC \u2014 CONFIDENTIAL \u2014 \u0e2a\u0e23\u0e49\u0e32\u0e07\u0e42\u0e14\u0e22\u0e23\u0e30\u0e1a\u0e1a\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34 ${dateStr}</div>
-</body>
-</html>`;
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      <div class="meta-info">
+        <div><strong>Exported By:</strong> ${exporter}</div>
+        <div><strong>Date:</strong> ${dateStr}</div>
+        <div><strong>Total Records:</strong> ${data.length}</div>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead><tr>${headers}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename.endsWith('.html') ? filename : filename + '.html';
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 100);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
+export function downloadDOCX(data: any[], selectedColumns: string[], filename = 'export.docx', title = 'Report') {
+  alert('DOCX export requires a backend service in this version. Generating PDF instead.');
+  downloadPDF(data, selectedColumns, filename.replace('.docx', '.pdf'), title);
+}
+
+
+

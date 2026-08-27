@@ -681,7 +681,7 @@
   .threat-row.critical td:first-child { border-left: 2px solid #ef4444; }
   .threat-row.high td:first-child     { border-left: 2px solid #f97316; }
   .threat-row.medium td:first-child   { border-left: 2px solid #f59e0b; }
-  .threat-row:hover { background: rgba(255,255,255,0.02); }
+  .threat-row:hover { background: var(--bg-hover); }
   .mono { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
   .flag { font-size: 13px; margin-right: 4px; }
   .type-badge {

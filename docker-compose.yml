@@ -42,6 +42,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - HOST=0.0.0.0
     expose:
       - "3000"
     depends_on:
@@ -63,6 +64,8 @@ services:
       - SSO_CLIENT_ID=${SSO_CLIENT_ID}
       - SSO_CLIENT_SECRET=${SSO_CLIENT_SECRET}
       - SSO_CALLBACK_URL=${SSO_CALLBACK_URL}
+      - SSO_WEB_URL=${SSO_WEB_URL}
+      - SSO_API_URL=${SSO_API_URL}
       # (Optional) ตั้ง API Key นี้เพื่อป้องกันคนภายนอกยิง Log ปลอมเข้ามา
       - INGEST_API_KEY=${INGEST_API_KEY:-}
     expose:
@@ -70,6 +73,8 @@ services:
     volumes:
       # siem-logs: เก็บ blocked_ips.json / isolated_ports.json (ยังคงใช้อยู่)
       - siem_logs:/app/siem-logs
+      - /var/log/firewall:/var/log/firewall:ro
+      - /var/log/revproxy:/var/log/revproxy:ro
     depends_on:
       - postgres
       - redis

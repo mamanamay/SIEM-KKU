@@ -15,6 +15,7 @@ import { LoginSession } from './entities/login-session.entity';
 import { ApiLog } from './entities/api-log.entity';
 import { SeedService } from './seed.service';
 import { ApiLogModule } from './api-log/api-log.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Database Configuration
@@ -29,7 +30,7 @@ const typeOrmConfig: any = DATABASE_URL
       type: 'postgres',
       url: DATABASE_URL,
       entities: [User, Attack, LoginSession, ApiLog],
-      synchronize: true, // ใน Production จริงๆ ควรใช้ migrations แทน
+      synchronize: true, // กลับมาเปิด Auto-sync เพราะไม่มี Migrations
       ssl: process.env.DB_SSL === 'true'
         ? { rejectUnauthorized: false }
         : false,
@@ -44,12 +45,18 @@ const typeOrmConfig: any = DATABASE_URL
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 100, // 100 requests per minute
+    }]),
     TypeOrmModule.forRoot(typeOrmConfig),
     TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog]),
     ApiLogModule,
   ],
   // WazuhController — Legacy compatibility shim (ยังคง /api/wazuh ไว้เพื่อ backward compat)
   controllers: [AuthController, AttacksController, IngestController, WazuhController],
-  providers: [LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService],
+  providers: [
+    LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService
+  ],
 })
 export class AppModule {}

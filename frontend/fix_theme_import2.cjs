@@ -1,1 +1,0 @@
-const fs = require('fs'); let code = fs.readFileSync('src/routes/dashboard/+page.svelte', 'utf8'); code = code.replace(/import \{ eventsStore \} from '\\.\\.\\/\\.\\.\\/stores\\/events';/, "import { eventsStore } from '../../stores/events';\n  import { themeStore } from '../../stores/theme';"); fs.writeFileSync('src/routes/dashboard/+page.svelte', code);

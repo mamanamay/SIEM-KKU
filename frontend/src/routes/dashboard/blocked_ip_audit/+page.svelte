@@ -62,7 +62,7 @@
     if (currentPage < totalPages) currentPage++;
   }
 
-  import { downloadPDF, downloadHTML } from '../../../lib/utils/export';
+  import ExportReportBtn from '../../../lib/components/ExportReportBtn.svelte';
   
   let showExportMenu = false;
   
@@ -137,20 +137,12 @@
   <div class="ds-card-head" style="display:flex;justify-content:space-between;align-items:center;">
     <span class="ds-card-title"><i class="ti ti-ban"></i> Blocked IP Audit</span>
     <div style="position:relative;">
-      <button class="btn-outline" on:click={() => showExportMenu = !showExportMenu}
-        style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer;">
-        <i class="ti ti-upload"></i> Export <i class="ti ti-chevron-down" style="font-size:11px;"></i>
-      </button>
-      {#if showExportMenu}
-        <div style="position:absolute;top:calc(100% + 6px);right:0;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.12);z-index:200;min-width:160px;overflow:hidden;" on:mouseleave={() => showExportMenu = false}>
-          <button on:click={handleExportPDF} style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:none;border:none;font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;">
-            <i class="ti ti-file-type-pdf" style="color:#ef4444;"></i> PDF Report
-          </button>
-          <button on:click={handleExportHTML} style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:none;border:none;font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;border-top:1px solid var(--border);">
-            <i class="ti ti-file-type-html" style="color:#3b82f6;"></i> HTML Report
-          </button>
-        </div>
-      {/if}
+      <ExportReportBtn 
+        data={fullExportData} 
+        columns={['IP Address','Blocked At','Reason','Source','Status','Country','Threat Score','Block Duration','Targeted Port']} 
+        title="KKUSIEM - Blocked IP History" 
+        filename="blocked_ip_audit" 
+      />
     </div>
   </div>
 
@@ -198,9 +190,6 @@
         <i class="ti ti-refresh"></i> Refresh
       </button>
     </div>
-    <button class="ds-btn primary" on:click={() => showExportMenu = !showExportMenu}>
-      <i class="ti ti-download"></i> Export Report
-    </button>
   </div>
 
   <!-- Table Card -->
