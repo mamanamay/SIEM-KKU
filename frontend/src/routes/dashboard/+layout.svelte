@@ -182,7 +182,7 @@
   function logout(expired = false) {
     localStorage.removeItem('token');
     localStorage.removeItem('role');
-    window.location.href = expired ? '/?expired=true' : '/';
+    window.location.href = expired === true ? '/?expired=true' : '/';
   }
 </script>
 
@@ -395,7 +395,7 @@
           {/if}
         </button>
 
-        <div class="role-badge">Role: <strong>{$roleStore}</strong></div>
+        
         <div class="ts-block">
           <div style="color:var(--text-muted);font-size:11px">Server Time</div>
           <div class="ts-val">{currentTime}</div>
