@@ -9,33 +9,21 @@
   export let showAI = false;
 
   import { downloadCSV, downloadPDF, downloadHTML } from '../utils/export';
-
-  let showExportMenu = false;
-
-  function handleCSV() {
-    showExportMenu = false;
-    downloadCSV(exportData, exportColumns, exportFilename + '.csv');
-  }
-
-  function handlePDF() {
-    showExportMenu = false;
-    downloadPDF(exportData, exportColumns, exportFilename + '.pdf', exportTitle);
-  }
-
-  function handleHTML() {
-    showExportMenu = false;
-    downloadHTML(exportData, exportColumns, exportFilename + '.html', exportTitle);
-  }
-
-  function handleOutsideClick(e: MouseEvent) {
-    const target = e.target as HTMLElement;
-    if (!target.closest('.export-wrapper')) {
-      showExportMenu = false;
+  import ReportModal from './ReportModal.svelte';
+  
+  let showExportModal = false;
+  
+  function handleExportEvent(e: CustomEvent) {
+    const { format, fields } = e.detail;
+    if (format === 'pdf') {
+      downloadPDF(exportData, fields, exportFilename + '.pdf', exportTitle);
+    } else if (format === 'html') {
+      downloadHTML(exportData, fields, exportFilename + '.html', exportTitle);
+    } else {
+      downloadCSV(exportData, fields, exportFilename + '.csv');
     }
   }
 </script>
-
-<svelte:window on:click={handleOutsideClick} />
 
 <header class="page-header">
   <!-- Left side -->
@@ -61,33 +49,18 @@
     {/if}
 
     {#if exportData.length > 0 && exportColumns.length > 0}
-      <div class="export-wrapper">
-        <button
-          class="btn btn-export"
-          on:click|stopPropagation={() => (showExportMenu = !showExportMenu)}
-        >
-          <i class="ti ti-upload"></i>
-          Export
-          <i class="ti ti-chevron-down caret" class:rotated={showExportMenu}></i>
-        </button>
-
-        {#if showExportMenu}
-          <div class="export-menu" role="menu">
-            <button class="export-item" on:click={handleCSV} role="menuitem">
-              <i class="ti ti-file-spreadsheet"></i>
-              Export CSV
-            </button>
-            <button class="export-item" on:click={handlePDF} role="menuitem">
-              <i class="ti ti-file-type-pdf"></i>
-              Export PDF
-            </button>
-            <button class="export-item" on:click={handleHTML} role="menuitem">
-              <i class="ti ti-file-code"></i>
-              Export HTML
-            </button>
-          </div>
-        {/if}
-      </div>
+      <button class="btn btn-export" on:click={() => showExportModal = true}>
+        <i class="ti ti-upload"></i>
+        Export
+      </button>
+      
+      <ReportModal 
+        bind:show={showExportModal} 
+        reportTitle={exportTitle}
+        availableFields={exportColumns}
+        previewData={exportData}
+        on:export={handleExportEvent}
+      />
     {/if}
   </div>
 </header>
@@ -234,3 +207,4 @@
     color: var(--text-muted, #64748b);
   }
 </style>
+
