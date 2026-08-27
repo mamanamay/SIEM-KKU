@@ -170,11 +170,11 @@
         <div class="cred-row">
           <div class="cred-rank" style="color:{i<3?'#ef4444':'var(--text-muted)'}">#{i+1}</div>
           <div class="cred-info">
-            <div class="cred-val {isCommon(user as string) ? 'common' : ''}">{user}</div>
+            <div class="cred-val {isCommon(String(user)) ? 'common' : ''}">{user}</div>
             <div class="cred-bar-wrap"><div class="cred-bar red" style="width:{pctBar(count, userStats[0][1])}"></div></div>
           </div>
           <div class="cred-cnt">{count}</div>
-          {#if isCommon(user as string)}
+          {#if isCommon(String(user))}
             <span class="cred-tag">common</span>
           {/if}
         </div>
@@ -187,11 +187,11 @@
         <div class="cred-row">
           <div class="cred-rank" style="color:{i<3?'#ef4444':'var(--text-muted)'}">#{i+1}</div>
           <div class="cred-info">
-            <div class="cred-val {isCommon(user as string)} ">{user}</div>
-            <div class="cred-bar-wrap"><div class="cred-bar red" style="width:{pctBar(count as number, 45)}"></div></div>
+            <div class="cred-val {isCommon(String(user))} ">{user}</div>
+            <div class="cred-bar-wrap"><div class="cred-bar red" style="width:{pctBar(Number(count), 45)}"></div></div>
           </div>
           <div class="cred-cnt">{count}</div>
-          {#if isCommon(user as string)}<span class="cred-tag">common</span>{/if}
+          {#if isCommon(String(user))}<span class="cred-tag">common</span>{/if}
         </div>
         {/each}
         <div class="demo-note"><i class="ti ti-info-circle"></i> ข้อมูลตัวอย่าง (Demo)</div>
@@ -211,11 +211,11 @@
         <div class="cred-row">
           <div class="cred-rank" style="color:{i<3?'#ef4444':'var(--text-muted)'}">#{i+1}</div>
           <div class="cred-info">
-            <div class="cred-val {isCommon(pass as string) ? 'common' : ''}">{pass}</div>
+            <div class="cred-val {isCommon(String(pass)) ? 'common' : ''}">{pass}</div>
             <div class="cred-bar-wrap"><div class="cred-bar orange" style="width:{pctBar(count, passStats[0][1])}"></div></div>
           </div>
           <div class="cred-cnt">{count}</div>
-          {#if isCommon(pass as string)}<span class="cred-tag">weak</span>{/if}
+          {#if isCommon(String(pass))}<span class="cred-tag">weak</span>{/if}
         </div>
         {/each}
       </div>

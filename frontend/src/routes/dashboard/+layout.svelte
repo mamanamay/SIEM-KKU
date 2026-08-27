@@ -306,6 +306,7 @@
               <a href="/dashboard/account" class="menu-link-modern" on:click={() => showProfileMenu = false} style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none; transition: background 0.2s;">
                 <i class="ti ti-user-edit" style="font-size: 16px; color: var(--text-muted);"></i> แก้ไขประวัติส่วนตัว
               </a>
+            {/if}
             </div>
 
             <div class="dropdown-footer" style="padding: 8px; border-top: 1px solid var(--border); background: var(--bg-surface);">

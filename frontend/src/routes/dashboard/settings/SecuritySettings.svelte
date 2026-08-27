@@ -213,36 +213,42 @@
           <div class="modal-title"><i class="ti ti-qrcode"></i> ตั้งค่า 2FA</div>
           <button class="modal-close" on:click={() => showModal = false}><i class="ti ti-x"></i></button>
         </div>
-        <div class="modal-body" style="text-align: center;">
-          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
-            สแกน QR Code นี้ด้วยแอป Google Authenticator หรือ Authy
+        <div class="modal-body" style="text-align: center; padding: 24px;">
+          <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 24px;">
+            1. สแกน QR Code ด้วยแอป <strong>Google Authenticator</strong> หรือ <strong>Authy</strong>
           </p>
           
-          <div style="background: #fff; padding: 10px; display: inline-block; border-radius: 8px; margin-bottom: 15px;">
-            <img src={qrCodeDataUrl} alt="QR Code" style="width: 200px; height: 200px;" />
+          <div style="background: white; padding: 16px; display: inline-block; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+            <img src={qrCodeDataUrl} alt="QR Code" style="width: 180px; height: 180px;" />
           </div>
           
           {#if manualSecret}
-             <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 20px;">Secret: <code>{manualSecret}</code></div>
+             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 24px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px;">
+               Secret Key: <code style="font-size: 14px; color: #3b82f6;">{manualSecret}</code>
+             </div>
           {/if}
           
-          <div style="text-align: left; margin-top: 15px; background: var(--bg-level-1); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
-            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-base);">รหัสยืนยัน 6 หลักจากแอป:</label>
+          <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 12px; text-align: left;">
+            2. นำรหัส 6 หลักจากแอปมากรอกด้านล่างนี้
+          </p>
+          <div style="text-align: left; background: var(--bg-level-1); padding: 16px; border-radius: 12px; border: 1px solid var(--border-color);">
             <input 
               type="text" 
               bind:value={totpCode} 
               on:input={() => totpCode = totpCode.replace(/[^0-9]/g, '')}
               class="input-field" 
-              placeholder="0 0 0 0 0 0" 
+              placeholder="000 000" 
               maxlength="6" 
               inputmode="numeric" 
               pattern="[0-9]*" 
-              style="text-align: center; font-size: 24px; letter-spacing: 8px; font-weight: bold; width: 100%; padding: 12px; background: var(--bg-body); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-base);" 
+              style="text-align: center; font-size: 28px; letter-spacing: 12px; font-weight: bold; width: 100%; padding: 16px; background: var(--bg-body); border: 2px solid var(--border-color); border-radius: 8px; color: var(--text-base); outline: none; transition: border-color 0.2s;" 
+              on:focus={(e) => e.target.style.borderColor = '#3b82f6'}
+              on:blur={(e) => e.target.style.borderColor = 'var(--border-color)'}
             />
           </div>
           
           {#if errorMsg}
-            <div style="margin-top: 15px; padding: 10px; border-radius: 4px; background: rgba(255, 61, 113, 0.1); color: var(--red); border: 1px solid rgba(255, 61, 113, 0.2); font-size: 13px;">
+            <div style="margin-top: 16px; padding: 12px; border-radius: 8px; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); font-size: 13px; text-align: left;">
               <i class="ti ti-alert-triangle"></i> {errorMsg}
             </div>
           {/if}

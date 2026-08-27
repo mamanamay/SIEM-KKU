@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
+  import { usernameStore } from '../../stores/events';
   export let show = false;
   export let reportTitle = 'KKUSIEM Security Report';
   export let availableFields: string[] = ['Time', 'Source IP', 'Event Type', 'Severity', 'Country'];
@@ -90,7 +91,7 @@
             <div class="a4-badge">INTERNAL USE ONLY</div>
           </div>
           <div class="a4-meta">
-            <div><strong>Exported By:</strong> Administrator</div>
+            <div><strong>Exported By:</strong> {$usernameStore || 'System Administrator'}</div>
             <div><strong>Date:</strong> {new Date().toLocaleDateString('en-GB')}</div>
           </div>
           <table class="a4-table">
@@ -131,15 +132,15 @@
   .icon-box { font-size: 20px; }
   
   /* A4 Preview Style */
-  .a4-preview { width: 100%; max-width: 500px; background: white; color: black; border-radius: 4px; box-shadow: 0 8px 30px rgba(0,0,0,0.3); overflow: hidden; display:flex; flex-direction:column; }
-  .a4-header { background: #0f172a; color: white; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; }
-  .a4-header h1 { margin: 0; font-size: 16px; }
-  .a4-badge { background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 9px; font-weight: bold; letter-spacing: 1px; }
-  .a4-meta { padding: 12px 20px; background: white; border-bottom: 1px solid #e2e8f0; display: flex; gap: 20px; font-size: 10px; color: #64748b; }
-  .a4-meta strong { color: #334155; }
-  .a4-table { width: 100%; border-collapse: collapse; font-size:9px; }
-  .a4-table th, .a4-table td { padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
-  .a4-table th { background: #1d9e75; color: white; font-weight: 600; }
+  .a4-preview { width: 100%; aspect-ratio: 1 / 1.414; background: white; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); overflow: hidden; display: flex; flex-direction: column; font-family: 'Times New Roman', serif; color: #000; transform-origin: top center; transform: scale(0.85); }
+    .a4-header { padding: 24px; background: #1e293b; color: white; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #10b981; }
+    .a4-header h1 { font-size: 16px; margin: 0; font-family: 'Arial', sans-serif; }
+    .a4-badge { font-size: 8px; padding: 4px 8px; background: #ef4444; color: white; font-weight: bold; border-radius: 2px; }
+    .a4-meta { padding: 16px 24px; display: flex; justify-content: space-between; font-size: 10px; color: #334155; border-bottom: 1px solid #cbd5e1; font-family: 'Arial', sans-serif; }
+    .a4-table { width: 100%; border-collapse: collapse; font-size: 9px; font-family: 'Arial', sans-serif; }
+    .a4-table th { background: #f1f5f9; text-align: left; padding: 8px 12px; border-bottom: 2px solid #cbd5e1; color: #334155; }
+    .a4-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #0f172a; }
+  
   .a4-table tr:nth-child(even) { background: #f8fafc; }
 </style>
 

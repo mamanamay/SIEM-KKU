@@ -282,6 +282,11 @@
   .mfa-form h3 { font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; }
   .mfa-form p { font-size: 14px; color: var(--text-muted); margin: 0 0 24px; }
   .input-totp { text-align: center; font-size: 24px; letter-spacing: 4px; padding: 16px; font-weight: 700; padding-left: 16px; }
+@media (max-width: 768px) {
+      .login-box { flex-direction: column !important; }
+      .login-box > div { padding: 20px !important; }
+      .login-box > div:nth-child(2) { width: 100% !important; height: 1px !important; margin: 0 !important; }
+    }
 </style>
 
 
