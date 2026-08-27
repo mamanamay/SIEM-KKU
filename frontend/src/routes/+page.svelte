@@ -5,6 +5,12 @@
   let username = '';
   let password = '';
   let error = '';
+
+  function toggleTheme() {
+    $themeStore = $themeStore === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', $themeStore);
+    localStorage.setItem('theme', $themeStore);
+  }
   let isSessionExpired = false;
   let isLoading = false;
   let showPassword = false;
@@ -78,6 +84,10 @@
   }
 
   onMount(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) { $themeStore = savedTheme; } else { $themeStore = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+    document.documentElement.setAttribute('data-theme', $themeStore);
+
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('expired') === 'true') {
       isSessionExpired = true;
@@ -91,7 +101,7 @@
 
 <div class="login-wrapper">
   <div class="theme-toggle">
-    <button class="btn-icon" on:click={() => themeStore.update(t => t === 'dark' ? 'light' : 'dark')}>
+    <button class="btn-icon" on:click={() => toggleTheme()}>
       {#if $themeStore === 'dark'}
         <i class="ti ti-sun"></i>
       {:else}
@@ -273,5 +283,7 @@
   .mfa-form p { font-size: 14px; color: var(--text-muted); margin: 0 0 24px; }
   .input-totp { text-align: center; font-size: 24px; letter-spacing: 4px; padding: 16px; font-weight: 700; padding-left: 16px; }
 </style>
+
+
 
 

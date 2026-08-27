@@ -1,3 +1,60 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+
+:root, [data-theme="fake-light-removed"] {
+  --bg: #f5f6f7;
+  --bg-panel: #ffffff;
+  --bg-secondary: #f0f1f3;
+  --border: rgba(0,0,0,0.08);
+  --text-primary: #1a1d23;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --green: #1d9e75;
+  --green-bg: #eaf6f1;
+  --red: #a32d2d;
+  --red-bg: #fcebeb;
+  --orange: #854f0b;
+  --orange-bg: #faeeda;
+  --blue: #185fa5;
+  --blue-bg: #e6f1fb;
+  --accent: #1d9e75;
+  --accent-bg: #eaf6f1;
+  --font-num: 'Inter', sans-serif;
+  --font-mono: 'Inter', monospace;
+}
+
+[data-theme="dark"] {
+  --bg: #0f1117;
+  --bg-panel: #181b24;
+  --bg-secondary: #1f2330;
+  --border: rgba(255,255,255,0.08);
+  --text-primary: #e8eaf0;
+  --text-secondary: #8b95a8;
+  --text-muted: #5a6478;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --green-bg: rgba(29,158,117,0.15);
+  --red-bg: rgba(163,45,45,0.15);
+  --orange-bg: rgba(133,79,11,0.15);
+  --blue-bg: rgba(24,95,165,0.15);
+  --accent-bg: rgba(29,158,117,0.15);
+}
+
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  background: var(--bg);
+  color: var(--text-primary);
+}

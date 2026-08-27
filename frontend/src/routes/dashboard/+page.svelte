@@ -233,11 +233,11 @@
   .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted, #6b7280); font-size: 14px; }
   
   /* Dark mode overrides */
-  :global([data-theme="dark"]) .dash-container { color: #f9fafb; }
-  :global([data-theme="dark"]) .kpi-card, :global([data-theme="dark"]) .card { background: #1f2937; border-color: #374151; }
-  :global([data-theme="dark"]) .header-section h1, :global([data-theme="dark"]) .kpi-value, :global([data-theme="dark"]) .card-header, :global([data-theme="dark"]) .item-ip { color: #f9fafb; }
-  :global([data-theme="dark"]) .header-section .subtitle, :global([data-theme="dark"]) .kpi-label, :global([data-theme="dark"]) .item-time { color: #9ca3af; }
-  :global([data-theme="dark"]) .card-header { background: var(--bg-hover); border-color: #374151; }
-  :global([data-theme="dark"]) .list-item { background: rgba(255,255,255,0.03); }
-  :global([data-theme="dark"]) .list-item:hover { border-color: #4b5563; background: #374151; }
+  
+  
+  
+  
+  
+  
+  
 </style>
