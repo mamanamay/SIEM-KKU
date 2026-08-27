@@ -19,7 +19,7 @@
     // Simulate KQL parsing & filtering
     setTimeout(() => {
       const q = searchQuery.toLowerCase();
-      searchResults = .filter((e: any) => {
+      searchResults = $eventsStore.filter((e: any) => {
         if (!q) return true;
         return (e.ip || '').toLowerCase().includes(q) || 
                (e.severity || '').toLowerCase().includes(q) ||

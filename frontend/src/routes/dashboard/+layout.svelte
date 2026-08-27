@@ -224,7 +224,7 @@
       <a href="/dashboard/soar" class="nav-item {$page.url.pathname === '/dashboard/soar' ? 'active' : ''}">
         <i class="ti ti-zoom-in"></i> Incident & SOAR
       </a>
-      <a href="/dashboard/explorer" class="nav-item {.url.pathname === '/dashboard/explorer' ? 'active' : ''}">
+      <a href="/dashboard/explorer" class="nav-item {$page.url.pathname === '/dashboard/explorer' ? 'active' : ''}">
           <i class="ti ti-terminal-2"></i> Log Explorer
         </a>
         <a href="/dashboard/mitre" class="nav-item {$page.url.pathname === '/dashboard/mitre' ? 'active' : ''}">
@@ -299,7 +299,7 @@
             </div>
 
             <div class="dropdown-body" style="padding: 8px;">
-              {#if  !== 'viewer' &&  !== 'VIEWER'}
+              {#if $roleStore !== 'viewer' && $roleStore !== 'VIEWER'}
               <a href="/dashboard/settings" class="menu-link-modern" on:click={() => showProfileMenu = false} style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none; transition: background 0.2s;">
                 <i class="ti ti-settings" style="font-size: 16px; color: var(--text-muted);"></i> การตั้งค่าระบบ
               </a>
@@ -316,7 +316,7 @@
           </div>
         {/if}
       </div>
-      <div style="text-align: center; margin-top: 12px; font-size: 11px; color: var(--text-muted);">Version 0.1.0</div>
+      <div style="text-align: center; margin-top: 12px; font-size: 11px; color: var(--text-muted);">Version 2.1.0</div>
     </div>
   </aside>
 
