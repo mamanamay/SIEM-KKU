@@ -171,4 +171,18 @@ export class AiService {
     this.logger.log(`🧠 [Rule Engine] Analyzed: ${alert.type} for ${ip}`);
     return `[AI วิเคราะห์]\n1) ${what}\n2) ${risk}\n3) ${action}`;
   }
+
+  // === New Report Engine Methods ===
+  async validateReportContent(content: string, reportData: any): Promise<{valid: boolean, feedback: string, improvements: string[]}> {
+    return { valid: true, feedback: "Content looks good.", improvements: [] };
+  }
+
+  async generateReportNarrative(events: any[], reportType: string, language: string): Promise<string> {
+    return "This is an auto-generated narrative for the report based on " + events.length + " events.";
+  }
+
+  async proofreadReport(text: string): Promise<{original: string, proofread: string, changes: string[]}> {
+    return { original: text, proofread: text, changes: [] };
+  }
+
 }

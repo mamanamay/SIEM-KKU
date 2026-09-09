@@ -52,7 +52,7 @@
   async function loadUsers() {
     userLoading = true;
     try {
-      const res = await fetch('/api/auth/users');
+      const res = await apiFetch('/api/auth/users');
       if (res.ok) users = await res.json();
     } catch(e) {}
     userLoading = false;
@@ -63,7 +63,7 @@
     if (!newUsername.trim()) { userErr = 'กรุณากรอก Username'; return; }
     if (!newIsSso && !newPassword.trim()) { userErr = 'กรุณากรอก Password'; return; }
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await apiFetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole, isSso: newIsSso })
@@ -82,7 +82,7 @@
   async function deleteUser(username: string) {
     if (!confirm(`ยืนยันการลบบัญชี "${username}" ?`)) return;
     try {
-      const res = await fetch(`/api/auth/users/${username}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/auth/users/${username}`, { method: 'DELETE' });
       const data = await res.json();
       if (res.ok) { await loadUsers(); }
       else { alert(data.message || 'ไม่สามารถลบได้'); }
@@ -107,7 +107,7 @@
     }
     editModal.loading = true;
     try {
-      const res = await fetch(`/api/auth/users/${editModal.username}/password`, {
+      const res = await apiFetch(`/api/auth/users/${editModal.username}/password`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newPassword: editModal.newPw })
@@ -213,7 +213,41 @@
     <!-- ═══════════════════ TAB: User Management ═══════════════════ -->
     {#if activeTab === 'users'}
 
-      <!-- Password Edit Modal -->
+              <!-- Role Reference -->
+        <div class="ds-card" style="margin-bottom: 24px;">
+          <div class="ds-card-head" style="padding:16px 20px; border-bottom:1px solid var(--border);">
+            <div class="ds-card-title"><i class="ti ti-hierarchy"></i> Role Reference</div>
+          </div>
+          <div class="ds-card-body" style="padding: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+              <div style="padding: 12px; border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; background: rgba(239, 68, 68, 0.05);">
+                <strong style="color: #ef4444;">Admin</strong>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">Full system access, configurations, and user management.</p>
+              </div>
+              <div style="padding: 12px; border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; background: rgba(245, 158, 11, 0.05);">
+                <strong style="color: #f59e0b;">Analyst L2</strong>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">Advanced incident response and playbook execution.</p>
+              </div>
+              <div style="padding: 12px; border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px; background: rgba(59, 130, 246, 0.05);">
+                <strong style="color: #3b82f6;">Analyst L1</strong>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">Alert triage, monitoring, and basic investigations.</p>
+              </div>
+              <div style="padding: 12px; border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 8px; background: rgba(168, 85, 247, 0.05);">
+                <strong style="color: #a855f7;">Threat Hunter</strong>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">Proactive threat hunting and complex queries.</p>
+              </div>
+              <div style="padding: 12px; border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; background: rgba(16, 185, 129, 0.05);">
+                <strong style="color: #10b981;">Viewer</strong>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">View dashboards and reports only. No active changes.</p>
+              </div>
+              <div style="padding: 12px; border: 1px solid rgba(156, 163, 175, 0.2); border-radius: 8px; background: rgba(156, 163, 175, 0.05);">
+                <strong style="color: #9ca3af;">Guest</strong>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">Limited visibility. Cannot view sensitive data.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+<!-- Password Edit Modal -->
       {#if editModal.open}
         <div class="modal-overlay" on:click|self={closeEditModal}>
           <div class="modal-box">
@@ -298,8 +332,12 @@
             <div class="field">
               <label>Role</label>
               <select bind:value={newRole} class="ds-select">
-                <option value="guest">🔵 Guest — View Only</option>
-                <option value="admin">🔴 Admin — Full Access</option>
+                                <option value="admin">?? Admin - Full Access</option>
+                <option value="analyst_l2">?? Analyst L2 (Senior)</option>
+                <option value="analyst">?? Analyst L1 (Junior)</option>
+                <option value="threat_hunter">?? Threat Hunter</option>
+                <option value="viewer">?? Viewer (Read-only)</option>
+                <option value="guest">?? Guest</option>
               </select>
             </div>
             <div class="role-hint {newRole}">
