@@ -1,0 +1,41 @@
+[
+  {
+    "rule_id": "WEB-SQLI-001",
+    "name": "Possible SQL Injection",
+    "severity": "HIGH",
+    "enabled": true,
+    "version": "1.0",
+    "pattern": "(?i)(SELECT.*FROM|UNION.*SELECT|INSERT.*INTO|UPDATE.*SET|DROP.*TABLE|1=1|OR\\s+1=1)",
+    "target_field": "uri",
+    "mitre": [
+      "T1190"
+    ],
+    "cve": []
+  },
+  {
+    "rule_id": "WEB-XSS-001",
+    "name": "Cross-Site Scripting (XSS)",
+    "severity": "MEDIUM",
+    "enabled": true,
+    "version": "1.0",
+    "pattern": "(?i)(<script>|javascript:|onerror=|onload=|<svg)",
+    "target_field": "uri",
+    "mitre": [
+      "T1190"
+    ],
+    "cve": []
+  },
+  {
+    "rule_id": "WEB-TRAVERSAL-001",
+    "name": "Path Traversal",
+    "severity": "HIGH",
+    "enabled": true,
+    "version": "1.0",
+    "pattern": "(?i)(\\.\\./|\\.\\.\\\\|/etc/passwd|/windows/win\\.ini)",
+    "target_field": "uri",
+    "mitre": [
+      "T1190"
+    ],
+    "cve": []
+  }
+]
