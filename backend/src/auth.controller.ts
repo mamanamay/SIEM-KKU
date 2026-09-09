@@ -427,7 +427,7 @@ export class AuthController {
     const user = await this.userRepository.findOne({ where: { username } });
     if (!user) throw new BadRequestException('ไม่พบผู้ใช้');
 
-    if (body.role && ['admin', 'analyst', 'viewer', 'guest'].includes(body.role)) {
+    if (body.role && ['admin', 'analyst_l2', 'analyst', 'threat_hunter', 'viewer', 'guest'].includes(body.role)) {
       user.role = body.role;
     }
 
