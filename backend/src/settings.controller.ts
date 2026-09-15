@@ -19,31 +19,30 @@ import axios from 'axios';
 @Controller('api/settings')
 @UseGuards(AuthGuard, RolesGuard)
 export class SettingsController {
-  @Get('integrations/ai-proxy/models')
-  async getAiModels() {
+  @Post('integrations/ai-proxy/models')
+  async getAiModels(@Body() body: { aiApiUrl?: string, aiKey?: string }) {
     const config = await this.configRepo.findOne({ where: { id: 1 } });
-    if (!config || !config.apiConfigJson) return [];
+    const apiConfig = config && config.apiConfigJson ? JSON.parse(config.apiConfigJson) : {};
     
-    const apiConfig = JSON.parse(config.apiConfigJson);
-    const apiUrl = apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1';
-    const apiKey = apiConfig.aiKey;
-    if (!apiKey) return [];
+    const apiUrl = body.aiApiUrl || apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1';
+    let apiKey = body.aiKey;
+    
+    // If frontend sends masked password, use the real one from DB
+    if (apiKey === '********' || !apiKey) {
+        apiKey = apiConfig.aiKey;
+    }
+
+    if (!apiKey) return { models: [] };
 
     let models: any[] = [];
     try {
       const response = await axios.post(apiUrl + '/chat/models-list', {}, {
-        headers: { 'Authorization': `Bearer ${apiKey}` }
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+        timeout: 5000
       });
       models = response.data || [];
-    } catch (e) {
-      try {
-        const response2 = await axios.get(apiUrl + '/models', {
-          headers: { 'Authorization': `Bearer ${apiKey}` }
-        });
-        models = response2.data?.data || [];
-      } catch (err) {
-        return [];
-      }
+    } catch (e: any) {
+      console.error('Error fetching AI models:', e.message);
     }
     
     // Check quota for each model
@@ -137,7 +136,7 @@ export class SettingsController {
       
       // Quota Limit Handling
       if (status === 401 && errMsg.includes('daily limit')) {
-        customErrorMsg = 'QUOTA_EXCEEDED: โควต้า AI รายวันของคุณเต็มแล้ว กรุณารอรีเซ็ตในวันถัดไป';
+        customErrorMsg = 'QUOTA_EXCEEDED: โควต้า AI รายวันของโมเดลนี้เต็มแล้ว กรุณาเปลี่ยนไปใช้โมเดลอื่นแทน (เช่น เปลี่ยนจาก 70B เป็น 8B) ในหน้า Settings > Integrations';
       } else if (status === 401 && errMsg.includes('Invalid API key')) {
         customErrorMsg = 'INVALID_KEY: API Key สำหรับ KKU AI ไม่ถูกต้อง กรุณาตั้งค่าใหม่ใน Settings';
       }

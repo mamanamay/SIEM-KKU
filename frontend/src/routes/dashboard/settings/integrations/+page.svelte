@@ -49,10 +49,15 @@
         try {
             const token = localStorage.getItem('token');
             const res = await fetch('/api/settings/integrations/ai-proxy/models', {
-                method: 'GET',
+                method: 'POST',
                 headers: {
+                    'Content-Type': 'application/json',
                     'Authorization': token ? `Bearer ${token}` : ''
-                }
+                },
+                body: JSON.stringify({
+                    aiApiUrl: apiConfig.aiApiUrl,
+                    aiKey: apiConfig.aiKey
+                })
             });
             if (res.ok) {
                 const data = await res.json();
