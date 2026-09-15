@@ -24,7 +24,7 @@ export class SettingsController {
     const config = await this.configRepo.findOne({ where: { id: 1 } });
     const apiConfig = config && config.apiConfigJson ? JSON.parse(config.apiConfigJson) : {};
     
-    const apiUrl = body.aiApiUrl || apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1';
+    const apiUrl = (body.aiApiUrl || apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1').replace(/\/$/, '');
     let apiKey = body.aiKey;
     
     // If frontend sends masked password, use the real one from DB
@@ -106,7 +106,7 @@ export class SettingsController {
     if (!config || !config.apiConfigJson) throw new BadRequestException('AI is not configured in Settings');
     
     const apiConfig = JSON.parse(config.apiConfigJson);
-    const apiUrl = apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1';
+    const apiUrl = (apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1').replace(/\/$/, '');
     const apiKey = apiConfig.aiKey;
     if (!apiKey) throw new BadRequestException('AI API Key is missing in Settings');
     
@@ -274,9 +274,9 @@ export class SettingsController {
     }
 
     try {
-      const url = body.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1';
+      const url = (body.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1').replace(/\/$/, '');
       // Use models-list to test API key instead of guessing a model
-      const res = await axios.post(`${url}/chat/models-list`, {}, {
+      const res = await axios.get(`${url}/models`, {
           headers: { 'Authorization': `Bearer ${key}` },
           timeout: 5000
       });

@@ -65,7 +65,8 @@
                 newPassword = '';
                 confirmPassword = '';
             } else {
-                showNotification('Failed to change password', 'error');
+                const errorData = await res.json().catch(() => ({}));
+                showNotification(errorData.message || 'Failed to change password', 'error');
             }
         } catch (error) {
             console.error('Error changing password:', error);
