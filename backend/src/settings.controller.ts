@@ -1,6 +1,6 @@
 import { User } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
-import { Put, Param } from '@nestjs/common';
+import { Put, Param, Delete } from '@nestjs/common';
 ﻿import { Controller, Get, Post, Body, Req, BadRequestException , Res, UseGuards } from '@nestjs/common';
 import { UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -361,6 +361,18 @@ export class SettingsController {
     await this.userRepository.save(user);
     this.auditService.log({ action: 'RESET_USER_PASSWORD', resource: user.username, result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
     return { success: true, message: 'Password reset and 2FA disabled' };
+  }
+
+  @Roles('admin')
+  @Delete('users/:id')
+  async deleteUser(@Param('id') id: number, @Req() req: any) {
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) throw new BadRequestException('User not found');
+    if (user.username === 'admin') throw new BadRequestException('Cannot delete primary admin account');
+    
+    await this.userRepository.remove(user);
+    this.auditService.log({ action: 'DELETE_USER', resource: user.username, result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+    return { success: true };
   }
 }
 

@@ -62,7 +62,7 @@
             email: user.email || '',
             role: user.role,
             authMethod: user.authMethod,
-            is2faEnabled: user.is2faEnabled || user.twoFactorEnabled || false,
+            is2faEnabled: user.is2faEnabled || user.totpEnabled || false,
             require2fa: user.require2fa || false,
             password: ''
         };
@@ -115,6 +115,29 @@
         resetTargetUsername = username;
         newPasswordForReset = '';
         showResetModal = true;
+    }
+
+    async function deleteUser(id, username) {
+        if (username === 'admin') {
+            showNotification('error', 'Restricted', 'Cannot delete the primary admin account');
+            return;
+        }
+        promptConfirm('Delete User', `Are you sure you want to delete user "${username}"? This action cannot be undone.`, 'ti-trash', async () => {
+            try {
+                const res = await fetch(`/api/settings/users/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                });
+                if (res.ok) {
+                    showNotification('success', 'Deleted', 'User deleted successfully');
+                    await loadUsers();
+                } else {
+                    showNotification('error', 'Error', 'Failed to delete user');
+                }
+            } catch (err) {
+                showNotification('error', 'Error', 'Network error');
+            }
+        });
     }
 
     async function submitResetPassword() {
@@ -266,7 +289,7 @@
                             <td><span class="badge auth">{user.authMethod === 'kku_sso' ? 'KKU SSO' : 'Local'}</span></td>
                             <td><span class="badge status" class:active={user.accountStatus === 'Active'}>{user.accountStatus}</span></td>
                             <td>
-                                {#if user.twoFactorEnabled}
+                                {#if user.totpEnabled}
                                     <span class="badge status active" style="background:rgba(16,185,129,0.1); color:#10b981; border:1px solid rgba(16,185,129,0.3);"><i class="ti ti-shield-check"></i> Enabled</span>
                                 {:else}
                                     <span class="badge status" style="background:rgba(107,114,128,0.1); color:#9ca3af; border:1px solid rgba(107,114,128,0.3);"><i class="ti ti-shield-x"></i> Disabled</span>
@@ -277,6 +300,7 @@
                                 <div class="actions">
                                     <button class="action-btn edit" on:click={() => openEditModal(user)}>Edit</button>
                                     <button class="action-btn reset" on:click={() => openResetModal(user.id, user.username, user.authMethod)}>Reset Pwd</button>
+                                    <button class="action-btn delete" on:click={() => deleteUser(user.id, user.username)} style="color:#ef4444; border-color:#ef4444;"><i class="ti ti-trash"></i></button>
                                 </div>
                             </td>
                         </tr>
