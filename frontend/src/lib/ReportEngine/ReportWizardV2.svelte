@@ -1,15 +1,16 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { globalReportStore, closeReportWizard } from '../../stores/globalReportStore';
-  import { getPageSchema, getDefaultSelectedFields } from './exportSchemas';
+  import { getPageSchema, getDefaultSelectedFields, UNIFIED_FIELD_GROUPS, ALL_GROUP_KEYS, deriveFieldsFromGroups } from './exportSchemas';
   import {
     generateExecutiveSummaryHtml,
     generateTechnicalDetailsHtml,
     generateCsvContent
   } from './ReportTemplates';
   import { callKKUAI } from '../utils/kkuai';
-  import { getKKUAIModel } from '../utils/kkuai';
+  
   import { showNotification } from '../../stores/notificationStore';
+  import { analyzeCveSimilarity, getSimilarityColor, getSimilarityBg } from './CveSimilarityEngine';
 
   // Subscription to store
   $: session = $globalReportStore;
@@ -22,6 +23,7 @@
   let isLoading = false;
   let validationLoading = false;
   let aiChatLoading = false;
+  let cveAnalysisLoading = false;
   let aiChatInput = '';
   let showValidationModal = false;
   let showChatModal = false;
@@ -99,6 +101,47 @@
     globalReportStore.update(s => ({ ...s, selectedIPs: newSelected }));
   }
 
+  // --- Group Toggle (Step 2 v3) ---
+  function toggleGroup(groupKey: string) {
+    const groups = new Set(session.selectedGroups || ALL_GROUP_KEYS);
+    if (groups.has(groupKey)) groups.delete(groupKey);
+    else groups.add(groupKey);
+    const newGroups = Array.from(groups);
+    const newFields = deriveFieldsFromGroups(newGroups);
+    globalReportStore.update(s => ({ ...s, selectedGroups: newGroups, selectedFields: newFields }));
+  }
+
+  function isGroupSelected(groupKey: string): boolean {
+    return (session.selectedGroups || ALL_GROUP_KEYS).includes(groupKey);
+  }
+
+  // --- CVE Similarity Analysis ---
+  async function runCveSimilarity() {
+    if (session.selectedIPs.length === 0) {
+      showNotification('Warning', 'กรุณาเลือก IP อย่างน้อย 1 รายการก่อน', 'warning');
+      return;
+    }
+    cveAnalysisLoading = true;
+    globalReportStore.update(s => ({ ...s, cveSimilarityLoading: true, cveSimilarityResults: [] }));
+    try {
+      const results = await analyzeCveSimilarity(session.dataset, session.selectedIPs);
+      globalReportStore.update(s => ({ ...s, cveSimilarityResults: results, cveSimilarityLoading: false }));
+      generatePreview(); // Re-render preview with CVE data
+      showNotification('Success', `พบ CVE ที่มีลักษณะคล้าย ${results.length} รายการ`, 'success');
+    } catch (e: any) {
+      console.error(e);
+      showNotification('Error', e.message || 'CVE Similarity Analysis ล้มเหลว', 'error');
+      globalReportStore.update(s => ({ ...s, cveSimilarityLoading: false }));
+    } finally {
+      cveAnalysisLoading = false;
+    }
+  }
+
+  function viewInCveDatabase(cveId: string) {
+    // Navigate to CVE page with query
+    window.open(`/dashboard/cve?search=${encodeURIComponent(cveId)}`, '_blank');
+  }
+
   // --- Step 3 Actions (Preview & AI) ---
   function generatePreview() {
     let html = '';
@@ -151,17 +194,16 @@
     aiChatLoading = true;
     
     const messages = [
-      { role: 'system', content: 'You are an AI Security Analyst assisting with an Executive Summary. Read the current context and follow the user request.' },
+      { role: 'system', content: 'You are an AI Security Analyst assisting with an Executive Summary. Read the current context and follow the user request. Respond in the same language as the user request.' },
       { role: 'user', content: `Current Summary:\n${session.manualEdits.executiveSummary || session.aiContent?.executiveSummary || 'None'}\n\nUser Request: ${aiChatInput}` }
     ];
     
     try {
-      const apiKey = localStorage.getItem('kkuai_api_key') || '';
-      const model = getKKUAIModel();
-      const response = await callKKUAI(apiKey, model, messages);
       
-      if (response && response.choices && response.choices[0]) {
-        const newText = response.choices[0].message.content;
+      
+      // callKKUAI returns a string (content already extracted)
+      const newText = await callKKUAI('', messages);
+      if (newText) {
         globalReportStore.update(s => ({
           ...s,
           manualEdits: { ...s.manualEdits, executiveSummary: newText }
@@ -179,6 +221,19 @@
     }
   }
 
+  // Helper: download HTML as file
+  function downloadHtmlBlob(htmlContent: string, filename: string) {
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
   // --- Step 4 Actions (Export) ---
   async function finalizeExport() {
     if (session.validationResult?.hasCritical) {
@@ -186,64 +241,73 @@
       if (!proceed) return;
     }
 
+    // Require preview to be generated
+    if (!session.previewHtml) {
+      showNotification('Warning', 'กรุณารอให้ Preview โหลดเสร็จก่อน', 'warning');
+      generatePreview();
+      return;
+    }
+
     isLoading = true;
     try {
       if (session.fileFormat === 'pdf') {
-        const res = await fetch('/api/export/pdf', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify({
-            htmlContent: session.previewHtml,
-            reportTitle: session.reportTitle,
-            reportId: session.reportId,
-            reportVersion: session.reportVersion,
-            reportType: session.reportType,
-            language: session.language,
-            preparedBy: session.preparedBy,
-            reviewedBy: session.reviewedBy,
-            exportedBy: session.exportedBy,
-            sourcePage: session.sourcePage,
-            selectedIpCount: session.selectedIPs.length,
-            selectedFieldCount: session.selectedFields.length
-          })
-        });
-        
-        if (!res.ok) throw new Error('PDF generation failed');
-        
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const disp = res.headers.get('Content-Disposition');
-        let filename = `${session.reportId}.pdf`;
-        if (disp) {
-          const match = disp.match(/filename="?([^"]+)"?/);
-          if (match) filename = match[1];
+        // Try backend PDF generation; fallback to HTML download if unavailable
+        try {
+          const res = await fetch('/api/export/pdf', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+              htmlContent: session.previewHtml,
+              reportTitle: session.reportTitle,
+              reportId: session.reportId,
+              reportVersion: session.reportVersion,
+              reportType: session.reportType,
+              language: session.language,
+              preparedBy: session.preparedBy,
+              reviewedBy: session.reviewedBy,
+              exportedBy: session.exportedBy,
+              sourcePage: session.sourcePage,
+              selectedIpCount: session.selectedIPs.length,
+              selectedFieldCount: session.selectedFields.length
+            })
+          });
+          
+          if (!res.ok) throw new Error('PDF API unavailable');
+          
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          const disp = res.headers.get('Content-Disposition');
+          let filename = `${session.reportId}.pdf`;
+          if (disp) {
+            const match = disp.match(/filename="?([^"]+)"?/);
+            if (match) filename = match[1];
+          }
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+        } catch (pdfErr) {
+          // Fallback: download as HTML with .html extension
+          showNotification('Info', 'PDF server ไม่พร้อม — บันทึกเป็น HTML แทน', 'info');
+          downloadHtmlBlob(session.previewHtml, `${session.reportId}.html`);
         }
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
         
       } else if (session.fileFormat === 'html') {
-        const blob = new Blob([session.previewHtml], { type: 'text/html;charset=utf-8' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${session.reportId}.html`;
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
+        downloadHtmlBlob(session.previewHtml, `${session.reportId}.html`);
         
-        await fetch('/api/export/save-history', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-            body: JSON.stringify({ ...session, format: 'html', content: session.previewHtml })
-        });
+        try {
+          await fetch('/api/export/save-history', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+              body: JSON.stringify({ ...session, format: 'html', content: session.previewHtml })
+          });
+        } catch {}
         
       } else if (session.fileFormat === 'csv') {
         const csv = generateCsvContent(session);
@@ -256,18 +320,39 @@
         a.remove();
         window.URL.revokeObjectURL(url);
         
-        await fetch('/api/export/save-history', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-            body: JSON.stringify({ ...session, format: 'csv', content: csv })
-        });
+        try {
+          await fetch('/api/export/save-history', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+              body: JSON.stringify({ ...session, format: 'csv', content: csv })
+          });
+        } catch {}
       }
 
-      showNotification('Success', 'Report exported successfully', 'success');
+      showNotification('Success', `Report exported as ${session.fileFormat.toUpperCase()} successfully`, 'success');
+
+      // Save to localStorage history for Report History tab
+      try {
+        const historyRaw = localStorage.getItem('kkusiem_report_history');
+        const history = historyRaw ? JSON.parse(historyRaw) : [];
+        const entry = {
+          id: Date.now(),
+          name: session.reportTitle || `Report ${session.reportId}`,
+          date: new Date().toLocaleString('th-TH'),
+          format: session.fileFormat.toUpperCase(),
+          author: session.exportedBy || localStorage.getItem('username') || 'Unknown',
+          previewHtml: session.fileFormat !== 'csv' ? session.previewHtml : null,
+          reportId: session.reportId,
+        };
+        localStorage.setItem('kkusiem_report_history', JSON.stringify([entry, ...history].slice(0, 50)));
+      } catch (storageErr) {
+        console.warn('Could not save report to history:', storageErr);
+      }
+
       closeReportWizard();
     } catch (e) {
       console.error(e);
-      showNotification('Error', 'Export failed', 'error');
+      showNotification('Error', 'Export failed: ' + (e as any)?.message, 'error');
     } finally {
       isLoading = false;
     }
@@ -303,7 +388,7 @@
             <div class="form-group">
               <label>Report Type</label>
               <select bind:value={session.reportType} disabled={schema.allowExecOnly} on:change={() => {
-                if (session.reportType === 'executive') session.fileFormat = 'pdf';
+                if (session.reportType === 'executive') globalReportStore.update(s => ({ ...s, fileFormat: 'pdf' }));
               }}>
                 <option value="executive">Executive Summary</option>
                 <option value="technical" disabled={schema.allowExecOnly}>Technical Details</option>
@@ -331,39 +416,84 @@
               <input type="text" value={session.reportId} disabled />
             </div>
 
+            <div class="form-group">
+              <label>Organization</label>
+              <input type="text" value="Digital Technology Office, Khon Kaen University" disabled />
+            </div>
 
+            <div class="form-group">
+              <label>Time Zone</label>
+              <input type="text" value="UTC+7 (Asia/Bangkok)" disabled />
+            </div>
+
+            <div class="form-group">
+              <label>Reviewed By</label>
+              <input type="text" bind:value={session.reviewedBy} placeholder="Reviewer name (optional)..." />
+            </div>
 
             <div class="form-group">
               <label>Exported By</label>
               <input type="text" value={session.exportedBy} disabled />
             </div>
+
+            <div class="form-group">
+              <label>Reporting Period — From</label>
+              <input type="datetime-local" value={session.dateRange.from ? session.dateRange.from.slice(0,16) : ''} on:change={(e) => globalReportStore.update(s => ({ ...s, dateRange: { ...s.dateRange, from: e.currentTarget.value } }))} />
+            </div>
+
+            <div class="form-group">
+              <label>Reporting Period — To</label>
+              <input type="datetime-local" value={session.dateRange.to ? session.dateRange.to.slice(0,16) : ''} on:change={(e) => globalReportStore.update(s => ({ ...s, dateRange: { ...s.dateRange, to: e.currentTarget.value } }))} />
+            </div>
           </div>
         </div>
       {/if}
+
 
       <!-- STEP 2: Select Data -->
       {#if session.currentStep === 2}
         <div class="step-content">
           <div class="split-layout">
-            <div class="fields-section">
-              <h3>Select Fields</h3>
-              {#each schema.fieldGroups as group}
-                <div class="field-group">
-                  <h4>{session.language === 'en' ? group.groupEn : group.group}</h4>
-                  <div class="checkbox-grid">
-                    {#each group.fields as field}
-                      <label class="cb-label" title={field.readOnly ? 'Evidence Field (Read Only)' : ''}>
-                        <input type="checkbox" 
-                          checked={session.selectedFields.includes(field.key)} 
-                          on:change={() => toggleField(field.key)} 
-                        />
-                        {session.language === 'en' ? field.labelEn : field.label}
-                        {#if field.readOnly}<span class="ro-badge">RO</span>{/if}
-                      </label>
-                    {/each}
+              <div class="fields-section">
+                <h3>Select Data Groups</h3>
+                <p style="font-size:0.85rem;color:#64748b;margin-bottom:16px;">
+                  เลือกชุดข้อมูลที่จะนำออกในรายงาน - เปิด/ปิดตามความต้องการ
+                </p>
+                {#each schema.fieldGroups as group}
+                  {@const groupKey = group.groupEn}
+                  <div class="group-toggle-row" class:active={isGroupSelected(groupKey)}>
+                    <label class="group-toggle-label">
+                      <input
+                        type="checkbox"
+                        checked={isGroupSelected(groupKey)}
+                        on:change={() => toggleGroup(groupKey)}
+                      />
+                      <div class="group-info">
+                        <span class="group-name">{session.language === 'en' ? group.groupEn : group.group}</span>
+                        <span class="group-fields">{group.fields.map(f => session.language === 'en' ? f.labelEn : f.label).join(' • ')}</span>
+                      </div>
+                    </label>
                   </div>
+                {/each}
+  
+                {#if session.reportType === 'technical'}
+                <div class="group-toggle-row" class:active={session.includeRawLogs}>
+                  <label class="group-toggle-label">
+                    <input
+                      type="checkbox"
+                      bind:checked={session.includeRawLogs}
+                    />
+                    <div class="group-info">
+                      <span class="group-name">Raw Log Snippets</span>
+                      <span class="group-fields">Payload · Event Detail · (Technical Details only)</span>
+                    </div>
+                  </label>
                 </div>
-              {/each}
+              {/if}
+
+              <div style="margin-top:12px;padding:10px 12px;background:#f0f9ff;border-radius:6px;font-size:0.8rem;color:#1e40af;border:1px solid #bfdbfe;">
+                <strong>ℹ️</strong> ข้อมูล Evidence (IP, Timestamp, Event ID) จะถูกแสดงเสมอ — AI ไม่สามารถแก้ไขได้
+              </div>
             </div>
 
             <div class="ips-section">
@@ -382,7 +512,7 @@
                     />
                     <div class="ip-info">
                       <span class="ip-addr">{s.ip}</span>
-                      <span class="ip-count">{s.eventCount} events</span>
+                      <span class="ip-count">{s.eventCount} events · {s.country || 'Unknown'}</span>
                       <span class="ip-type">{s.primaryType}</span>
                     </div>
                     <span class="sev-dot sev-{s.severity}"></span>
@@ -392,10 +522,15 @@
                   <p class="no-data" style="padding:16px;text-align:center;color:#64748b">No IPs found.</p>
                 {/if}
               </div>
+              <div style="margin-top:8px;font-size:0.8rem;color:#64748b;text-align:right;">
+                {session.selectedIPs.length} / {session.allIpSummaries.length} IPs selected
+              </div>
             </div>
           </div>
         </div>
       {/if}
+
+
 
       <!-- STEP 3: Preview & AI -->
       {#if session.currentStep === 3}
@@ -404,16 +539,18 @@
             <h3>Preview & Validation</h3>
             <div class="preview-actions">
               <button class="btn btn-warning" on:click={runAiValidation} disabled={validationLoading}>
-                {validationLoading ? 'Checking...' : 'AI Check Report'}
+                {validationLoading ? 'Checking...' : '🤖 AI Check Report'}
               </button>
-              {#if session.reportType === 'executive'}
-                <button class="btn btn-ai" on:click={() => showChatModal = true}>
-                  ✨ AI Assistant
-                </button>
-              {/if}
+              <button class="btn btn-ai" on:click={() => showChatModal = true}>
+                ✨ AI Assistant
+              </button>
+              <button class="btn btn-cve" on:click={runCveSimilarity} disabled={cveAnalysisLoading}>
+                {cveAnalysisLoading ? 'Analyzing...' : '🔍 CVE Similarity'}
+              </button>
               <button class="btn btn-primary" on:click={updatePreviewManual}>Refresh Preview</button>
             </div>
           </div>
+
           
           {#if session.validationResult}
             <div class="validation-banner {session.validationResult.hasCritical ? 'critical' : session.validationResult.passed ? 'passed' : 'warning'}">
@@ -452,6 +589,59 @@
               <iframe title="Preview" srcdoc={session.previewHtml} class="preview-frame"></iframe>
             </div>
           </div>
+
+          <!-- CVE Similarity Results -->
+          {#if session.cveSimilarityResults && session.cveSimilarityResults.length > 0}
+            <div style="margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+              <div style="padding:12px 16px;background:#faf5ff;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+                <strong style="color:#7c3aed;font-size:0.9rem;">🔍 AI CVE Similarity Analysis</strong>
+                <span style="font-size:0.75rem;color:#94a3b8;font-style:italic;">AI Similarity Assessment — ไม่ใช่การยืนยันการโจมตี</span>
+              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                <thead>
+                  <tr style="background:#f8fafc;">
+                    <th style="padding:8px 12px;text-align:left;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">CVE ID</th>
+                    <th style="padding:8px 12px;text-align:left;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Similarity</th>
+                    <th style="padding:8px 12px;text-align:left;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Severity</th>
+                    <th style="padding:8px 12px;text-align:left;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Affected Product</th>
+                    <th style="padding:8px 12px;text-align:left;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Reason</th>
+                    <th style="padding:8px 12px;text-align:center;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each session.cveSimilarityResults as cve}
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                      <td style="padding:8px 12px;font-family:monospace;color:#1e3a8a;font-weight:700;">{cve.cveId}</td>
+                      <td style="padding:8px 12px;">
+                        <span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:{getSimilarityBg(cve.similarityLevel)};color:{getSimilarityColor(cve.similarityLevel)};">
+                          {cve.similarityLevel.toUpperCase()} ({cve.similarityScore}%)
+                        </span>
+                      </td>
+                      <td style="padding:8px 12px;">
+                        <span style="padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase;background:{cve.severity === 'critical' ? 'rgba(220,38,38,0.1)' : cve.severity === 'high' ? 'rgba(234,88,12,0.1)' : 'rgba(202,138,4,0.1)'};color:{cve.severity === 'critical' ? '#dc2626' : cve.severity === 'high' ? '#ea580c' : '#ca8a04'};">
+                          {cve.severity}
+                        </span>
+                      </td>
+                      <td style="padding:8px 12px;color:#475569;">{cve.affectedProduct}</td>
+                      <td style="padding:8px 12px;color:#64748b;font-size:0.8rem;">{cve.reason}</td>
+                      <td style="padding:8px 12px;text-align:center;">
+                        <button class="btn btn-outline" style="padding:4px 10px;font-size:0.75rem;" on:click={() => viewInCveDatabase(cve.cveId)}>
+                          View in CVE DB
+                        </button>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+              <div style="padding:10px 16px;background:#faf5ff;border-top:1px solid #e2e8f0;font-size:0.75rem;color:#7c3aed;">
+                ⚠️ <strong>คำเตือน:</strong> ผลลัพธ์นี้เป็น AI Similarity Assessment เท่านั้น ไม่ใช่การยืนยันว่า CVE ดังกล่าวถูก Exploit สำเร็จ
+              </div>
+            </div>
+          {:else if cveAnalysisLoading}
+            <div style="margin-top:16px;padding:24px;text-align:center;color:#7c3aed;border:1px dashed #d8b4fe;border-radius:8px;">
+              🔍 กำลังวิเคราะห์ CVE ที่มีลักษณะคล้ายกัน...
+            </div>
+          {/if}
         </div>
       {/if}
 
@@ -465,11 +655,32 @@
             <div class="conf-row"><span>Type:</span> <strong>{session.reportType === 'executive' ? 'Executive Summary' : 'Technical Details'}</strong></div>
             <div class="conf-row"><span>Selected IPs:</span> <strong>{session.selectedIPs.length}</strong></div>
             <div class="conf-row"><span>Language:</span> <strong>{session.language.toUpperCase()}</strong></div>
+            <div class="conf-row"><span>CVE Similar Found:</span> <strong>{session.cveSimilarityResults?.length || 0} items</strong></div>
             
             {#if session.validationResult?.hasCritical}
               <div class="conf-alert">
                 ⚠️ Critical Validation Errors exist! Export is not recommended.
               </div>
+            {/if}
+          </div>
+
+          <!-- Final Review Checklist -->
+          <div class="checklist-card">
+            <h4>☑ Final Review Checklist</h4>
+            <label class="checklist-row">
+              <input type="checkbox" bind:checked={session.finalReviewChecklist.dataVerified} />
+              <span>ตรวจสอบข้อมูลในรายงานเรียบร้อยแล้ว</span>
+            </label>
+            <label class="checklist-row">
+              <input type="checkbox" bind:checked={session.finalReviewChecklist.aiVerified} />
+              <span>ตรวจสอบ AI Analysis แล้ว และเนื้อหามีความถูกต้อง</span>
+            </label>
+            <label class="checklist-row">
+              <input type="checkbox" bind:checked={session.finalReviewChecklist.cveDisclaimer} />
+              <span>รับทราบว่า CVE Similarity เป็นเพียงการเปรียบเทียบรูปแบบ ไม่ใช่การยืนยันการโจมตี</span>
+            </label>
+            {#if !(session.finalReviewChecklist.dataVerified && session.finalReviewChecklist.aiVerified && session.finalReviewChecklist.cveDisclaimer)}
+              <p style="font-size:0.8rem;color:#94a3b8;margin-top:8px;font-style:italic;">กรุณาติ๊กยืนยันทุกข้อก่อนส่งออกรายงาน</p>
             {/if}
           </div>
 
@@ -491,6 +702,7 @@
           </div>
         </div>
       {/if}
+
       
     </div>
 
@@ -506,7 +718,8 @@
         {#if session.currentStep < 4}
           <button class="btn btn-primary" on:click={nextStep}>Next</button>
         {:else}
-          <button class="btn btn-success" on:click={finalizeExport} disabled={isLoading}>
+          <button class="btn btn-success" on:click={finalizeExport}
+            disabled={isLoading || !(session.finalReviewChecklist?.dataVerified && session.finalReviewChecklist?.aiVerified && session.finalReviewChecklist?.cveDisclaimer)}>
             {isLoading ? 'Exporting...' : 'Confirm & Export'}
           </button>
         {/if}
@@ -514,6 +727,7 @@
     </div>
   </div>
 </div>
+
 
 <!-- Modals -->
 {#if showValidationModal}
@@ -542,13 +756,16 @@
 {#if showChatModal}
   <div class="modal-overlay">
     <div class="modal-content">
-      <h3 style="margin-top:0">AI Assistant</h3>
-      <p>Ask AI to rewrite or adjust the Executive Summary.</p>
-      <textarea bind:value={aiChatInput} rows="4" placeholder="E.g., Make it sound more urgent, translate to formal Thai..." style="width:100%;padding:8px;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:4px;margin-bottom:12px;"></textarea>
+      <h3 style="margin-top:0">🤖 AI Report Assistant</h3>
+      <p style="font-size:0.85rem;color:#64748b;margin-bottom:12px;">
+        AI สามารถช่วยปรับแก้ Narrative, Summary และ Recommendations เท่านั้น<br/>
+        <strong style="color:#dc2626;">ห้าม AI แก้ไข:</strong> IP Address, Timestamp, Event ID, Detection Count, Raw Evidence
+      </p>
+      <textarea bind:value={aiChatInput} rows="4" placeholder="เช่น: สรุปให้กระชับขึ้น, เขียนสำหรับผู้บริหาร, อธิบายความเสี่ยงเพิ่มเติม, ปรับภาษาให้เป็นทางการ..." style="width:100%;padding:8px;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:4px;margin-bottom:12px;"></textarea>
       <div class="modal-footer">
         <button class="btn btn-outline" on:click={() => showChatModal = false}>Cancel</button>
         <button class="btn btn-ai" on:click={askAiAssistant} disabled={aiChatLoading}>
-          {aiChatLoading ? 'Thinking...' : 'Send to AI'}
+          {aiChatLoading ? 'Thinking...' : '✨ Send to AI'}
         </button>
       </div>
     </div>
@@ -578,6 +795,14 @@
   .form-group input, .form-group select, .form-group textarea { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; }
   .form-group input:disabled, .form-group select:disabled { background: #f1f5f9; color: #94a3b8; }
   
+  /* Group Toggle (Step 2 v3) */
+  .group-toggle-row { padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 10px; transition: all 0.15s; }
+  .group-toggle-row.active { border-color: #3b82f6; background: #eff6ff; }
+  .group-toggle-label { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+  .group-info { display: flex; flex-direction: column; gap: 2px; }
+  .group-name { font-weight: 600; font-size: 0.9rem; color: #1e293b; }
+  .group-fields { font-size: 0.75rem; color: #94a3b8; }
+
   .split-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; flex: 1; min-height: 0; }
   .fields-section { overflow-y: auto; padding-right: 16px; border-right: 1px solid #e2e8f0; }
   .ips-section { display: flex; flex-direction: column; }
@@ -601,7 +826,7 @@
   .sev-critical { background: #dc2626; } .sev-high { background: #ea580c; } .sev-medium { background: #ca8a04; } .sev-low { background: #16a34a; }
   
   .preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-  .preview-actions { display: flex; gap: 8px; }
+  .preview-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .preview-split { display: flex; gap: 20px; flex: 1; min-height: 0; }
   .manual-edit-panel { width: 350px; border-right: 1px solid #e2e8f0; padding-right: 20px; overflow-y: auto; display: flex; flex-direction: column; }
   .preview-frame-container { flex: 1; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #fff; display: flex; }
@@ -616,6 +841,14 @@
   .confirmation-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 24px; width: 100%; max-width: 500px; }
   .conf-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #cbd5e1; color: #334155; }
   .conf-alert { margin-top: 16px; padding: 12px; background: #fee2e2; color: #991b1b; border-radius: 6px; text-align: center; font-weight: 600; font-size: 0.95rem; }
+
+  /* Final Review Checklist */
+  .checklist-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px; width: 100%; max-width: 500px; }
+  .checklist-card h4 { margin: 0 0 14px 0; color: #1e293b; font-size: 0.95rem; }
+  .checklist-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f5f9; cursor: pointer; font-size: 0.9rem; color: #334155; }
+  .checklist-row:last-of-type { border-bottom: none; }
+  .checklist-row input[type="checkbox"] { margin-top: 2px; width: 16px; height: 16px; cursor: pointer; accent-color: #10b981; }
+
   .format-selection { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 500px; }
   .format-option { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid #cbd5e1; border-radius: 8px; cursor: pointer; color: #1e293b; font-weight: 500; }
   .format-option:hover { background: #f8fafc; }
@@ -633,6 +866,7 @@
   .btn-warning { background: #f59e0b; color: white; }
   .btn-warning:hover { background: #d97706; }
   .btn-ai { background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); color: white; }
+  .btn-cve { background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); color: white; }
   .btn:disabled { opacity: 0.6; cursor: not-allowed; }
   
   .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 10000; }
@@ -644,3 +878,4 @@
   .issue-warning { background: #fef9c3; color: #854d0e; border-color: #fef08a; }
   .issue-info { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
 </style>
+

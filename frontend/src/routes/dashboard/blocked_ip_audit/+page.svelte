@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from 'svelte';
   import { roleStore } from '../../../stores/events';
   
@@ -62,7 +62,8 @@
     if (currentPage < totalPages) currentPage++;
   }
 
-  import ExportReportBtn from '../../../lib/components/ExportReportBtn.svelte';
+  import PageHeader from '../../../lib/components/PageHeader.svelte';
+  import ExportBtn from '../../../lib/components/ExportBtn.svelte';
   
   let showExportMenu = false;
   
@@ -89,7 +90,7 @@
     "Targeted Port": b.port || 'Any'
   }));
 
-  // ── Manual Block ──────────────────────────────────────────────────────────
+  // â”€â”€ Manual Block â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let manualBlockIp = '';
   let manualBlockReason = '';
   let isBlocking = false;
@@ -119,7 +120,7 @@
     isBlocking = false;
   }
 
-  // ── Confirm Unblock Modal ─────────────────────────────────────────────────
+  // â”€â”€ Confirm Unblock Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let confirmUnblockIp: string | null = null;
   function confirmUnblock(ip: string) { confirmUnblockIp = ip; }
   async function doUnblock() {
@@ -133,20 +134,13 @@
 
 <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:2rem">
 
-  <!-- Header -->
-  <div class="ds-card-head" style="display:flex;justify-content:space-between;align-items:center;">
-    <span class="ds-card-title"><i class="ti ti-ban"></i> Blocked IP Audit</span>
-    <div style="position:relative;">
-      <ExportReportBtn 
-        data={fullExportData} 
-        columns={['IP Address','Blocked At','Reason','Source','Status','Country','Threat Score','Block Duration','Targeted Port']} 
-        title="KKUSIEM - Blocked IP History" 
-        filename="blocked_ip_audit" 
-      />
+  <PageHeader title="Blocked IP Audit" description="Review and manage historically blocked external IPs." icon="ti-ban">
+    <div slot="actions">
+      <ExportBtn config={{ pageType: 'blocked-ip', reportTitle: 'Blocked IP Audit Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={fullExportData} />
     </div>
-  </div>
+  </PageHeader>
 
-  <!-- ── Manual Block Form (Admin only) ────────────────────────────── -->
+  <!-- â”€â”€ Manual Block Form (Admin only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
   {#if $roleStore === 'admin'}
   <div class="ds-card" style="padding: 16px;">
     <div class="ds-card-head" style="margin-bottom: 12px;">
@@ -279,12 +273,12 @@
     <div style="font-size: 24px; color: var(--orange); margin-bottom: 12px;"><i class="ti ti-alert-triangle"></i></div>
     <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">ยืนยันการ Unblock IP</div>
     <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
-      คุณต้องการ Unblock <strong style="color: var(--text-primary); font-family: monospace;">{confirmUnblockIp}</strong> ใช่หรือไม่?<br>
       IP นี้จะสามารถเชื่อมต่อระบบได้อีกครั้ง
+      IP à¸™à¸µà¹‰à¸ˆà¸°à¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­à¸£à¸°à¸šà¸šà¹„à¸”à¹‰à¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡
     </div>
     <div style="display: flex; gap: 10px; justify-content: flex-end;">
-      <button class="ds-btn" on:click={() => confirmUnblockIp = null}>ยกเลิก</button>
       <button class="ds-btn btn-unblock" on:click={doUnblock}><i class="ti ti-unlock"></i> ยืนยัน Unblock</button>
+      <button class="ds-btn btn-unblock" on:click={doUnblock}><i class="ti ti-unlock"></i> à¸¢à¸·à¸™à¸¢à¸±à¸™ Unblock</button>
     </div>
   </div>
 </div>
@@ -305,7 +299,7 @@
   }
   .btn-unblock:hover {
     background: var(--green);
-    color: white;
+    color: var(--text-primary);
   }
 
   .ds-input {

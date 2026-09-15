@@ -113,7 +113,7 @@
     font-size: 13px;
     line-height: 1.5;
   }
-  .msg.user .msg-bubble { background: var(--blue); color: #ffffff; border-bottom-right-radius: 4px; }
+  .msg.user .msg-bubble { background: var(--blue); color: var(--text-primary); border-bottom-right-radius: 4px; }
   .msg.ai .msg-bubble { background: var(--bg-panel); color: var(--text-primary); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
   .typing { font-style: italic; color: #94a3b8; }
   
@@ -136,7 +136,7 @@
   }
   .chat-input button {
     background: var(--blue);
-    color: #ffffff;
+    color: var(--text-primary);
     border: none;
     border-radius: 8px;
     width: 40px;

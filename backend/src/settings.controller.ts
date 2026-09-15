@@ -1,3 +1,6 @@
+import { User } from './entities/user.entity';
+import * as bcrypt from 'bcrypt';
+import { Put, Param } from '@nestjs/common';
 ﻿import { Controller, Get, Post, Body, Req, BadRequestException , Res, UseGuards } from '@nestjs/common';
 import { UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -112,15 +115,51 @@ export class SettingsController {
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
       });
       
+      const modelQuota = response.data?.model_quota;
+      const quotaInfo = modelQuota ? ` (Quota: ${modelQuota.daily_remaining_tokens}/${modelQuota.daily_quota_tokens} remaining)` : '';
+
+      this.auditService.log({
+        action: 'AI_ANALYSIS',
+        resource: 'KKU AI',
+        result: 'SUCCESS',
+        username: req.user?.username || 'admin',
+        ipAddress: req.ip,
+        metadata: { quota: modelQuota }
+      });
+
+      // We can pass quota info back to frontend inside response.data
       return response.data;
     } catch (e: any) {
-      throw new BadRequestException(e.response?.data?.error?.message || e.message || 'AI API Failed');
+      const status = e.response?.status;
+      const errMsg = e.response?.data?.error?.message || e.message;
+      
+      let customErrorMsg = errMsg;
+      
+      // Quota Limit Handling
+      if (status === 401 && errMsg.includes('daily limit')) {
+        customErrorMsg = 'QUOTA_EXCEEDED: โควต้า AI รายวันของคุณเต็มแล้ว กรุณารอรีเซ็ตในวันถัดไป';
+      } else if (status === 401 && errMsg.includes('Invalid API key')) {
+        customErrorMsg = 'INVALID_KEY: API Key สำหรับ KKU AI ไม่ถูกต้อง กรุณาตั้งค่าใหม่ใน Settings';
+      }
+      
+      this.auditService.log({
+        action: 'AI_ANALYSIS',
+        resource: 'KKU AI',
+        result: 'FAILED',
+        username: req.user?.username || 'admin',
+        ipAddress: req.ip,
+        metadata: { error: customErrorMsg }
+      });
+      
+      throw new BadRequestException(customErrorMsg);
     }
   }
 
   constructor(
     @InjectRepository(SystemConfig)
     private configRepo: Repository<SystemConfig>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
     private auditService: AuditService
   ) {}
 
@@ -241,6 +280,81 @@ export class SettingsController {
       throw new BadRequestException('AI Connection Failed: ' + (e.response?.data?.error?.message || e.message));
     }
   }
+
+  // --- User Management ---
+  @Roles('admin')
+  @Get('users')
+  async getUsers() {
+    const users = await this.userRepository.find({
+      select: ['id', 'username', 'firstName', 'lastName', 'email', 'role', 'authMethod', 'accountStatus', 'totpEnabled', 'lastLogin', 'createdAt']
+    });
+    return users;
+  }
+
+  @Roles('admin')
+  @Post('users')
+  async createUser(@Body() body: any, @Req() req: any) {
+    const { username, firstName, lastName, email, role, authMethod } = body;
+    if (!username || !role) throw new BadRequestException('Username and role are required');
+    
+    const existing = await this.userRepository.findOne({ where: { username } });
+    if (existing) throw new BadRequestException('Username already exists');
+
+    const user = this.userRepository.create({
+      username, firstName, lastName, email, role,
+      authMethod: authMethod || 'local',
+      accountStatus: 'active',
+      requirePasswordChange: true
+    });
+
+    if (user.authMethod === 'local') {
+      const initPassword = body.password || `${username}@2026!`;
+      user.passwordHash = await bcrypt.hash(initPassword, 10);
+    }
+
+    await this.userRepository.save(user);
+    this.auditService.log({ action: 'CREATE_USER', resource: user.username, result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+    return { success: true, user: { id: user.id, username: user.username } };
+  }
+
+  @Roles('admin')
+  @Put('users/:id')
+  async updateUser(@Param('id') id: number, @Body() body: any, @Req() req: any) {
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) throw new BadRequestException('User not found');
+
+    const { firstName, lastName, email, role, accountStatus, requirePasswordChange } = body;
+    if (firstName !== undefined) user.firstName = firstName;
+    if (lastName !== undefined) user.lastName = lastName;
+    if (email !== undefined) user.email = email;
+    if (role !== undefined) user.role = role;
+    if (accountStatus !== undefined) user.accountStatus = accountStatus;
+    if (requirePasswordChange !== undefined) user.requirePasswordChange = requirePasswordChange;
+
+    await this.userRepository.save(user);
+    this.auditService.log({ action: 'UPDATE_USER', resource: user.username, result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+    return { success: true };
+  }
+
+  @Roles('admin')
+  @Post('users/:id/reset-password')
+  async resetPassword(@Param('id') id: number, @Body() body: any, @Req() req: any) {
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) throw new BadRequestException('User not found');
+    if (user.authMethod === 'kku_sso') throw new BadRequestException('Cannot reset password for SSO users');
+
+    const newPassword = body.password || `${user.username}@Reset!`;
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.requirePasswordChange = true;
+    user.totpEnabled = false; // Reset 2FA
+    user.totpSecretEnc = null;
+    user.backupCodesJson = null;
+    
+    await this.userRepository.save(user);
+    this.auditService.log({ action: 'RESET_USER_PASSWORD', resource: user.username, result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+    return { success: true, message: 'Password reset and 2FA disabled' };
+  }
 }
+
 
 

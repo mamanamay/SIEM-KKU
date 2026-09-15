@@ -70,7 +70,7 @@ export class AuthController {
         });
         // Important: clear any old pre-auth cookies
         res.clearCookie('pre_auth_token');
-        return { access_token: signAccessToken(user), role: user.role, username: user.username, message: 'เข้าสู่ระบบสำเร็จ' };
+        return { access_token: signAccessToken(user), role: user.role, username: user.username, requirePasswordChange: user.requirePasswordChange, message: 'เข้าสู่ระบบสำเร็จ' };
       } else {
         // Already set up: user must verify TOTP
         const preAuth = signPreAuth(user.id, 'verify');
@@ -370,7 +370,7 @@ export class AuthController {
         return { stage: 'verify', message: 'กรุณายืนยันรหัส 2FA' };
       }
 
-      return { access_token: signAccessToken(user), role: user.role, username: user.username };
+      return { access_token: signAccessToken(user), role: user.role, username: user.username, requirePasswordChange: user.requirePasswordChange };
     } catch (err) {
       console.error('SSO Error:', err);
       throw new UnauthorizedException(err.message || 'SSO Authentication failed');
@@ -465,5 +465,162 @@ export class AuthController {
 
     await this.userRepository.remove(user);
     return { success: true };
+  }
+
+  // --- My Profile ---
+  @Get('me')
+  async getMe(@Req() req: any) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) throw new UnauthorizedException('No token');
+    const token = authHeader.split(' ')[1];
+    let payload;
+    try {
+      payload = jwt.verify(token, JWT_SECRET) as any;
+    } catch {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: payload.sub } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    return {
+      id: user.id,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+      authMethod: user.authMethod,
+      totpEnabled: user.totpEnabled,
+      requirePasswordChange: user.requirePasswordChange
+    };
+  }
+
+  @Post('me')
+  async updateMe(@Body() body: any, @Req() req: any) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) throw new UnauthorizedException('No token');
+    const token = authHeader.split(' ')[1];
+    let payload;
+    try {
+      payload = jwt.verify(token, JWT_SECRET) as any;
+    } catch {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: payload.sub } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    if (body.firstName !== undefined) user.firstName = body.firstName;
+    if (body.lastName !== undefined) user.lastName = body.lastName;
+    if (body.email !== undefined) user.email = body.email;
+
+    await this.userRepository.save(user);
+    return { success: true };
+  }
+
+  // === Authenticated 2FA Management (From Settings) ===
+  @Post('me/2fa/setup')
+  async my2FaSetup(@Req() req: any) {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) throw new UnauthorizedException('Missing token');
+    const secret = JWT_SECRET;
+    const decoded: any = jwt.verify(token, secret);
+    
+    const user = await this.userRepository.findOne({ where: { id: decoded.sub } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const { encryptedSecret, qrCodeDataUrl, secret: plainSecret } = await this.totpService.generateSetup(user.username);
+    const { plainCodes, hashedCodes } = await this.totpService.generateBackupCodes();
+    
+    user.totpSecretEnc = encryptedSecret;
+    user.backupCodesJson = JSON.stringify(hashedCodes);
+    await this.userRepository.save(user);
+
+    return { 
+      qrCodeUrl: qrCodeDataUrl, 
+      secret: plainSecret, 
+      backupCodes: plainCodes 
+    };
+  }
+
+  @Post('me/2fa/confirm')
+  async my2FaConfirm(@Body() body: any, @Req() req: any) {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) throw new UnauthorizedException('Missing token');
+    const secret = JWT_SECRET;
+    const decoded: any = jwt.verify(token, secret);
+    
+    const user = await this.userRepository.findOne({ where: { id: decoded.sub } });
+    if (!user || !user.totpSecretEnc) throw new UnauthorizedException('Invalid state');
+
+    const { code } = body;
+    const isValid = await this.totpService.verifyCode(code, user.totpSecretEnc);
+    if (!isValid) throw new UnauthorizedException('Invalid 2FA code');
+
+    const { plainCodes, hashedCodes } = await this.totpService.generateBackupCodes();
+    user.totpEnabled = true;
+    user.backupCodesJson = JSON.stringify(hashedCodes);
+    await this.userRepository.save(user);
+
+    return { success: true, backupCodes: plainCodes };
+  }
+
+  @Post('me/2fa/disable')
+  async my2FaDisable(@Req() req: any) {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) throw new UnauthorizedException('Missing token');
+    const secret = JWT_SECRET;
+    const decoded: any = jwt.verify(token, secret);
+    
+    const user = await this.userRepository.findOne({ where: { id: decoded.sub } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    user.totpEnabled = false;
+    user.totpSecretEnc = null;
+    user.backupCodesJson = null;
+    await this.userRepository.save(user);
+
+    return { success: true, message: '2FA disabled' };
+  }
+
+  @Post('change-password')
+  async myChangePassword(@Body() body: any, @Req() req: any) {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) throw new UnauthorizedException('Missing token');
+    const secret = JWT_SECRET;
+    const decoded: any = jwt.verify(token, secret);
+    
+    const user = await this.userRepository.findOne({ where: { id: decoded.sub } });
+    if (!user) throw new UnauthorizedException('User not found');
+    if (user.authMethod === 'kku_sso') throw new BadRequestException('Cannot change password for SSO users');
+
+    const { currentPassword, newPassword } = body;
+    
+    // Allow bypass current password if it's forced change (first login from admin reset)
+    if (!user.requirePasswordChange) {
+      if (!currentPassword) throw new BadRequestException('Current password required');
+      if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+        throw new BadRequestException('Current password incorrect');
+      }
+    }
+
+    // New password validation
+    if (!newPassword || newPassword.length < 12) {
+      throw new BadRequestException('Password must be at least 12 characters long');
+    }
+    if (newPassword.toLowerCase().includes(user.username.toLowerCase())) {
+      throw new BadRequestException('Password cannot contain username');
+    }
+    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      throw new BadRequestException('Password must contain uppercase, lowercase, and numbers');
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.requirePasswordChange = false; // Successfully changed
+
+    await this.userRepository.save(user);
+
+    return { success: true, message: 'Password changed successfully' };
   }
 }

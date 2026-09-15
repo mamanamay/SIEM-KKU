@@ -1,6 +1,6 @@
-﻿import { writable } from "svelte/store";
+import { writable } from "svelte/store";
 import type { ReportConfig, ReportDataModel, ExportSession, IpSummary } from "../lib/ReportEngine/types";
-import { getDefaultSelectedFields, deriveIpSummaries, generateReportId } from "../lib/ReportEngine/exportSchemas";
+import { getDefaultSelectedFields, deriveIpSummaries, generateReportId, ALL_GROUP_KEYS, deriveFieldsFromGroups } from "../lib/ReportEngine/exportSchemas";
 
 // ── Legacy state (kept for backward compat) ───────────────────────────────────
 interface GlobalReportState {
@@ -26,7 +26,9 @@ function createInitialSession(): ExportSession {
     preparedBy: "",
     reviewedBy: "",
     exportedBy: "",
+    selectedGroups: [...ALL_GROUP_KEYS],
     selectedFields: [],
+    includeRawLogs: false,
     selectedIPs: [],
     includeAiIpAnalysis: false,
     allIpSummaries: [],
@@ -35,8 +37,11 @@ function createInitialSession(): ExportSession {
     manualEdits: { executiveSummary: "", recommendations: "" },
     revisionHistory: [],
     validationResult: null,
+    cveSimilarityResults: [],
+    cveSimilarityLoading: false,
     analystAssessment: "",
     fileFormat: "pdf",
+    finalReviewChecklist: { dataVerified: false, aiVerified: false, cveDisclaimer: false },
     dataset: [],
     config: null,
     currentStep: 1,
@@ -72,7 +77,7 @@ export function openReportWizard(
 
   globalReportStore.set({
     isOpen: true,
-    reportType: config.pageType === "ai-briefing" ? "executive" : "executive",
+    reportType: config.allowExecOnly ? "executive" : "executive", // default executive; user can change in Step 1
     reportTitle: config.reportTitle,
     reportId,
     reportVersion: "v1.0",
@@ -85,7 +90,9 @@ export function openReportWizard(
     preparedBy: exportedBy,
     reviewedBy: "",
     exportedBy,
-    selectedFields: defaultFields,
+    selectedGroups: [...ALL_GROUP_KEYS],
+    selectedFields: deriveFieldsFromGroups(ALL_GROUP_KEYS),
+    includeRawLogs: false,
     selectedIPs: allIPs,
     includeAiIpAnalysis: false,
     allIpSummaries: ipSummaries,
@@ -94,8 +101,11 @@ export function openReportWizard(
     manualEdits: { executiveSummary: "", recommendations: "" },
     revisionHistory: [],
     validationResult: null,
+    cveSimilarityResults: [],
+    cveSimilarityLoading: false,
     analystAssessment: "",
     fileFormat: "pdf",
+    finalReviewChecklist: { dataVerified: false, aiVerified: false, cveDisclaimer: false },
     dataset: data,
     config,
     currentStep: 1,

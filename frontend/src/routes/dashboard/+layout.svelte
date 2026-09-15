@@ -1,4 +1,9 @@
 <script lang="ts">
+  import { aiCopilotStore } from '../../stores/aiCopilotStore';
+  import ReportWizardV2 from '../../lib/ReportEngine/ReportWizardV2.svelte';
+  import AiCopilotDrawer from '../../lib/components/AiCopilot/AiCopilotDrawer.svelte';
+
+
   import { onMount, onDestroy } from 'svelte';
   import { themeStore } from '../../stores/theme';
   import Omnisearch from '../../lib/components/Omnisearch.svelte';
@@ -31,6 +36,39 @@
   let activeToast: any = null;
   let toastTimeout: any;
   let showProfileMenu = false;
+  let showConfirmLogout = false;
+  let userAgent = '';
+  let osName = 'Unknown OS';
+  let userProfile = { firstName: 'Admin', lastName: '', email: 'admin@system.local' };
+  let browserName = 'Unknown Browser';
+
+  onMount(() => {
+    userAgent = navigator.userAgent;    
+    // Fetch profile
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.username) {
+            userProfile = {
+              firstName: data.firstName || data.username,
+              lastName: data.lastName || '',
+              email: data.email || `${data.username}@kkusiem.local`
+            };
+          }
+        }).catch(err => console.error('Failed to fetch profile', err));
+    }
+
+    if(userAgent.includes('Windows')) osName = 'Windows';
+    else if(userAgent.includes('Mac')) osName = 'macOS';
+    else if(userAgent.includes('Linux')) osName = 'Linux';
+    
+    if(userAgent.includes('Chrome')) browserName = 'Chrome';
+    else if(userAgent.includes('Firefox')) browserName = 'Firefox';
+    else if(userAgent.includes('Safari') && !userAgent.includes('Chrome')) browserName = 'Safari';
+    else if(userAgent.includes('Edge')) browserName = 'Edge';
+  });
 
   $: if ($latestAttackStore) {
     // Prevent duplicate triggers if store hasn't actually changed reference (Svelte reactivity quirk)
@@ -199,69 +237,57 @@
       </div>
       <div class="sidebar-title">KKUSIEM</div>
     </div>
-    <nav class="sidebar-nav custom-scrollbar" style="overflow-y: auto;">
-      <div class="nav-group-title">OVERVIEW</div>
-      <a href="/dashboard" class="nav-item {$page.url.pathname === '/dashboard' ? 'active' : ''}">
-        <i class="ti ti-dashboard"></i> Dashboard
-      </a>
-      <a href="/dashboard/scorecard" class="nav-item {$page.url.pathname === '/dashboard/scorecard' ? 'active' : ''}">
-        <i class="ti ti-shield-check"></i> Security Scorecard
-      </a>
-
-      <div class="nav-group-title mt-2">DETECTION & ANALYSIS</div>
-      <a href="/dashboard/hunting" class="nav-item {$page.url.pathname === '/dashboard/hunting' ? 'active' : ''}">
-        <i class="ti ti-code-asterisk"></i> Threat Hunting
-      </a>
-      <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}">
-        <i class="ti ti-chart-pie"></i> Analyst Center
-      </a>
-      <a href="/dashboard/ai-briefing" class="nav-item {$page.url.pathname === '/dashboard/ai-briefing' ? 'active' : ''}">
-        <i class="ti ti-brain"></i> AI Daily Briefing
-      </a>
-      <a href="/dashboard/monitor" class="nav-item {$page.url.pathname === '/dashboard/monitor' ? 'active' : ''}">
-        <i class="ti ti-list-search"></i> SOC Operations Center
-      </a>
-      <a href="/dashboard/soar" class="nav-item {$page.url.pathname === '/dashboard/soar' ? 'active' : ''}">
-        <i class="ti ti-zoom-in"></i> Incident & SOAR
-      </a>
-      <a href="/dashboard/explorer" class="nav-item {$page.url.pathname === '/dashboard/explorer' ? 'active' : ''}">
+          <nav class="sidebar-nav custom-scrollbar" style="overflow-y: auto;">
+        <div class="nav-group-title">OVERVIEW</div>
+        <a href="/dashboard" class="nav-item {$page.url.pathname === '/dashboard' ? 'active' : ''}">
+          <i class="ti ti-dashboard"></i> Dashboard
+        </a>
+        <a href="/dashboard/scorecard" class="nav-item {$page.url.pathname === '/dashboard/scorecard' ? 'active' : ''}">
+          <i class="ti ti-shield-check"></i> Security Scorecard
+        </a>
+  
+        <div class="nav-group-title mt-2">DETECTION & ANALYSIS</div>
+        <a href="/dashboard/hunting" class="nav-item {$page.url.pathname === '/dashboard/hunting' ? 'active' : ''}">
+          <i class="ti ti-code-asterisk"></i> Threat Hunting
+        </a>
+        <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}">
+          <i class="ti ti-chart-pie"></i> Analyst Center
+        </a>
+        <a href="/dashboard/ai-briefing" class="nav-item {$page.url.pathname === '/dashboard/ai-briefing' ? 'active' : ''}">
+          <i class="ti ti-brain"></i> AI Daily Briefing
+        </a>
+        <a href="/wallboard" target="_blank" class="nav-item">
+          <i class="ti ti-device-tv"></i> SOC Operations Center
+          <i class="ti ti-external-link" style="margin-left:auto;font-size:11px;opacity:0.5;"></i>
+        </a>
+        <a href="/dashboard/soar" class="nav-item {$page.url.pathname === '/dashboard/soar' ? 'active' : ''}">
+          <i class="ti ti-zoom-in"></i> Incident & SOAR
+        </a>
+        <a href="/dashboard/explorer" class="nav-item {$page.url.pathname === '/dashboard/explorer' ? 'active' : ''}">
           <i class="ti ti-terminal-2"></i> Log Explorer
         </a>
         <a href="/dashboard/mitre" class="nav-item {$page.url.pathname === '/dashboard/mitre' ? 'active' : ''}">
-        <i class="ti ti-grid-dots"></i> MITRE ATT&CK
-      </a>
-
-      <div class="nav-group-title mt-2">RESPONSE & INTEL</div>
-      <a href="/dashboard/network-map" class="nav-item {$page.url.pathname === '/dashboard/network-map' ? 'active' : ''}">
-        <i class="ti ti-map-2"></i> Network Map Management
-      </a>
-      <a href="/dashboard/blocked_ip_audit" class="nav-item {$page.url.pathname === '/dashboard/blocked_ip_audit' ? 'active' : ''}">
-        <i class="ti ti-shield-x"></i> Blocked IP Audit
-      </a>
-      <a href="/dashboard/cve" class="nav-item {$page.url.pathname === '/dashboard/cve' ? 'active' : ''}">
-        <i class="ti ti-database-search"></i> CVE Database
-      </a>
-
-      {#if $roleStore === 'admin'}
-      <div class="nav-group-title mt-2">ADMINISTRATION</div>
-      <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}">
-        <i class="ti ti-settings"></i> System Settings
-      </a>
-      <a href="/dashboard/audit" class="nav-item {$page.url.pathname === '/dashboard/audit' ? 'active' : ''}">
-        <i class="ti ti-clipboard-list"></i> System Audit Trail
-      </a>
-      <a href="/dashboard/api-history" class="nav-item {$page.url.pathname === '/dashboard/api-history' ? 'active' : ''}">
-        <i class="ti ti-api"></i> API History
-      </a>
-      {/if}
-
-      <!-- SOC Monitor Wall -->
-      <div class="nav-group-title mt-2">MONITOR</div>
-      <a href="/monitor" target="_blank" class="nav-item monitor-wall-btn">
-        <i class="ti ti-device-tv"></i> SOC Monitor Wall
-        <i class="ti ti-external-link" style="margin-left:auto;font-size:11px;opacity:0.5;"></i>
-      </a>
-    </nav>
+          <i class="ti ti-grid-dots"></i> MITRE ATT&CK
+        </a>
+  
+        <div class="nav-group-title mt-2">RESPONSE & INTEL</div>
+        <a href="/dashboard/network-map" class="nav-item {$page.url.pathname === '/dashboard/network-map' ? 'active' : ''}">
+          <i class="ti ti-map-2"></i> Network Map Management
+        </a>
+        <a href="/dashboard/blocked_ip_audit" class="nav-item {$page.url.pathname === '/dashboard/blocked_ip_audit' ? 'active' : ''}">
+          <i class="ti ti-shield-x"></i> Blocked IP Audit
+        </a>
+        <a href="/dashboard/cve" class="nav-item {$page.url.pathname === '/dashboard/cve' ? 'active' : ''}">
+          <i class="ti ti-database-search"></i> CVE Database
+        </a>
+  
+        {#if $roleStore === 'admin'}
+        <div class="nav-group-title mt-2">ADMINISTRATION</div>
+        <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}">
+          <i class="ti ti-settings"></i> Setting
+        </a>
+        {/if}
+      </nav>
     <div class="sidebar-footer">
       <div class="status-indicator" style="margin-bottom: 8px;">
         <span class="status-dot {$connectionState ? 'online' : 'offline'}"></span>
@@ -281,37 +307,57 @@
                 {#if showProfileMenu}
           <!-- Backdrop to close menu -->
           <div style="position:fixed; inset:0; z-index:99;" on:click={() => showProfileMenu = false}></div>
-          <div class="profile-dropdown" style="position: absolute; bottom: calc(100% + 12px); left: 16px; width: 260px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); z-index: 100; overflow: hidden; display: flex; flex-direction: column;">
+          <div class="profile-dropdown" style="position: absolute; bottom: calc(100% + 12px); left: 16px; width: 320px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); z-index: 100; overflow: hidden; display: flex; flex-direction: column;">
             
-            <div class="dropdown-header" style="padding: 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border);">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <div class="avatar" style="width: 40px; height: 40px; border-radius: 50%; background: var(--color-cyan); color: var(--text-primary); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">N</div>
-                <div style="overflow: hidden;">
-                  <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">นภัสวรรณ ชัยบาล</div>
-                  <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">napatwan.c@kkumail.com</div>
+            <div class="dropdown-header" style="padding: 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+              <div class="avatar" style="width: 44px; height: 44px; border-radius: 50%; background: #3b82f6; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; flex-shrink: 0;">{userProfile.firstName.charAt(0).toUpperCase()}</div>
+              
+              <div style="flex: 1; overflow: hidden;">
+                <div style="font-size: 15px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{userProfile.firstName} {userProfile.lastName}</div>
+                <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{userProfile.email}</div>
+              </div>
+              
+              <div style="flex-shrink: 0; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 800; display: flex; align-items: center; gap: 4px;">
+                <i class="ti ti-shield-check" style="font-size: 16px;"></i> 
+                <span style="text-transform: capitalize;">{$roleStore}</span>
+              </div>
+            </div>
+
+            <div class="dropdown-body" style="padding: 16px;">
+              <div style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Account & Session</div>
+              
+              <!-- Active Device Card -->
+              <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-weight: 700; font-size: 14px;">
+                    <i class="ti ti-device-laptop" style="font-size: 18px;"></i>
+                    {osName} - {browserName}
+                  </div>
+                  <span style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 10px; padding: 3px 6px; border-radius: 4px; font-weight: 800;">Current Device</span>
+                </div>
+                
+                <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                  {userAgent}
+                </div>
+                
+                <div style="display: flex; gap: 12px; font-size: 12px; color: var(--text-secondary);">
+                  <span style="display: flex; align-items: center; gap: 4px;"><i class="ti ti-map-pin"></i> LOCAL</span>
+                  <span style="display: flex; align-items: center; gap: 4px;"><i class="ti ti-clock"></i> Active Now</span>
                 </div>
               </div>
-              <div style="margin-top: 12px; display: flex; align-items: center; gap: 6px;">
-                <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: rgba(16, 185, 129, 0.15); color: #10b981; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
-                  <i class="ti ti-shield-check" style="font-size: 12px;"></i> นักวิเคราะห์ SOC
-                </span>
-              </div>
             </div>
 
-            <div class="dropdown-body" style="padding: 8px;">
+            <div class="dropdown-links" style="padding: 8px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
               {#if $roleStore !== 'viewer' && $roleStore !== 'VIEWER'}
-              <a href="/dashboard/settings" class="menu-link-modern" on:click={() => showProfileMenu = false} style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none; transition: background 0.2s;">
-                <i class="ti ti-settings" style="font-size: 16px; color: var(--text-muted);"></i> การตั้งค่าระบบ
+              <a href="/dashboard/settings" class="menu-link-modern" on:click={() => showProfileMenu = false} style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--text-primary); text-decoration: none; transition: background 0.2s;">
+                <i class="ti ti-settings" style="font-size: 18px; color: var(--text-muted);"></i> การตั้งค่าระบบ
               </a>
-              <a href="/dashboard/account" class="menu-link-modern" on:click={() => showProfileMenu = false} style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none; transition: background 0.2s;">
-                <i class="ti ti-user-edit" style="font-size: 16px; color: var(--text-muted);"></i> แก้ไขประวัติส่วนตัว
-              </a>
-            {/if}
+              {/if}
             </div>
 
-            <div class="dropdown-footer" style="padding: 8px; border-top: 1px solid var(--border); background: var(--bg-surface);">
-              <button on:click={() => logout()} style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: none; background: none; border-radius: 8px; font-size: 13px; font-weight: 500; color: #ef4444; cursor: pointer; text-align: left; transition: background 0.2s;">
-                <i class="ti ti-logout" style="font-size: 16px;"></i> ออกจากระบบ
+            <div class="dropdown-footer" style="padding: 16px;">
+              <button on:click={() => { showProfileMenu = false; showConfirmLogout = true; }} style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px; border: 1px solid #ef4444; background: transparent; border-radius: 6px; font-size: 14px; font-weight: 700; color: #ef4444; cursor: pointer; transition: 0.2s;">
+                <i class="ti ti-logout" style="font-size: 18px;"></i> ออกจากระบบ
               </button>
             </div>
           </div>
@@ -321,7 +367,30 @@
     </div>
   </aside>
 
-  <!-- Main Content Area -->
+  <!-- Logout Confirmation Modal -->
+  {#if showConfirmLogout}
+    <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 9999; display: flex; align-items: center; justify-content: center;">
+      <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; width: 400px; max-width: 90vw; box-shadow: 0 20px 40px rgba(0,0,0,0.4); overflow: hidden;">
+        <div style="padding: 24px; text-align: center;">
+          <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239,68,68,0.1); color: #ef4444; display: flex; align-items: center; justify-content: center; font-size: 32px; margin: 0 auto 16px;">
+            <i class="ti ti-logout"></i>
+          </div>
+          <h3 style="margin: 0 0 8px; font-size: 18px; color: var(--text-primary);">ยืนยันการออกจากระบบ</h3>
+          <p style="margin: 0; font-size: 14px; color: var(--text-secondary); line-height: 1.5;">คุณต้องการออกจากระบบ KKUSIEM ใช่หรือไม่?<br>เซสชันของคุณจะถูกยกเลิกทันที</p>
+        </div>
+        <div style="display: flex; border-top: 1px solid var(--border); background: var(--bg-surface);">
+          <button on:click={() => showConfirmLogout = false} style="flex: 1; padding: 16px; border: none; background: transparent; font-size: 14px; font-weight: 600; color: var(--text-secondary); cursor: pointer; border-right: 1px solid var(--border); transition: 0.2s;">
+            ยกเลิก
+          </button>
+          <button on:click={() => logout()} style="flex: 1; padding: 16px; border: none; background: transparent; font-size: 14px; font-weight: 700; color: #ef4444; cursor: pointer; transition: 0.2s;">
+            ออกจากระบบ
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Main Content Area --><!-- Main Content Area --><!-- Main Content Area -->
   <main class="main-content">
     <!-- Topbar -->
     <header class="topbar">
@@ -330,78 +399,87 @@
           {getPageTitle($page.url.pathname)}
         </h1>
       </div>
-      <div class="topbar-right">
-        <!-- Log Sources Status -->
-        <div class="log-sources-status" style="display: flex; gap: 12px; margin-right: 15px; border-right: 1px solid var(--border); padding-right: 20px;">
-          <div title="Firewall Traffic Log ({fwStatus})" style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary);"><span class="status-dot {fwStatus}"></span> Firewall Traffic Log</div>
-          <div title="Server Syslog ({edrStatus})" style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary);"><span class="status-dot {edrStatus}"></span> Server Syslog</div>
-          <div title="NGINX Access Log ({wafStatus})" style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary);"><span class="status-dot {wafStatus}"></span> NGINX Access Log</div>
-        </div>
+      <div class="topbar-right" style="display:flex; align-items:center;">
+          <!-- Log Sources Status -->
+          <div class="log-sources-status" style="display: flex; gap: 12px; margin-right: 15px; border-right: 1px solid var(--border); padding-right: 15px;">
+            <div title="Firewall Traffic Log ({fwStatus})" style="display: flex; align-items: center; gap: 4px; font-size: 16px; color: var(--text-secondary);">
+              <span class="status-dot {fwStatus}" style="box-shadow: 0 0 8px currentColor;"></span><i class="ti ti-shield-check"></i>
+            </div>
+            <div title="Server Syslog ({edrStatus})" style="display: flex; align-items: center; gap: 4px; font-size: 16px; color: var(--text-secondary);">
+              <span class="status-dot {edrStatus}" style="box-shadow: 0 0 8px currentColor;"></span><i class="ti ti-server"></i>
+            </div>
+            <div title="NGINX Access Log ({wafStatus})" style="display: flex; align-items: center; gap: 4px; font-size: 16px; color: var(--text-secondary);">
+              <span class="status-dot {wafStatus}" style="box-shadow: 0 0 8px currentColor;"></span><i class="ti ti-cloud-network"></i>
+            </div>
+          </div>
+  
+          <!-- EPS / Health Pulse -->
+          <div class="eps-monitor" style="margin-right: 15px; border-right: 1px solid var(--border); padding-right: 15px; display:flex; align-items:center;">
+            <div title="System Health Normal | 1,240 EPS" style="font-size: 20px; color: var(--green);">
+              <i class="ti ti-activity"></i>
+            </div>
+          </div>
+  
+          <!-- Notification Bell -->
+          <div class="notification-wrapper" style="margin-right: 8px;">
+            <button class="btn-icon" on:click={toggleNotifications} title="Notifications">
+              <i class="ti ti-bell"></i>
+              {#if unreadCount > 0}
+                <span class="badge-dot">{unreadCount}</span>
+              {/if}
+            </button>
+            
+            {#if showNotifications}
+              <div class="notification-dropdown">
+                <div class="dropdown-header">
+                  <span style="font-weight:600;font-size:12px;">Notifications</span>
+                  <button class="btn-clear" on:click={clearNotifications}>Clear All</button>
+                </div>
+                <div class="dropdown-list custom-scrollbar">
+                  {#each notificationsHistory as notif}
+                    <a href="/dashboard/investigate?ip={notif.ip}&time={notif.timeStr}" class="dropdown-item {notif.is_blocked_repeat ? 'dropdown-repeat' : ''}" on:click={() => showNotifications = false}>
+                      <div class="notif-icon {notif.is_blocked_repeat ? 'b-red' : (notif.severity === 'critical' ? 'b-red' : 'b-orange')}">
+                        {#if notif.is_blocked_repeat}
+                          <i class="ti ti-shield-x"></i>
+                        {:else}
+                          <i class="ti ti-alert-triangle"></i>
+                        {/if}
+                      </div>
+                      <div class="notif-content">
+                        <div class="notif-title" style={notif.is_blocked_repeat ? 'color: var(--red); font-weight: 700;' : ''}>
+                          {notif.is_blocked_repeat ? '🚨 Blocked IP Breach Attempt' : (notif.type || 'Intrusion Detected')}
+                        </div>
+                        <div class="notif-desc">From: {notif.ip} ({notif.country || 'Unknown'})</div>
+                        <div class="notif-time">{notif.time || notif.timeStr}</div>
+                      </div>
+                    </a>
+                  {/each}
+                  {#if notificationsHistory.length === 0}
+                    <div style="padding:20px; text-align:center; color:var(--text-muted); font-size:12px;">
+                      No recent alerts
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+          </div>
 
-        <!-- EPS Monitor -->
-        <div class="eps-monitor" style="margin-right: 15px; border-right: 1px solid var(--border); padding-right: 20px; text-align: right;">
-          <div style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Ingestion Rate</div>
-          <div style="font-size: 13px; font-weight: 700; color: var(--green);">1,240 <span style="font-size: 10px; color: var(--text-muted);">EPS</span></div>
-        </div>
-
-        <!-- Notification Bell -->
-        <div class="notification-wrapper">
-          <button class="btn-icon" on:click={toggleNotifications} title="Notifications">
-            <i class="ti ti-bell"></i>
-            {#if unreadCount > 0}
-              <span class="badge-dot">{unreadCount}</span>
+          <!-- Theme Toggle -->
+          <button class="btn-icon" on:click={toggleTheme} title="Toggle Theme" style="margin-right: 15px;">
+            {#if $themeStore === 'dark'}
+              <i class="ti ti-sun"></i>
+            {:else}
+              <i class="ti ti-moon"></i>
             {/if}
           </button>
-          
-          {#if showNotifications}
-            <div class="notification-dropdown">
-              <div class="dropdown-header">
-                <span style="font-weight:600;font-size:12px;">Notifications</span>
-                <button class="btn-clear" on:click={clearNotifications}>Clear All</button>
-              </div>
-              <div class="dropdown-list custom-scrollbar">
-                {#each notificationsHistory as notif}
-                  <a href="/dashboard/investigate?ip={notif.ip}&time={notif.timeStr}" class="dropdown-item {notif.is_blocked_repeat ? 'dropdown-repeat' : ''}" on:click={() => showNotifications = false}>
-                    <div class="notif-icon {notif.is_blocked_repeat ? 'b-red' : (notif.severity === 'critical' ? 'b-red' : 'b-orange')}">
-                      {#if notif.is_blocked_repeat}
-                        <i class="ti ti-shield-x"></i>
-                      {:else}
-                        <i class="ti ti-alert-triangle"></i>
-                      {/if}
-                    </div>
-                    <div class="notif-content">
-                      <div class="notif-title" style={notif.is_blocked_repeat ? 'color: var(--red); font-weight: 700;' : ''}>
-                        {notif.is_blocked_repeat ? '🚨 Blocked IP Breach Attempt' : (notif.type || 'Intrusion Detected')}
-                      </div>
-                      <div class="notif-desc">From: {notif.ip} ({notif.country || 'Unknown'})</div>
-                      <div class="notif-time">{notif.time || notif.timeStr}</div>
-                    </div>
-                  </a>
-                {/each}
-                {#if notificationsHistory.length === 0}
-                  <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">No new notifications</div>
-                {/if}
-              </div>
-            </div>
-          {/if}
+  
+          <!-- Server Time -->
+          <div class="ts-block" style="text-align: right;">
+            <div style="color:var(--text-muted);font-size:10px;text-transform:none;letter-spacing:0;margin-bottom:2px;">Server Time</div>
+            <div class="ts-val" style="color:var(--blue);">{currentTime}</div>
+          </div>
         </div>
-
-        <!-- Theme Toggle -->
-        <button class="btn-icon" on:click={toggleTheme} title="Toggle Theme" style="margin-right: 15px;">
-          {#if $themeStore === 'dark'}
-            <i class="ti ti-sun"></i>
-          {:else}
-            <i class="ti ti-moon"></i>
-          {/if}
-        </button>
-
-        
-        <div class="ts-block">
-          <div style="color:var(--text-muted);font-size:11px">Server Time</div>
-          <div class="ts-val">{currentTime}</div>
-        </div>
-      </div>
-    </header>
+      </header>
 
     <!-- Page Content Slot -->
     <div class="page-container custom-scrollbar">
@@ -580,7 +658,7 @@
 .topbar-right { display: flex; align-items: center; gap: 15px; }
 .btn-icon { background: none; border: none; font-size: 20px; color: var(--text-secondary); cursor: pointer; position: relative; padding: 4px; display: flex; align-items: center; justify-content: center; transition: 0.2s; border-radius: 6px; }
 .btn-icon:hover { background: var(--bg-secondary); color: var(--text-primary); }
-.badge-dot { position: absolute; top: 0; right: 0; background: var(--red); color: white; font-size: 9px; font-weight: bold; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid var(--bg-panel); }
+.badge-dot { position: absolute; top: 0; right: 0; background: var(--red); color: #fff; font-size: 9px; font-weight: bold; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid var(--bg-panel); }
 
 /* Notification Dropdown */
 .notification-wrapper { position: relative; }
@@ -776,10 +854,10 @@
   color: var(--text-primary);
 }
 :global(.ds-btn:hover) { background: var(--bg-secondary); }
-:global(.ds-btn.primary) { background: var(--green); color: #fff; border-color: var(--green); }
+:global(.ds-btn.primary) { background: var(--green); color: var(--text-primary); border-color: var(--green); }
 :global(.ds-btn.primary:hover) { filter: brightness(1.1); }
 :global(.ds-btn.danger)  { background: var(--red-bg);  color: var(--red);  border-color: var(--red); }
-:global(.ds-btn.danger:hover)  { background: var(--red); color: #fff; }
+:global(.ds-btn.danger:hover)  { background: var(--red); color: var(--text-primary); }
 :global(.ds-btn.sm) { padding: 5px 11px; font-size: 11px; border-radius: 6px; }
 :global(.ds-btn i) { font-size: 14px; }
 :global(.ds-btn[disabled]) { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
@@ -940,7 +1018,7 @@
 }
 :global(.ds-tab i) { font-size: 14px; }
 :global(.ds-tab:hover) { background: var(--bg-secondary); color: var(--text-primary); }
-:global(.ds-tab.active) { background: var(--green); color: #fff; box-shadow: 0 2px 8px rgba(29,158,117,0.25); }
+:global(.ds-tab.active) { background: var(--green); color: var(--text-primary); box-shadow: 0 2px 8px rgba(29,158,117,0.25); }
 
 /* ─── Monospace / Code ───────────────────────────────────────────────────────── */
 :global(.ds-mono) { font-family: var(--font-mono, 'Inter', monospace); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
@@ -1025,7 +1103,44 @@
     font-weight: 600;
   }
 
+
+  .global-copilot-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    box-shadow: 0 4px 16px rgba(59,130,246,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    cursor: pointer;
+    z-index: 99;
+    transition: 0.2s;
+  }
+  .global-copilot-fab:hover {
+    transform: scale(1.05);
+    background: #2563eb;
+  }
 </style>
 
 <Omnisearch />
 
+{#if !$aiCopilotStore.isOpen}
+  <button class="global-copilot-fab" on:click={() => aiCopilotStore.openPanel()} title="Open Global AI Copilot">
+    <i class="ti ti-robot"></i>
+  </button>
+{/if}
+
+
+
+
+
+<ReportWizardV2 />
+
+<AiCopilotDrawer />

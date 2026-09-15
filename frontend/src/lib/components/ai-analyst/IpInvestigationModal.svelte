@@ -97,7 +97,7 @@
   h4 { margin: 0 0 12px 0; font-size: 14px; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
   .info-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
   .info-row span { color: var(--text-muted); }
-  .risk-badge { display: inline-block; padding: 6px 12px; border-radius: 6px; color: #ffffff; font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+  .risk-badge { display: inline-block; padding: 6px 12px; border-radius: 6px; color: var(--text-primary); font-weight: 700; font-size: 14px; margin-bottom: 8px; }
   .conf-badge { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
   .fp-text { font-size: 13px; line-height: 1.5; color: var(--text-muted); }
   .mt-2 { margin-top: 8px; }

@@ -1,4 +1,4 @@
-﻿import type { PageExportSchema } from "./types";
+import type { PageExportSchema } from "./types";
 
 export const PAGE_EXPORT_SCHEMAS: Record<string, PageExportSchema> = {
   hunting: {
@@ -235,25 +235,72 @@ export function generateReportId(): string {
 export function deriveIpSummaries(dataset: any[]): import("./types").IpSummary[] {
   const ipMap: Record<string, any[]> = {};
   for (const e of dataset) {
-    const ip = e.ip || e["IP Address"] || e["Source IP"] || "Unknown";
-    if (!ipMap[ip]) ipMap[ip] = [];
-    ipMap[ip].push(e);
+    let target = e.ip || e["IP Address"] || e["Source IP"];
+    if (!target && e.id && typeof e.id === 'string' && e.id.startsWith('CVE-')) {
+      target = e.id;
+    }
+    if (!target) target = "Unknown";
+    
+    if (!ipMap[target]) ipMap[target] = [];
+    ipMap[target].push(e);
   }
   return Object.entries(ipMap).map(([ip, events]) => {
     const tc: Record<string, number> = {};
     for (const e of events) {
-      const t = e.type || e["Event Type"] || e["Attack Type"] || "Unknown";
+      const t = e.type || e["Event Type"] || e["Attack Type"] || e.name || "Unknown";
       tc[t] = (tc[t] || 0) + 1;
     }
     const primaryType = Object.entries(tc).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Unknown";
-    const times = events.map(e => new Date(e.createdAt || e.timestampMs || 0).getTime()).filter(t => t > 0).sort((a, b) => a - b);
-    const sevs = events.map(e => e.severity || "");
-    const topSev = ["critical", "high", "medium", "low"].find(s => sevs.includes(s)) ?? "unknown";
+    const times = events.map(e => new Date(e.createdAt || e.timestampMs || e.latestTime || 0).getTime()).filter(t => t > 0).sort((a, b) => a - b);
+    const sevs = events.map(e => e.severity || e.cveSeverity || "");
+    const topSev = ["critical", "high", "medium", "low"].find(s => sevs.includes(s?.toLowerCase())) ?? "unknown";
+    const country = events.find(e => e.country)?.country || (ip.startsWith('CVE-') ? 'Vulnerability' : '');
     return {
-      ip, eventCount: events.length, primaryType, severity: topSev,
+      ip, eventCount: events.length > 1 ? events.length : (events[0].count || 1), primaryType, severity: topSev,
       firstSeen: times[0] ? new Date(times[0]).toISOString() : "",
       lastSeen: times[times.length - 1] ? new Date(times[times.length - 1]).toISOString() : "",
+      country,
       events
     };
   }).sort((a, b) => b.eventCount - a.eventCount);
 }
+
+export const ALL_GROUP_KEYS = ["Incident Overview", "Attacker & Target", "Timeline & Activity", "Evidence & Detection", "Analysis & Response"];
+
+export function deriveFieldsFromGroups(groups: string[]): string[] {
+  const fields: string[] = [];
+  for (const p in PAGE_EXPORT_SCHEMAS) {
+    for (const g of PAGE_EXPORT_SCHEMAS[p].fieldGroups) {
+      if (groups.includes(g.groupEn)) {
+        for (const f of g.fields) {
+          if (!fields.includes(f.key)) fields.push(f.key);
+        }
+      }
+    }
+  }
+  return fields;
+}
+
+
+export const UNIFIED_FIELD_GROUPS: Record<string, any> = {};
+
+// Auto-aggregate from PAGE_EXPORT_SCHEMAS to prevent undefined errors
+(function() {
+  for (const p in PAGE_EXPORT_SCHEMAS) {
+    for (const g of PAGE_EXPORT_SCHEMAS[p].fieldGroups) {
+      if (!UNIFIED_FIELD_GROUPS[g.groupEn]) {
+        UNIFIED_FIELD_GROUPS[g.groupEn] = {
+          group: g.group || g.groupEn,
+          groupEn: g.groupEn,
+          fields: []
+        };
+      }
+      for (const f of g.fields) {
+        if (!UNIFIED_FIELD_GROUPS[g.groupEn].fields.find((x: any) => x.key === f.key)) {
+          UNIFIED_FIELD_GROUPS[g.groupEn].fields.push(f);
+        }
+      }
+    }
+  }
+})();
+

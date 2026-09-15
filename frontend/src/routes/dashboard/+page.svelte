@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageHeader from '../../lib/components/PageHeader.svelte';
   import { onMount, onDestroy } from 'svelte';
   import { eventsStore } from '../../stores/events';
   import { formatEventTime } from '../../lib/formatTime';
@@ -96,10 +97,7 @@
 <svelte:head><title>Dashboard - KKUSIEM</title></svelte:head>
 
 <div class="dash-container">
-  <div class="header-section">
-    <h1>Security Overview</h1>
-    <p class="subtitle">Real-time monitoring and incident summary.</p>
-  </div>
+  <PageHeader title="Overview Dashboard" description="High-level summary of system status and security metrics." icon="ti-layout-dashboard" />
 
   <div class="kpi-grid">
     <div class="kpi-card">
@@ -164,7 +162,14 @@
           <div class="list-item">
             <div class="item-time">{formatEventTime(e.time || e.createdAt)}</div>
             <div class="item-ip">{e.ip}</div>
-            <div class="item-type">{e.type}</div>
+            <div class="item-type">
+              {e.type}
+              {#if e.cve}
+                <a href="/dashboard/cve?search={e.cve.id}" target="_blank" class="badge-cve" title="{e.cve.name}">
+                  <i class="ti ti-bug"></i> {e.cve.id}
+                </a>
+              {/if}
+            </div>
           </div>
         {/each}
         {#if criticalEvents.length === 0}
@@ -227,9 +232,18 @@
     background: rgba(0,0,0,0.02); border: 1px solid transparent;
   }
   .list-item:hover { border-color: var(--border, #e5e7eb); background: var(--bg-panel, #fff); }
-  .item-time { font-size: 12px; color: var(--text-muted, #6b7280); }
-  .item-ip { font-size: 14px; font-weight: 600; color: var(--text-primary, #111827); font-family: monospace; margin: 4px 0; }
-  .item-type { font-size: 12px; color: #ef4444; font-weight: 500; }
+  .item-time { flex: 1; font-size: 13px; color: var(--text-muted); font-family: monospace; }
+  .item-ip { flex: 1; font-size: 13px; font-weight: 600; color: #ef4444; font-family: monospace; }
+  .item-type { flex: 2; font-size: 13px; font-weight: 500; display: flex; align-items: center; }
+  .badge-cve {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-left: 8px; padding: 2px 6px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 4px; font-size: 10px; font-weight: 700;
+    text-decoration: none; transition: 0.2s;
+  }
+  .badge-cve:hover { background: rgba(239, 68, 68, 0.2); }
   .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted, #6b7280); font-size: 14px; }
   
   /* Dark mode overrides */

@@ -1,4 +1,4 @@
-﻿import type { ExportSession } from "./types";
+import type { ExportSession } from "./types";
 import type { ExportLanguage } from "./types";
 
 // ── Labels (Thai / English) ────────────────────────────────────────────────────
@@ -192,7 +192,7 @@ function renderCover(session: ExportSession, lbl: typeof L.th): string {
   return `
   <div class="report-cover">
     <div class="cover-logo">
-      <img src="/kku-odt-logo.png" alt="KKU Logo" style="height:64px;" onerror="this.style.display='none'"/>
+      <img src="/logo-odt.png" alt="ODT KKU Logo" style="height:72px;" onerror="this.src='/kku-odt-logo.png';this.onerror=function(){this.style.display='none';}"/>
     </div>
     <div class="cover-org">${lbl.org}</div>
     <div class="classification-badge">${lbl.classification}: ${lbl.internal}</div>
@@ -452,16 +452,19 @@ export function generateExecutiveSummaryHtml(session: ExportSession, hash?: stri
       <div class="content-box">${session.manualEdits.executiveSummary || session.aiContent?.executiveSummary || lbl.noData}</div>
     </div>
     ${renderSecurityOverview(session, lbl, 3)}
+    ${session.sourcePage === 'cve' ? renderCveSpecificDetails(session, lbl, 4) : `
     <div class="section">
       <div class="section-title">4. ${lbl.majorThreats}</div>
       ${majorThreatsHtml}
     </div>
+    `}
     ${renderTopIPs(session, lbl, 5)}
     ${renderAiAssessment(session, lbl, 6)}
     ${renderRiskAssessment(session, lbl, 7)}
     ${renderRecommendations(session, lbl, 8)}
     ${renderTechEvidence(session, lbl, 9, lang)}
-    ${renderAnalystReview(session, lbl, 10)}
+    ${session.sourcePage !== 'cve' ? renderCveSimilarity(session, lbl, 10) : ''}
+    ${renderAnalystReview(session, lbl, 11)}
     ${renderFooter(session, lbl, hash)}
   </div>
 </body></html>`;
@@ -470,24 +473,86 @@ export function generateExecutiveSummaryHtml(session: ExportSession, hash?: stri
 // ═══════════════════════════════════════════════════════════════════════════════
 // PUBLIC: GENERATE TECHNICAL DETAILS HTML
 // ═══════════════════════════════════════════════════════════════════════════════
-export function generateTechnicalDetailsHtml(session: ExportSession, hash?: string): string {
-  const lang = session.language;
-  const lbl = lang === "en" ? L.en : L.th;
+  export function generateTechnicalDetailsHtml(session: ExportSession, hash?: string): string {
+    const lang = session.language;
+    const lbl = lang === "en" ? L.en : L.th;
+  
+    return `<!DOCTYPE html><html lang="${lang}"><head><meta charset="UTF-8"><title>${session.reportTitle}</title>${BASE_STYLE}</head><body>
+    <div class="report-page">
+      ${renderCover(session, lbl)}
+      ${renderReportInfo(session, lbl)}
+      ${renderSecurityOverview(session, lbl, 2)}
+      ${session.sourcePage === 'cve' ? renderCveSpecificDetails(session, lbl, 3) : ''}
+      ${renderTopIPs(session, lbl, session.sourcePage === 'cve' ? 4 : 3)}
+      ${renderAiAssessment(session, lbl, session.sourcePage === 'cve' ? 5 : 4)}
+      ${renderRiskAssessment(session, lbl, session.sourcePage === 'cve' ? 6 : 5)}
+      ${renderRecommendations(session, lbl, session.sourcePage === 'cve' ? 7 : 6)}
+      ${renderTechEvidence(session, lbl, session.sourcePage === 'cve' ? 8 : 7, lang)}
+      ${session.sourcePage !== 'cve' ? renderCveSimilarity(session, lbl, 8) : ''}
+      ${renderAnalystReview(session, lbl, session.sourcePage === 'cve' ? 9 : 9)}
+      ${renderFooter(session, lbl, hash)}
+    </div>
+  </body></html>`;
+  }
 
-  return `<!DOCTYPE html><html lang="${lang}"><head><meta charset="UTF-8"><title>${session.reportTitle}</title>${BASE_STYLE}</head><body>
-  <div class="report-page">
-    ${renderCover(session, lbl)}
-    ${renderReportInfo(session, lbl)}
-    ${renderSecurityOverview(session, lbl, 2)}
-    ${renderTopIPs(session, lbl, 3)}
-    ${renderAiAssessment(session, lbl, 4)}
-    ${renderRiskAssessment(session, lbl, 5)}
-    ${renderRecommendations(session, lbl, 6)}
-    ${renderTechEvidence(session, lbl, 7, lang)}
-    ${renderAnalystReview(session, lbl, 8)}
-    ${renderFooter(session, lbl, hash)}
-  </div>
-</body></html>`;
+
+// ─── CVE Similarity Section ───────────────────────────────────────────────────
+function renderCveSimilarity(session: ExportSession, lbl: typeof L.th, sectionNum: number): string {
+  const results = (session as any).cveSimilarityResults;
+  if (!results || results.length === 0) return '';
+
+  const isExec = session.reportType === 'executive';
+
+  const getSevColor = (s: string) => s === 'critical' ? '#dc2626' : s === 'high' ? '#ea580c' : s === 'medium' ? '#ca8a04' : '#16a34a';
+  const getSevBg = (s: string) => s === 'critical' ? 'rgba(220,38,38,0.1)' : s === 'high' ? 'rgba(234,88,12,0.1)' : s === 'medium' ? 'rgba(202,138,4,0.1)' : 'rgba(22,163,74,0.1)';
+  const getSimColor = (s: string) => s === 'high' ? '#dc2626' : s === 'medium' ? '#ca8a04' : '#16a34a';
+  const getSimBg = (s: string) => s === 'high' ? 'rgba(220,38,38,0.1)' : s === 'medium' ? 'rgba(202,138,4,0.1)' : 'rgba(22,163,74,0.1)';
+
+  const sectionTitle = lbl === L.en
+    ? 'Related Vulnerability Patterns (AI CVE Similarity)'
+    : 'รูปแบบช่องโหว่ที่เกี่ยวข้อง (AI CVE Similarity)';
+
+  const disclaimer = lbl === L.en
+    ? 'AI Similarity Assessment Only — This analysis compares detected attack patterns against known CVE characteristics. It does NOT confirm that the target system was affected by or vulnerable to the listed CVEs.'
+    : 'การวิเคราะห์ AI Similarity เท่านั้น — การวิเคราะห์นี้เปรียบเทียบรูปแบบการโจมตีที่ตรวจพบกับลักษณะเฉพาะของ CVE ที่ทราบ ไม่ใช่การยืนยันว่าระบบเป้าหมายได้รับผลกระทบจากหรือมีช่องโหว่ดังกล่าว';
+
+  const displayResults = isExec ? results.slice(0, 3) : results;
+
+  const execSummaryNote = isExec && results.length > 0 ? `
+    <div class="content-box" style="margin-bottom:12px;">
+      <p style="margin:0;font-size:13px;">${
+        lbl === L.en
+          ? `Detected attack patterns show similarity to ${results.length} externally documented CVE(s). This does not confirm exploitation. Full technical details are available in the Technical Details report.`
+          : `ตรวจพบรูปแบบการโจมตีที่มีลักษณะคล้ายกับ CVE ที่เผยแพร่ภายนอกจำนวน ${results.length} รายการ ทั้งนี้ไม่สามารถยืนยันได้ว่าเป็นการโจมตีช่องโหว่ดังกล่าวจริง รายละเอียดเชิงเทคนิคแสดงในรายงาน Technical Details`
+      }</p>
+    </div>` : '';
+
+  const tableRows = displayResults.map((cve: any) => `
+    <tr>
+      <td style="font-family:monospace;font-weight:700;color:#1e3a8a;">${cve.cveId}</td>
+      <td><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:${getSimBg(cve.similarityLevel)};color:${getSimColor(cve.similarityLevel)};">${cve.similarityLevel.toUpperCase()} (${cve.similarityScore}%)</span></td>
+      <td><span style="padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase;background:${getSevBg(cve.severity)};color:${getSevColor(cve.severity)};">${cve.severity}</span></td>
+      ${!isExec ? `<td>${cve.affectedProduct}</td>` : ''}
+      <td style="font-size:12px;color:#475569;">${isExec ? cve.attackPatternRelation : cve.reason}</td>
+      ${!isExec ? `<td style="font-size:11px;color:#94a3b8;"><a href="${cve.reference}" style="color:#3b82f6;">${cve.cveId}</a></td>` : ''}
+    </tr>`).join('');
+
+  const tableHeader = isExec
+    ? `<tr><th>CVE ID</th><th>Similarity</th><th>Severity</th><th>Pattern Relationship</th></tr>`
+    : `<tr><th>CVE ID</th><th>Similarity</th><th>Severity</th><th>Affected Product</th><th>Reason</th><th>Reference</th></tr>`;
+
+  return `
+  <div class="section">
+    <div class="section-title">${sectionNum}. ${sectionTitle}</div>
+    ${execSummaryNote}
+    <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#7c3aed;">
+      ⚠️ <strong>${lbl === L.en ? 'AI Similarity Assessment' : 'การประเมิน AI Similarity'}:</strong> ${disclaimer}
+    </div>
+    <table class="data-table">
+      <thead>${tableHeader}</thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  </div>`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

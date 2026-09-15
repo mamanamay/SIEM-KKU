@@ -19,12 +19,61 @@
   let authStage: AuthStage = 'login';
   let totpCode = '';
 
+  let newPassword = '';
+  let confirmPassword = '';
+  let tempToken = '';
+  let tempRole = '';
+  let tempUsername = '';
+
   function finalizeLogin(data: any) {
+    if (data.requirePasswordChange) {
+      tempToken = data.access_token;
+      tempRole = data.role;
+      tempUsername = data.username;
+      authStage = 'reset_password' as any;
+      return;
+    }
     localStorage.setItem('token', data.access_token);
     localStorage.setItem('role', data.role);
     localStorage.setItem('username', data.username);
     localStorage.setItem('lastActive', Date.now().toString());
     window.location.href = '/dashboard';
+  }
+
+  async function handleForceReset() {
+    if (newPassword !== confirmPassword) {
+      error = "รหัสผ่านไม่ตรงกัน";
+      return;
+    }
+    if (newPassword.length < 12) {
+      error = "รหัสผ่านต้องมีความยาวอย่างน้อย 12 ตัวอักษร";
+      return;
+    }
+    isLoading = true;
+    error = '';
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tempToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ currentPassword: password, newPassword })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.setItem('token', tempToken);
+        localStorage.setItem('role', tempRole);
+        localStorage.setItem('username', tempUsername);
+        localStorage.setItem('lastActive', Date.now().toString());
+        window.location.href = '/dashboard';
+      } else {
+        error = data.message || "เปลี่ยนรหัสผ่านไม่สำเร็จ";
+      }
+    } catch {
+      error = "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้";
+    }
+    isLoading = false;
   }
 
   async function handleLogin() {
@@ -104,6 +153,29 @@
     <button class="btn-icon" on:click={() => toggleTheme()}>
       {#if $themeStore === 'dark'}
         <i class="ti ti-sun"></i>
+      
+    {:else if authStage === 'reset_password'}
+      <form on:submit|preventDefault={handleForceReset} class="mfa-form">
+        <div class="mfa-icon"><i class="ti ti-lock"></i></div>
+        <h3>เปลี่ยนรหัสผ่านครั้งแรก</h3>
+        <p>เพื่อความปลอดภัย กรุณาตั้งรหัสผ่านใหม่ก่อนเข้าใช้งาน</p>
+        
+        <div class="form-group">
+          <label for="new-pwd">รหัสผ่านใหม่ (อย่างน้อย 12 ตัวอักษร)</label>
+          <input type="password" id="new-pwd" bind:value={newPassword} required class="input-totp" style="font-size: 16px; letter-spacing: 2px;" placeholder="รหัสผ่านใหม่" />
+        </div>
+        <div class="form-group">
+          <label for="conf-pwd">ยืนยันรหัสผ่านใหม่</label>
+          <input type="password" id="conf-pwd" bind:value={confirmPassword} required class="input-totp" style="font-size: 16px; letter-spacing: 2px;" placeholder="ยืนยันรหัสผ่านใหม่" />
+        </div>
+
+        <button type="submit" class="btn-primary" disabled={isLoading || newPassword.length < 12}>
+          {#if isLoading}<span class="spinner"></span>{/if}
+          ยืนยันการเปลี่ยนรหัสผ่าน
+        </button>
+        <button type="button" class="btn-secondary" on:click={goBackToLogin}>กลับสู่หน้าล็อคอิน</button>
+      </form>
+
       {:else}
         <i class="ti ti-moon"></i>
       {/if}
@@ -158,7 +230,30 @@
           <i class="ti ti-brand-windows"></i> Login with KKU SSO
         </a>
       </form>
-    {:else}
+    
+    {:else if authStage === 'reset_password'}
+      <form on:submit|preventDefault={handleForceReset} class="mfa-form">
+        <div class="mfa-icon"><i class="ti ti-lock"></i></div>
+        <h3>เปลี่ยนรหัสผ่านครั้งแรก</h3>
+        <p>เพื่อความปลอดภัย กรุณาตั้งรหัสผ่านใหม่ก่อนเข้าใช้งาน</p>
+        
+        <div class="form-group">
+          <label for="new-pwd">รหัสผ่านใหม่ (อย่างน้อย 12 ตัวอักษร)</label>
+          <input type="password" id="new-pwd" bind:value={newPassword} required class="input-totp" style="font-size: 16px; letter-spacing: 2px;" placeholder="รหัสผ่านใหม่" />
+        </div>
+        <div class="form-group">
+          <label for="conf-pwd">ยืนยันรหัสผ่านใหม่</label>
+          <input type="password" id="conf-pwd" bind:value={confirmPassword} required class="input-totp" style="font-size: 16px; letter-spacing: 2px;" placeholder="ยืนยันรหัสผ่านใหม่" />
+        </div>
+
+        <button type="submit" class="btn-primary" disabled={isLoading || newPassword.length < 12}>
+          {#if isLoading}<span class="spinner"></span>{/if}
+          ยืนยันการเปลี่ยนรหัสผ่าน
+        </button>
+        <button type="button" class="btn-secondary" on:click={goBackToLogin}>กลับสู่หน้าล็อคอิน</button>
+      </form>
+
+      {:else}
       <form on:submit|preventDefault={handleVerify2FA} class="mfa-form">
         <div class="mfa-icon"><i class="ti ti-shield-check"></i></div>
         <h3>Two-Factor Authentication</h3>

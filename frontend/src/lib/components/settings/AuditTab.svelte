@@ -51,7 +51,7 @@
     return '#8b5cf6';
   }
 </script>
-<svelte:head><title>System Audit Trail - KKUSIEM</title></svelte:head>
+
 
 <div class="audit-page">
   <!-- Header -->

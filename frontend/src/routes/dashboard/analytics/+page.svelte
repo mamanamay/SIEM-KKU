@@ -1,16 +1,17 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { eventsStore } from '../../../stores/events';
   import { downloadHTML, downloadPDF, downloadCSV } from '../../../lib/utils/export';
   import Chart from 'chart.js/auto';
   import { onMount } from 'svelte';
-  import ReportModal from '../../../lib/components/ReportModal.svelte';
+  import PageHeader from '../../../lib/components/PageHeader.svelte';
+  import ExportBtn from '../../../lib/components/ExportBtn.svelte'; 
 
   $: events = $eventsStore;
 
 
   let activeTab = 'overview';
 
-  // ─── Data Computations ──────────────────────────────────────────────────────
+  // â”€â”€â”€ Data Computations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   $: topIps = (() => {
     const counts: Record<string, number> = {};
@@ -91,7 +92,7 @@
   }
 
 
-  // ─── Helpers ────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const TYPE_COLORS: Record<string, string> = {
     ssh: '#ef4444', compromised: '#ef4444', brute: '#ef4444',
     port: '#f97316', scan: '#3b82f6', web: '#3b82f6',
@@ -137,7 +138,7 @@
     const flags: Record<string, string> = {
       'Russia': '🇷🇺', 'China': '🇨🇳', 'Brazil': '🇧🇷',
       'United States': '🇺🇸', 'USA': '🇺🇸', 'Germany': '🇩🇪',
-      'Local Network': '🏠'
+      'Local Network': '💻'
     };
     return flags[country] || '🌍';
   }
@@ -171,40 +172,13 @@
 
 <div style="display:flex;flex-direction:column;gap:16px;padding:24px 32px 2rem;max-width:1400px;margin:0 auto;">
   <!-- Page Header -->
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
-    <div style="display:flex;align-items:center;gap:14px;">
-      <div style="width:44px;height:44px;background:rgba(59,130,246,0.12);color:#3b82f6;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;">
-        <i class="ti ti-chart-bar"></i>
-      </div>
-      <div>
-        <h1 style="font-size:22px;font-weight:800;color:var(--text-primary);margin:0 0 4px;">Analyst Center</h1>
-        <p style="font-size:13px;color:var(--text-muted);margin:0;">วิเคราะห์ข้อมูล IP, ประเทศ, ประเภทการโจมตี และ Payload เชิงลึก</p>
-      </div>
+  <PageHeader title="Analyst Center" description="Analyze attacker IPs, countries, attack vectors, and payload activity." icon="ti-chart-bar">
+    <div slot="actions">
+      <ExportBtn config={{ pageType: 'analytics', reportTitle: 'Attacker Analytics', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={events} />
     </div>
-    <div style="position:relative;">
-      <button class="btn-outline" on:click={() => showExportMenu = true}
-        style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer;">
-        <i class="ti ti-upload"></i> Export
-      </button>
-      <ReportModal 
-        bind:show={showExportMenu} 
-        reportTitle="Top Attack IPs Report"
-        availableFields={['IP', 'Hits', 'Percent']}
-        previewData={topIps.map(r => ({'ip': r.ip, 'hits': String(r.count), 'percent': r.percent+'%'}))}
-        on:export={(e) => {
-          const { format, fields } = e.detail;
-          const data = topIps.map(r => ({'IP': r.ip, 'Hits': String(r.count), 'Percent': r.percent+'%'}));
-          if (format === 'pdf') downloadPDF(data, fields, 'analytics-top-ips.pdf', 'Top Attack IPs Report');
-          else if (format === 'html') downloadHTML(data, fields, 'analytics-top-ips.html', 'Top Attack IPs Report');
-          else {
-            downloadCSV(data, fields, 'analytics-top-ips.csv');
-          }
-        }}
-      />
-    </div>
-  </div>
+  </PageHeader>
 
-  <!-- ─── Tab Navigation ──────────────────────────────────────────────────── -->
+  <!-- â”€â”€â”€ Tab Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 
   <div class="ds-filters">
     <button class="ds-btn {activeTab === 'overview' ? 'primary' : ''}" on:click={() => activeTab = 'overview'}>
@@ -218,9 +192,9 @@
     </button>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <!-- OVERVIEW TAB                                                          -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   {#if activeTab === 'overview'}
     <!-- Stat Cards Row -->
     <div class="ds-kpi-row" style="margin-bottom:0;">
@@ -309,9 +283,9 @@
     </div>
   {/if}
 
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <!-- GEOGRAPHIC TAB                                                        -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   {#if activeTab === 'geographic'}
     <div class="ds-card" style="padding:0;overflow:hidden;">
       <div class="ds-card-head" style="padding:16px;border-bottom:1px solid var(--border);">
@@ -345,9 +319,9 @@
     </div>
   {/if}
 
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <!-- ATTACK VECTORS TAB                                                    -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   {#if activeTab === 'vectors'}
     <div class="ds-card" style="padding:0;overflow:hidden;">
       <div class="ds-card-head" style="padding:16px;border-bottom:1px solid var(--border);">
@@ -388,7 +362,7 @@
 
 </div>
 <style>
-/* ─── Page ──────────────────────────────────────────────────────────────────── */
+/* â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .analytics-page {
   padding: 0 0 2rem 0;
   display: flex;
@@ -396,7 +370,7 @@
   gap: 16px;
 }
 
-/* ─── Tab Bar ───────────────────────────────────────────────────────────────── */
+/* â”€â”€â”€ Tab Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .tabs-bar {
   display: flex;
   gap: 4px;
@@ -426,7 +400,7 @@
 
 .tab-btn.active {
   background: var(--green);
-  color: #fff;
+  color: var(--text-primary);
   box-shadow: 0 2px 8px rgba(29,158,117,0.3);
 }
 .tab-badge {
@@ -440,10 +414,10 @@
 }
 .tab-btn:not(.active) .tab-badge {
   background: var(--green);
-  color: #fff;
+  color: var(--text-primary);
 }
 
-/* ─── Stat Cards ─────────────────────────────────────────────────────────────── */
+/* â”€â”€â”€ Stat Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .stat-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -482,7 +456,7 @@
 .sc-val { font-size: 26px; font-weight: 800; color: var(--text-primary); line-height: 1; }
 .sc-lbl { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
 
-/* ─── Panel ──────────────────────────────────────────────────────────────────── */
+/* â”€â”€â”€ Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .panel {
   background: var(--bg-panel);
@@ -523,7 +497,7 @@
   margin: 0 0 18px 0;
 }
 
-/* ─── Rank List (Top IPs / Overview) ────────────────────────────────────────── */
+/* â”€â”€â”€ Rank List (Top IPs / Overview) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .rank-list { display: flex; flex-direction: column; gap: 0; margin-top: 10px; padding: 0 16px 16px; }
 .rank-row {
   display: flex;
@@ -543,7 +517,7 @@
 .rv-num { font-size: 15px; font-weight: 700; color: var(--text-primary); display: block; }
 .rv-unit { font-size: 10px; color: var(--text-muted); font-weight: 500; }
 
-/* ─── Type Chips (Attack Distribution) ──────────────────────────────────────── */
+/* â”€â”€â”€ Type Chips (Attack Distribution) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .type-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 0 16px 16px; }
 .type-chip {
   display: flex;
@@ -559,7 +533,7 @@
 .tc-count { font-size: 14px; font-weight: 800; }
 .tc-pct { font-size: 11px; color: var(--text-muted); font-weight: 600; min-width: 36px; text-align: right; }
 
-/* ─── Geographic List ────────────────────────────────────────────────────────── */
+/* â”€â”€â”€ Geographic List â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .geo-list { display: flex; flex-direction: column; gap: 0; padding: 0 16px 16px; }
 .geo-row {
   display: flex;
@@ -579,7 +553,7 @@
 .geo-hits { font-size: 16px; font-weight: 800; color: var(--text-primary); display: block; }
 .geo-pct { font-size: 11px; color: var(--text-muted); font-weight: 600; }
 
-/* ─── Vector List ────────────────────────────────────────────────────────────── */
+/* â”€â”€â”€ Vector List â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .vector-list { display: flex; flex-direction: column; gap: 10px; padding: 0 16px 16px; }
 .vector-row {
   display: flex;
@@ -612,7 +586,7 @@
 .vv-num { font-size: 18px; font-weight: 800; color: var(--text-primary); display: block; }
 .vv-unit { font-size: 11px; color: var(--text-muted); font-weight: 500; }
 
-/* ─── Payload List ───────────────────────────────────────────────────────────── */
+/* â”€â”€â”€ Payload List â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .payload-list { display: flex; flex-direction: column; gap: 10px; padding: 0 16px 16px; }
 .payload-row {
   background: var(--bg-secondary);
@@ -649,7 +623,7 @@
 }
 .payload-prompt { font-size: 12px; color: var(--text-muted); flex-shrink: 0; margin-top: 1px; }
 
-/* ─── Empty State ────────────────────────────────────────────────────────────── */
+/* â”€â”€â”€ Empty State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .empty-state {
   text-align: center;
   color: var(--text-muted);
@@ -661,7 +635,7 @@
 }
 .empty-state i { font-size: 28px; opacity: 0.4; }
 
-/* ─── Responsive ─────────────────────────────────────────────────────────────── */
+/* â”€â”€â”€ Responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 900px) {
   .stat-cards { grid-template-columns: 1fr 1fr; }
   .overview-grid { grid-template-columns: 1fr; }

@@ -1,10 +1,8 @@
-<svelte:head>
-  <title>API History - KKUSIEM</title>
-</svelte:head>
+
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { formatEventTime } from '../../../lib/formatTime';
+  import { formatEventTime } from '../../formatTime';
 
   // ── State ────────────────────────────────────────────────────────────────────
   let logs: any[] = [];

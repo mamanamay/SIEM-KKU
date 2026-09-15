@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageHeader from '../../../lib/components/PageHeader.svelte';
   import { onMount, onDestroy } from 'svelte';
   import { eventsStore } from '../../../stores/events';
 
@@ -292,16 +293,12 @@
 <div class="otm-wrap">
 
   <!-- ── Top Header ─────────────────────────────────────────────────────── -->
-  <div class="otm-header">
-    <div class="otm-title">
-      <i class="ti ti-radar-2"></i>
-      Outbound Threat Monitor
+  <PageHeader title="Outbound Monitor" description="Visualize inbound and outbound malicious network traffic globally." icon="ti-arrows-right-left">
+    <div slot="actions" class="otm-meta" style="display:flex;gap:12px;">
+      <span class="period-badge" style="background:var(--bg-secondary);padding:6px 12px;border-radius:20px;font-size:12px;display:flex;align-items:center;gap:6px;"><i class="ti ti-calendar"></i> Last 7 days</span>
+      <span class="time-badge" style="background:var(--bg-secondary);padding:6px 12px;border-radius:20px;font-size:12px;display:flex;align-items:center;gap:6px;"><i class="ti ti-clock"></i> {displayTime}</span>
     </div>
-    <div class="otm-meta">
-      <span class="period-badge"><i class="ti ti-calendar"></i> Last 7 days</span>
-      <span class="time-badge"><i class="ti ti-clock"></i> {displayTime}</span>
-    </div>
-  </div>
+  </PageHeader>
 
   <!-- ── KPI Cards ──────────────────────────────────────────────────────── -->
   <div class="kpi-row">
@@ -615,7 +612,7 @@
     cursor: pointer; transition: all 0.2s;
     font-family: inherit;
   }
-  .tab-btn.active { background: var(--green); color: #fff; border-color: var(--green); }
+  .tab-btn.active { background: var(--green); color: var(--text-primary); border-color: var(--green); }
   .tab-btn:not(.active):hover { color: var(--text-primary); }
   .tab-live {
     margin-left: auto;
@@ -751,7 +748,7 @@
   .no-data { text-align: center; color: var(--text-muted); font-size: 12px; padding: 12px 0; }
 
   /* Leaflet tooltip overrides */
-  :global(.kku-tooltip) { background: #1d9e75; color: #fff; border: none; font-weight: 700; }
+  :global(.kku-tooltip) { background: #1d9e75; color: var(--text-primary); border: none; font-weight: 700; }
   :global(.atk-tooltip) { background: rgba(20,20,30,0.9); color: #fca5a5; border: 1px solid #ef444444; font-size: 11px; }
 
   @media (max-width: 900px) {

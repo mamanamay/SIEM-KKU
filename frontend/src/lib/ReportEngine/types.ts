@@ -1,4 +1,4 @@
-// Report Types — Export System v2
+// Report Types — Export System v3
 
 export interface ReportConfig {
   pageType: string;
@@ -6,6 +6,7 @@ export interface ReportConfig {
   supportedFormats: ('pdf' | 'html' | 'csv')[];
   aiEnabled: boolean;
   csvEnabled: boolean;
+  allowExecOnly?: boolean;
   sections: string[];
   bundleKey?: string;
 }
@@ -28,30 +29,30 @@ export interface AiAnalysisResult {
   isHallucinationProtected: boolean;
 }
 
-// ─── Export System v2 Types ───────────────────────────────────────────────────
+// ─── Export System v3 Types ───────────────────────────────────────────────────
 
 export type ReportType = 'executive' | 'technical';
 export type ExportLanguage = 'th' | 'en';
 export type ExportFormat = 'pdf' | 'html' | 'csv';
 
 export interface ExportFieldDef {
-  key: string;          // Matches actual data object key (e.g. 'ip', 'createdAt')
-  label: string;        // Thai label
-  labelEn: string;      // English label
+  key: string;
+  label: string;
+  labelEn: string;
   defaultSelected: boolean;
-  readOnly?: boolean;   // true = evidence field (IP, timestamp, etc.) AI cannot change
+  readOnly?: boolean;
 }
 
 export interface ExportFieldGroup {
-  group: string;        // Thai group name
-  groupEn: string;      // English group name
+  group: string;
+  groupEn: string;
   fields: ExportFieldDef[];
 }
 
 export interface PageExportSchema {
   pageTitle: string;
   pageTitleEn: string;
-  allowExecOnly: boolean;  // true = only Executive Summary allowed (AI Daily Briefing)
+  allowExecOnly: boolean;
   fieldGroups: ExportFieldGroup[];
 }
 
@@ -62,6 +63,7 @@ export interface IpSummary {
   severity: string;
   firstSeen: string;
   lastSeen: string;
+  country: string;
   events: any[];
 }
 
@@ -92,10 +94,34 @@ export interface ExportAiContent {
   aiAssessment: string;
   recommendations: string[];
   riskLevel: 'Critical' | 'High' | 'Medium' | 'Low';
-  confidenceScore: number;           // 0–100
-  ipAnalysis: Record<string, any>;   // ip → AI analysis per-IP
+  confidenceScore: number;
+  ipAnalysis: Record<string, any>;
   generatedAt: string;
 }
+
+// ─── NEW v3: CVE Similarity ───────────────────────────────────────────────────
+
+export interface CveSimilarityResult {
+  cveId: string;
+  similarityLevel: 'high' | 'medium' | 'low';
+  similarityScore: number;         // 0-100
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'unknown';
+  affectedProduct: string;
+  attackPatternRelation: string;   // e.g. "Similar HTTP injection pattern"
+  reason: string;                  // Short reason for similarity
+  reference: string;               // URL
+  detectedAt: string;              // ISO string
+}
+
+// ─── Final Review Checklist ───────────────────────────────────────────────────
+
+export interface FinalReviewChecklist {
+  dataVerified: boolean;    // ตรวจสอบข้อมูลเรียบร้อยแล้ว
+  aiVerified: boolean;      // ตรวจสอบ AI Analysis แล้ว
+  cveDisclaimer: boolean;   // รับทราบว่า CVE Similarity ไม่ใช่การยืนยันการโจมตี
+}
+
+// ─── Export Session (v3) ──────────────────────────────────────────────────────
 
 export interface ExportSession {
   isOpen: boolean;
@@ -103,22 +129,24 @@ export interface ExportSession {
   // Step 1 — Report Type + Metadata
   reportType: ReportType;
   reportTitle: string;
-  reportId: string;            // e.g. KKU-SOC-RPT-2026-000124
-  reportVersion: string;       // v1.0
+  reportId: string;
+  reportVersion: string;
   sourcePage: string;
   dateRange: { from: string; to: string };
   language: ExportLanguage;
   preparedBy: string;
   reviewedBy: string;
-  exportedBy: string;          // Read-only: always current login user
+  exportedBy: string;
 
   // Step 2 — Select Data
-  selectedFields: string[];    // Array of field keys (e.g. ['ip', 'type', 'severity'])
-  selectedIPs: string[];       // Array of selected attacker IP strings
+  selectedGroups: string[];        // Which of the 5 group keys are selected
+  selectedFields: string[];        // Derived field keys from selectedGroups
+  selectedIPs: string[];
   includeAiIpAnalysis: boolean;
-  allIpSummaries: IpSummary[]; // Derived from dataset when wizard opens
+  includeRawLogs: boolean;         // Technical Details only
+  allIpSummaries: IpSummary[];
 
-  // Step 3 — Preview, AI, Edit, Validation
+  // Step 3 — Preview, AI, Validation, CVE
   previewHtml: string;
   aiContent: ExportAiContent | null;
   manualEdits: {
@@ -128,16 +156,19 @@ export interface ExportSession {
   revisionHistory: RevisionEntry[];
   validationResult: ValidationResult | null;
   analystAssessment: 'Confirmed' | 'Likely' | 'Suspicious' | 'FalsePositive' | 'NeedsInvestigation' | '';
+  cveSimilarityResults: CveSimilarityResult[];
+  cveSimilarityLoading: boolean;
 
-  // Step 4 — File Format
+  // Step 4 — Export Format + Final Review
   fileFormat: ExportFormat;
+  finalReviewChecklist: FinalReviewChecklist;
 
-  // Source snapshot (taken when Export button is clicked)
+  // Source snapshot
   dataset: any[];
   config: ReportConfig | null;
   currentStep: number;
 
-  // Legacy compatibility with existing wizard code
+  // Legacy
   dataModel: ReportDataModel | null;
   filters: any;
   step: number;

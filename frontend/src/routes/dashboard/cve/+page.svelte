@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { callKKUAI, getKKUAIKey, getKKUAIModel } from '../../../lib/utils/kkuai';
+  import { callKKUAI } from '../../../lib/utils/kkuai';
   import { eventsStore } from '../../../stores/events';
+  import { onMount } from 'svelte';
+  import PageHeader from '../../../lib/components/PageHeader.svelte';
+  import ExportBtn from '../../../lib/components/ExportBtn.svelte';
   
   let searchQuery = '';
   
@@ -10,24 +13,43 @@
   let aiBriefing: any = null;
   let errorMsg = '';
   
-  $: mappedCVEs = $eventsStore
-    .filter(e => e.type.includes('Log4j') || e.type.includes('SQL') || e.type.includes('Traversal'))
-    .map(e => {
-       if (e.type.includes('Log4j')) return { id: 'CVE-2021-44228', score: 10.0, severity: 'critical', type: 'Log4j RCE' };
-       if (e.type.includes('SQL')) return { id: 'CVE-2023-XXXX', score: 7.5, severity: 'high', type: 'SQL Injection' };
-       return { id: 'CVE-2022-XXXX', score: 5.3, severity: 'medium', type: 'Path Traversal' };
-    })
-    .filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i); // unique
+  $: mappedCVEs = Object.values($eventsStore.reduce((acc, e) => {
+    if (e.cve && e.cve.id) {
+      if (!acc[e.cve.id]) {
+        acc[e.cve.id] = { ...e.cve, count: 0, ips: new Set<string>(), latestTime: e.createdAt || e.time };
+      }
+      acc[e.cve.id].count++;
+      acc[e.cve.id].ips.add(e.ip);
+      const eTime = e.createdAt || e.time;
+      if (eTime > acc[e.cve.id].latestTime) acc[e.cve.id].latestTime = eTime;
+    }
+    return acc;
+  }, {} as Record<string, any>)).map((c: any) => ({
+    ...c, 
+    ipsArray: Array.from(c.ips)
+  })).sort((a: any, b: any) => b.latestTime.localeCompare(a.latestTime));
+
+  let cveSimilarityEntries: any[] = [];
+  onMount(() => {
+    try {
+      const stored = localStorage.getItem('kkusiem_cve_similarity');
+      if (stored) cveSimilarityEntries = JSON.parse(stored);
+    } catch {}
+    
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const s = params.get('search');
+      if (s) {
+        searchQuery = s;
+        searchVulnerability(s);
+      }
+    }
+  });
 
   // Real functional structure: We will fetch from public APIs (MITRE/NVD)
   async function searchVulnerability(query: string) {
     if (!query) return;
-    const apiKey = getKKUAIKey();
     let searchMode = 'standard';
-    if (!apiKey && searchMode === 'ai') {
-      alert("Please configure KKU AI API Key in Settings for AI Analysis Mode.");
-      return;
-    }
     
     searchQuery = query;
     loading = true;
@@ -71,7 +93,7 @@ CVE: ${id}
 Description: ${desc}
 Affected: ${affected.join(', ')}`;
 
-        callKKUAI(apiKey, getKKUAIModel(), [
+        callKKUAI('', [
           { role: 'system', content: 'You are an expert security researcher. Return output as:\nSUMMARY:\n[summary text]\n\nMITIGATION:\n- [step 1]\n- [step 2]\n- [step 3]' },
           { role: 'user', content: prompt }
         ]).then(res => {
@@ -254,9 +276,19 @@ Affected: ${affected.join(', ')}`;
   .loading-box i { font-size: 48px; margin-bottom: 16px; display: inline-block; animation: spin 2s linear infinite; }
   @keyframes spin { 100% { transform: rotate(360deg); } }
 
-</style>
-
-<div class="ai-hub-container">
+  </style>
+  
+  <div style="display:flex;flex-direction:column;height:100%;gap:16px;">
+    <PageHeader title="CVE Database" description="Vulnerability Intelligence and Threat Analysis." icon="ti-shield-search">
+      <div slot="actions">
+        <ExportBtn 
+          config={{ pageType: 'cve', reportTitle: 'CVE Analysis Report' }} 
+          data={mappedCVEs} 
+          columns={['id', 'name', 'severity', 'score', 'count']} 
+        />
+      </div>
+    </PageHeader>
+    <div class="ai-hub-container" style="flex:1; overflow-y:auto; padding-bottom: 24px;">
   
   <!-- Left Sidebar -->
   <div class="hub-sidebar">
@@ -420,4 +452,5 @@ Affected: ${affected.join(', ')}`;
     {/if}
 
   </div>
+</div>
 </div>

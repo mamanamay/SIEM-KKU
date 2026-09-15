@@ -303,7 +303,7 @@
   .chk-box i { font-size: 11px; color: transparent; transition: 0.2s; }
   .col-checkbox.active { border-color: var(--green); background: rgba(29, 158, 117, 0.08); }
   .col-checkbox.active .chk-box { background: var(--green); border-color: var(--green); }
-  .col-checkbox.active .chk-box i { color: #fff; }
+  .col-checkbox.active .chk-box i { color: var(--text-primary); }
   .chk-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); transition: all 0.2s; }
   .col-checkbox.active .chk-label { color: var(--green); font-weight: 700; }
 

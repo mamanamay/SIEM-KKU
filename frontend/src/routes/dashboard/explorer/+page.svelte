@@ -1,16 +1,19 @@
 <script lang="ts">
+  import PageHeader from '../../../lib/components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import { eventsStore } from '../../../stores/events';
-  
+  import ExportBtn from '../../../lib/components/ExportBtn.svelte';
   let searchQuery = '';
   let dateRange = 'last24h';
   let isSearching = false;
   let searchResults: any[] = [];
   let executionTime = 0;
+  let isLiveUpdates = false;
+  
+  $: if(isLiveUpdates && $eventsStore) { performSearch(); }
   
   // Histogram Data
-  let chartCanvas: HTMLCanvasElement;
-  let chartInstance: any = null;
+  
 
   async function performSearch() {
     isSearching = true;
@@ -28,57 +31,23 @@
       });
       executionTime = Math.round(performance.now() - start);
       isSearching = false;
-      renderChart();
+      
     }, 600);
   }
 
-  function renderChart() {
-    if (!chartCanvas) return;
-    if (chartInstance) chartInstance.destroy();
-    
-    // Group by hour
-    const buckets = new Array(24).fill(0);
-    searchResults.forEach(e => {
-      const d = new Date(e.time || e.createdAt);
-      if(!isNaN(d.getTime())) {
-        buckets[d.getHours()]++;
-      } else {
-        buckets[Math.floor(Math.random() * 24)]++; // Fallback
-      }
-    });
-
-    const labels = Array.from({length:24}, (_,i) => `${i.toString().padStart(2,"0")}:00`);
-    
-    // @ts-ignore
-    chartInstance = new Chart(chartCanvas, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Log Count',
-          data: buckets,
-          backgroundColor: '#3b82f6',
-          borderRadius: 4
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
-          y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
-        }
-      }
-    });
-  }
+  
 
   onMount(() => {
     performSearch();
   });
 </script>
 
-<div class="explorer-wrap">
+<div class="explorer-wrap" style="display:flex;flex-direction:column;gap:16px;">
+  <PageHeader title="Log Explorer" description="Perform ad-hoc queries across raw security events." icon="ti-file-search">
+    <div slot="actions">
+      
+    </div>
+  </PageHeader>
   <div class="kql-header">
     <div class="kql-search-box">
       <div class="kql-icon"><i class="ti ti-search"></i></div>
@@ -96,14 +65,18 @@
       </button>
     </div>
     
-    <div class="kql-meta">
-      Found <strong>{searchResults.length.toLocaleString()}</strong> hits in {executionTime}ms.
+    
+    <div class="kql-meta" style="display:flex;align-items:center;justify-content:space-between;">
+      <span>Found <strong>{searchResults.length.toLocaleString()}</strong> hits in {executionTime}ms.</span>
+      <button class="btn-pause-live" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid {isLiveUpdates ? '#10b981' : '#f59e0b'};background:{isLiveUpdates ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)'};color:{isLiveUpdates ? '#10b981' : '#f59e0b'};cursor:pointer;transition:all 0.2s;" on:click={() => isLiveUpdates = !isLiveUpdates}>
+        <i class="ti {isLiveUpdates ? 'ti-player-play' : 'ti-player-pause'}"></i>
+        {isLiveUpdates ? 'Live Updates Active' : 'Live Updates Paused'}
+      </button>
     </div>
+
   </div>
 
-  <div class="kql-chart">
-    <canvas bind:this={chartCanvas}></canvas>
-  </div>
+  
 
   <div class="kql-table-wrap custom-scrollbar">
     <table class="kql-table">
@@ -123,9 +96,16 @@
             <td>
               <span class="badge {row.severity}">{row.severity?.toUpperCase()}</span>
             </td>
-            <td class="col-ip">{row.ip}</td>
-            <td class="col-type">{row.type}</td>
-            <td class="col-raw">{row.payload || JSON.stringify(row)}</td>
+              <td class="col-ip">{row.ip}</td>
+              <td class="col-type">
+                {row.type}
+                {#if row.cve}
+                  <a href="/dashboard/cve?search={row.cve.id}" target="_blank" class="badge-cve" title="{row.cve.name}">
+                    <i class="ti ti-bug"></i> {row.cve.id}
+                  </a>
+                {/if}
+              </td>
+              <td class="col-raw">{row.payload || JSON.stringify(row)}</td>
           </tr>
         {/each}
         {#if searchResults.length === 0}
@@ -143,7 +123,7 @@
 
 <style>
   .explorer-wrap {
-    display: flex; flex-direction: column; height: 100%; background: #030711; overflow: hidden;
+    display: flex; flex-direction: column; height: 100%; background: var(--bg-app); overflow: hidden;
   }
   
   /* Header & Search */
@@ -151,27 +131,27 @@
     padding: 24px; border-bottom: 1px solid var(--border); background: var(--bg-panel); flex-shrink: 0;
   }
   .kql-search-box {
-    display: flex; height: 48px; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+    display: flex; height: 48px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
   }
   .kql-icon {
     width: 48px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 18px;
   }
   .kql-input {
-    flex: 1; background: transparent; border: none; color: #fff; font-size: 14px; font-family: 'JetBrains Mono', monospace; outline: none; padding-right: 16px;
+    flex: 1; background: transparent; border: none; color: var(--text-primary); font-size: 14px; font-family: 'JetBrains Mono', monospace; outline: none; padding-right: 16px;
   }
-  .kql-input::placeholder { color: rgba(255,255,255,0.2); }
+  .kql-input::placeholder { color: var(--text-muted); opacity: 0.5; }
   
   .kql-date-picker {
-    background: rgba(255,255,255,0.05); border: none; border-left: 1px solid var(--border); color: var(--text-primary); padding: 0 16px; outline: none; cursor: pointer; font-size: 13px; font-weight: 600;
+    background: var(--bg-surface-hover); border: none; border-left: 1px solid var(--border); color: var(--text-primary); padding: 0 16px; outline: none; cursor: pointer; font-size: 13px; font-weight: 600;
   }
   .btn-search {
-    background: #3b82f6; color: white; border: none; padding: 0 24px; font-weight: 700; font-size: 14px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center;
+    background: #3b82f6; color: var(--text-primary); border: none; padding: 0 24px; font-weight: 700; font-size: 14px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center;
   }
   .btn-search:hover:not(:disabled) { background: #2563eb; }
   .btn-search:disabled { opacity: 0.7; }
   
   .kql-meta { font-size: 12px; color: var(--text-muted); margin-top: 12px; }
-  .kql-meta strong { color: #fff; }
+  .kql-meta strong { color: var(--text-primary); }
 
   /* Chart */
   .kql-chart {
@@ -186,30 +166,39 @@
     width: 100%; border-collapse: collapse; text-align: left;
   }
   .kql-table th {
-    position: sticky; top: 0; background: rgba(15,23,42,0.95); backdrop-filter: blur(4px); color: var(--text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 24px; border-bottom: 1px solid var(--border); z-index: 10;
+    position: sticky; top: 0; background: var(--bg-secondary); backdrop-filter: blur(4px); color: var(--text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 24px; border-bottom: 1px solid var(--border); z-index: 10;
   }
   .kql-table td {
-    padding: 12px 24px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; color: var(--text-primary);
+    padding: 12px 24px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-primary);
   }
-  .kql-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .kql-table tr:hover td { background: var(--bg-surface-hover); }
   
   .col-time { color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
-  .col-ip { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #93c5fd; }
+  .col-ip { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--blue); }
   .col-type { font-weight: 600; }
   .col-raw { color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
   
   .badge { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; }
   .badge.critical { background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.5); }
   .badge.high { background: rgba(249,115,22,0.2); color: #f97316; border: 1px solid rgba(249,115,22,0.5); }
-  .badge.medium { background: rgba(234,179,8,0.2); color: #eab308; border: 1px solid rgba(234,179,8,0.5); }
-  .badge.low { background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.5); }
+  .badge.medium { background: rgba(234, 179, 8, 0.2); color: #eab308; border-color: rgba(234, 179, 8, 0.3); }
+  .badge.low { background: rgba(34, 197, 94, 0.2); color: #22c55e; border-color: rgba(34, 197, 94, 0.3); }
+  .badge-cve {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-left: 8px; padding: 2px 6px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 4px; font-size: 10px; font-weight: 700;
+    text-decoration: none; transition: 0.2s;
+  }
+  .badge-cve:hover { background: rgba(239, 68, 68, 0.2); }
 
   .rotate { animation: spin 1s linear infinite; }
   @keyframes spin { 100% { transform: rotate(360deg); } }
   
   .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
   .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-  .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 </style>
 

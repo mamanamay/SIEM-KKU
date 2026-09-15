@@ -85,7 +85,7 @@
     border-radius: 6px;
     font-size: 12px;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--text-primary);
     height: fit-content;
     white-space: nowrap;
   }

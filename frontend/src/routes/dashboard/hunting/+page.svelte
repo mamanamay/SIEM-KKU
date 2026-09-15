@@ -1,7 +1,8 @@
 <script lang="ts">
   import { eventsStore } from '../../../stores/events';
   import { formatEventTime } from '../../../lib/formatTime';
-  import ExportReportBtn from '../../../lib/components/ExportReportBtn.svelte';
+  import PageHeader from '../../../lib/components/PageHeader.svelte';
+  import ExportBtn from '../../../lib/components/ExportBtn.svelte';
 
   $: events = $eventsStore;
 
@@ -67,9 +68,14 @@
 
 <div class="hunt-container">
   <!-- Top Filters Panel -->
+  <PageHeader title="Threat Hunting" description="Proactively search and investigate potential threats using custom KQL-like filters." icon="ti-target">
+    <div slot="actions">
+      <ExportBtn config={{ pageType: 'hunting', reportTitle: 'Threat Hunting Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={hasSearched ? results : events} />
+    </div>
+  </PageHeader>
   <div class="filter-panel">
     <div class="panel-header">
-      <div class="title"><i class="ti ti-binoculars"></i> Advanced Threat Hunting</div>
+      <div class="title"><i class="ti ti-filter"></i> Search Parameters</div>
       <div class="actions">
         <button class="btn btn-outline" on:click={resetHunt}><i class="ti ti-refresh"></i> Reset</button>
         <button class="btn btn-primary" on:click={runHunt}>
@@ -125,14 +131,7 @@
           Showing recent events <strong>({events.length})</strong>
         {/if}
       </div>
-      <div class="results-actions">
-        <ExportReportBtn 
-          data={exportData} 
-          columns={['Time', 'IP', 'Country', 'Type', 'Severity']} 
-          title="Threat Hunting Results" 
-          filename="hunting_results" 
-        />
-      </div>
+      
     </div>
     
     <div class="data-grid-wrap custom-scrollbar">
@@ -156,7 +155,14 @@
                 <span class="flag-badge">{(e.country || 'UN').substring(0, 2).toUpperCase()}</span> 
                 {e.country || 'Unknown'}
               </td>
-              <td>{e.type}</td>
+              <td>
+                {e.type}
+                {#if e.cve}
+                  <a href="/dashboard/cve?search={e.cve.id}" target="_blank" class="badge-cve" title="{e.cve.name} (CVSS: {e.cve.score})">
+                    <i class="ti ti-bug"></i> {e.cve.id}
+                  </a>
+                {/if}
+              </td>
               <td>
                 <span class="sev-badge {e.severity}">{e.severity}</span>
               </td>
@@ -254,8 +260,17 @@
 
   .flag-badge {
     display: inline-block; padding: 2px 6px; background: rgba(255,255,255,0.1);
-    border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 6px; color: #fff;
+    border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 6px; color: var(--text-primary);
   }
+  .badge-cve {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-left: 8px; padding: 2px 6px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 4px; font-size: 11px; font-weight: 700;
+    text-decoration: none; transition: 0.2s;
+  }
+  .badge-cve:hover { background: rgba(239, 68, 68, 0.2); }
   .sev-badge {
     display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase;
   }
@@ -267,7 +282,7 @@
   /* Buttons */
   .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
   .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-primary); }
-  .btn-primary { background: var(--color-cyan, #22d3ee); color: var(--text-primary); }
+  .btn-primary { background: var(--color-cyan, #22d3ee); color: #fff; }
   .btn-primary:hover { background: #06b6d4; }
   .btn-sm { display: inline-flex; align-items: center; justify-content: center; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; text-decoration: none; }
 

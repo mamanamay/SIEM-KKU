@@ -1,3 +1,20 @@
+
+import { SystemConfig } from './entities/system-config.entity';
+import { AuditLog } from './entities/audit-log.entity';
+import { Report } from './entities/report.entity';
+import { ExportAudit } from './entities/export-audit.entity';
+import { WebhookConfig } from './entities/webhook-config.entity';
+import { WebhookDelivery } from './entities/webhook-delivery.entity';
+
+import { SettingsController } from './settings.controller';
+import { AuditController } from './audit.controller';
+import { ExportController } from './export.controller';
+import { CVEController } from './cve.controller';
+import { WebhookController } from './webhook.controller';
+
+import { AuditService } from './audit.service';
+import { ExportService } from './export.service';
+import { WebhookService } from './webhook.service';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth.controller';
@@ -29,7 +46,7 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Production: PostgreSQL ─────────────────────────────────────────
       type: 'postgres',
       url: DATABASE_URL,
-      entities: [User, Attack, LoginSession, ApiLog],
+      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery],
       synchronize: true, // กลับมาเปิด Auto-sync เพราะไม่มี Migrations
       ssl: process.env.DB_SSL === 'true'
         ? { rejectUnauthorized: false }
@@ -39,7 +56,7 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Development: SQLite (fallback เมื่อรัน local โดยไม่มี .env) ──
       type: 'sqlite',
       database: 'database.sqlite',
-      entities: [User, Attack, LoginSession, ApiLog],
+      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery],
       synchronize: true,
     };
 
@@ -50,13 +67,13 @@ const typeOrmConfig: any = DATABASE_URL
       limit: 100, // 100 requests per minute
     }]),
     TypeOrmModule.forRoot(typeOrmConfig),
-    TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog]),
+    TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery]),
     ApiLogModule,
   ],
   // WazuhController — Legacy compatibility shim (ยังคง /api/wazuh ไว้เพื่อ backward compat)
-  controllers: [AuthController, AttacksController, IngestController, WazuhController],
+  controllers: [AuthController, AttacksController, IngestController, WazuhController, SettingsController, AuditController, ExportController, CVEController, WebhookController],
   providers: [
-    LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService
+    LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService, AuditService, ExportService, WebhookService
   ],
 })
 export class AppModule {}

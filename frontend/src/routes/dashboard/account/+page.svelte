@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+  import PageHeader from '../../../lib/components/PageHeader.svelte';
   import { onMount } from 'svelte';
 
   // ─── Active Tab ──────────────────────────────────────────────────────────────
@@ -96,19 +97,13 @@
 <div class="acc-page">
 
   <!-- PAGE HEADER -->
-  <div class="acc-header">
-    <div class="acc-header-left">
-      <div class="acc-header-icon"><i class="ti ti-user-circle"></i></div>
-      <div>
-        <h1 class="acc-title">ศูนย์จัดการบัญชี</h1>
-        <div class="acc-subtitle">การตั้งค่าบัญชี</div>
-        <div class="acc-desc">จัดการข้อมูลบัญชี วิธีเข้าสู่ระบบ KKU AI API Key และอุปกรณ์จากที่เดียว</div>
-      </div>
+  <PageHeader title="Account Settings" description="Manage personal profile, API keys, and preferences." icon="ti-user-circle">
+    <div slot="actions">
+      <button class="btn-local-login" on:click={() => showToast('ล็อกอินผ่านระบบ Local (Mock)')}>
+        <i class="ti ti-lock"></i> ล็อกอินด้วย Local
+      </button>
     </div>
-    <button class="btn-local-login" on:click={() => showToast('เข้าสู่ระบบด้วยรหัสผ่าน Local (Mock)')}>
-      <i class="ti ti-lock"></i> เข้าสู่ระบบด้วยรหัสผ่าน Local
-    </button>
-  </div>
+  </PageHeader>
 
   <!-- TWO-COLUMN LAYOUT -->
   <div class="acc-layout">
@@ -506,12 +501,12 @@
     border: 1px solid var(--acc-red); border-radius: 8px; cursor: pointer;
     transition: all 0.18s; font-family: inherit;
   }
-  .btn-danger-outline:hover { background: var(--acc-red); color: #fff; }
+  .btn-danger-outline:hover { background: var(--acc-red); color: var(--text-primary); }
   .btn-danger-outline.sm { padding: 7px 13px; font-size: 12px; }
   .btn-danger-outline[disabled] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
   .btn-danger-solid {
     display: inline-flex; align-items: center; gap: 7px; padding: 10px 20px;
-    font-size: 13px; font-weight: 700; background: var(--acc-red); color: #fff;
+    font-size: 13px; font-weight: 700; background: var(--acc-red); color: var(--text-primary);
     border: 1px solid var(--acc-red); border-radius: 8px; cursor: pointer;
     transition: all 0.18s; font-family: inherit;
   }
@@ -602,8 +597,8 @@
     box-shadow: 0 8px 24px rgba(0,0,0,0.14);
     animation: toastIn 0.28s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   }
-  .acc-toast.success { background: var(--acc-accent); color: #fff; }
-  .acc-toast.error { background: var(--acc-red); color: #fff; }
+  .acc-toast.success { background: var(--acc-accent); color: var(--text-primary); }
+  .acc-toast.error { background: var(--acc-red); color: var(--text-primary); }
   .acc-toast i { font-size: 18px; }
   @keyframes toastIn { from { opacity: 0; transform: translateY(16px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
 

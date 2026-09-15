@@ -220,8 +220,13 @@ export class ExportController {
 
   // ── GET HISTORY ───────────────────────────────────────────────────────────
   @Get("history")
-  async getHistory() {
-    return await this.exportService.getHistory();
+  @UseGuards(AuthGuard)
+  async getHistory(@Request() req: any) {
+    if (req.user?.role === 'admin') {
+      return await this.exportService.getHistory();
+    } else {
+      return await this.exportService.getHistoryForUser(req.user?.username || '');
+    }
   }
 
   // ── DOWNLOAD FILE ─────────────────────────────────────────────────────────

@@ -155,7 +155,7 @@
 
   .btn-block {
     background: var(--danger);
-    color: white;
+    color: var(--text-primary);
     border: none;
     padding: 8px 16px;
     border-radius: 8px;
@@ -192,7 +192,7 @@
   }
 
   .btn-dismiss:hover {
-    background: #f3f4f6;
+    background: var(--bg-hover);
   }
 
   .error-msg {

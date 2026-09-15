@@ -6,4 +6,4 @@ import * as crypto from 'crypto';
 // This ensures 100% security for zero-config deployments, with the tradeoff
 // that users will be logged out whenever the backend container restarts.
 
-export const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
+export const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';

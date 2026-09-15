@@ -3,6 +3,8 @@
 </svelte:head>
 
 <script lang="ts">
+  import PageHeader from '../../../lib/components/PageHeader.svelte';
+  import ExportBtn from '../../../lib/components/ExportBtn.svelte';
   import { eventsStore } from '../../../stores/events';
   import { getFacultyForIP } from '../../../stores/faculties';
   import { isIpInCidr } from '../../../lib/utils/ip';
@@ -32,7 +34,7 @@
 
   // Extract unique faculties dynamically from the current editableRecords
   $: dynamicFaculties = Array.from(new Set(editableRecords.map((r: any) => r['Faculty/Dept']).filter(Boolean))).map(name => {
-    let code = String(name).split('—')[0].trim().toUpperCase();
+    let code = String(name).split('â€”')[0].trim().toUpperCase();
     if (!code) code = 'UNASSIGNED';
     if (code === 'MS/KKBS') code = 'MS/KKBS';
     return { code, name: String(name) };
@@ -79,7 +81,7 @@
 
     // Filter Faculty Code
     if (selectedFacultyCode !== 'ALL') {
-      let rCode = String(r['Faculty/Dept']).split('—')[0].trim().toUpperCase();
+      let rCode = String(r['Faculty/Dept']).split('â€”')[0].trim().toUpperCase();
       if (!rCode) rCode = 'UNASSIGNED';
       if (rCode !== selectedFacultyCode) return false;
     }
@@ -95,14 +97,14 @@
   $: generalRecords = filteredRecords.filter((r: any) => {
     const name = String(r['Faculty/Dept'] || '').trim();
     const desc = String(r.Description || '').trim();
-    return (!name || name === '—') && (!desc || desc === '—');
+    return (!name || name === 'â€”') && (!desc || desc === 'â€”');
   });
 
   $: deptRecords = filteredRecords.filter((r: any) => {
     const name = String(r['Faculty/Dept'] || '').trim();
     const desc = String(r.Description || '').trim();
-    const isFac = name.includes('คณะ') || name.includes('วิทยาลัย');
-    const isGen = (!name || name === '—') && (!desc || desc === '—');
+    const isFac = name.includes('à¸„à¸“à¸°') || name.includes('à¸§à¸´à¸—à¸¢à¸²à¸¥à¸±à¸¢');
+    const isGen = (!name || name === 'â€”') && (!desc || desc === 'â€”');
     return !isFac && !isGen;
   });
 
@@ -211,7 +213,7 @@
   .admin-tools { display: flex; align-items: center; gap: 15px; }
   
   .btn-primary {
-    background: var(--accent); color: var(--text-primary); border: none; padding: 8px 16px; border-radius: 6px;
+    background: var(--accent); color: #fff; border: none; padding: 8px 16px; border-radius: 6px;
     font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;
     transition: 0.2s; box-shadow: 0 4px 10px rgba(0,212,255,0.3);
   }
@@ -287,20 +289,20 @@
   .delete-title { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px; }
   .delete-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 25px; }
   .delete-target { display: inline-block; background: rgba(0,0,0,0.3); padding: 6px 12px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #ef4444; border: 1px dashed rgba(239,68,68,0.4); margin-top: 8px; }
-  .btn-danger { background: #ef4444; color: #fff; border: none; padding: 8px 20px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; box-shadow: 0 4px 10px rgba(239,68,68,0.3); }
+  .btn-danger { background: #ef4444; color: var(--text-primary); border: none; padding: 8px 20px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; box-shadow: 0 4px 10px rgba(239,68,68,0.3); }
   .btn-danger:hover { filter: brightness(1.1); transform: translateY(-1px); }
 </style>
 
 <div class="page-container">
   
-  <div class="page-header">
-    <div class="page-title"><i class="ti ti-network"></i> Network Map Database</div>
-    <div class="admin-tools">
+  <PageHeader title="Network Map Management" description="Monitor internal network zones and host communications." icon="ti-map-2">
+    <div slot="actions" style="display:flex; gap:12px; align-items:center;">
       <button class="btn-primary" on:click={openAddModal}>
         <i class="ti ti-plus"></i> เพิ่ม IP ใหม่
       </button>
+      <ExportBtn config={{ pageType: 'network-map', reportTitle: 'Network Map Audit', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={editableRecords} />
     </div>
-  </div>
+  </PageHeader>
 
   <!-- Master Filters -->
   <div class="filter-panel">
@@ -371,7 +373,7 @@
           <tr>
             <td class="mono">{record.Route}</td>
             <td>
-              {#if (activeTab === 'general' || activeTab === 'all') && (!record['Faculty/Dept'] || record['Faculty/Dept'] === '—')}
+              {#if (activeTab === 'general' || activeTab === 'all') && (!record['Faculty/Dept'] || record['Faculty/Dept'] === 'â€”')}
                 <span style="color:var(--text-muted); font-style:italic;">Unassigned</span>
               {:else}
                 {record['Faculty/Dept']}
@@ -379,7 +381,7 @@
             </td>
             <td><span class="badge">{record.Type || record.type || '-'}</span></td>
             <td style="color:var(--text-secondary); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title={record.Description}>
-              {record.Description === '—' || !record.Description ? '-' : record.Description}
+              {record.Description === 'â€”' || !record.Description ? '-' : record.Description}
             </td>
             <td>
               <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
@@ -529,7 +531,7 @@
 
 <!-- Success Popup Toast -->
 {#if showSuccessPopup}
-  <div style="position: fixed; bottom: 24px; right: 24px; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; z-index: 9999; animation: slideIn 0.3s ease-out;">
+  <div style="position: fixed; bottom: 24px; right: 24px; background: #10b981; color: var(--text-primary); padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; z-index: 9999; animation: slideIn 0.3s ease-out;">
     <i class="ti ti-circle-check" style="font-size: 20px;"></i>
     <span style="font-weight: 600; font-size: 14px;">{successMessage}</span>
   </div>

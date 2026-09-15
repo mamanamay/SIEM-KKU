@@ -75,7 +75,7 @@
 
         <div style="margin-top:24px; border-top: 1px solid var(--border); padding-top:16px; display:flex; gap:12px;">
           <button style="flex:1; padding: 10px; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); cursor: pointer;" on:click={() => show = false}>Cancel</button>
-          <button style="flex:1; padding: 10px; background: #3b82f6; border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;" on:click={handleExport}>Export</button>
+          <button style="flex:1; padding: 10px; background: #3b82f6; border: none; border-radius: 8px; color: var(--text-primary); font-weight: 600; cursor: pointer;" on:click={handleExport}>Export</button>
         </div>
       </div>
 
@@ -133,9 +133,9 @@
   
   /* A4 Preview Style */
   .a4-preview { width: 100%; aspect-ratio: 1 / 1.414; background: white; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); overflow: hidden; display: flex; flex-direction: column; font-family: 'Times New Roman', serif; color: var(--text-primary); transform-origin: top center; transform: scale(0.85); }
-    .a4-header { padding: 24px; background: #1e293b; color: white; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #10b981; }
+    .a4-header { padding: 24px; background: var(--bg-secondary); color: var(--text-primary); display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #10b981; }
     .a4-header h1 { font-size: 16px; margin: 0; font-family: 'Arial', sans-serif; }
-    .a4-badge { font-size: 8px; padding: 4px 8px; background: #ef4444; color: white; font-weight: bold; border-radius: 2px; }
+    .a4-badge { font-size: 8px; padding: 4px 8px; background: #ef4444; color: var(--text-primary); font-weight: bold; border-radius: 2px; }
     .a4-meta { padding: 16px 24px; display: flex; justify-content: space-between; font-size: 10px; color: #334155; border-bottom: 1px solid #cbd5e1; font-family: 'Arial', sans-serif; }
     .a4-table { width: 100%; border-collapse: collapse; font-size: 9px; font-family: 'Arial', sans-serif; }
     .a4-table th { background: #f1f5f9; text-align: left; padding: 8px 12px; border-bottom: 2px solid #cbd5e1; color: #334155; }

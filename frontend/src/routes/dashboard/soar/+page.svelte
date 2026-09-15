@@ -18,9 +18,9 @@
     const params = new URLSearchParams(window.location.search);
     const ip = params.get('ip');
     const time = params.get('time');
-    if (ip && time) {
-      searchQuery = ip;
-      searchTime = time;
+    if (ip || time) {
+      if (ip) searchQuery = ip;
+      if (time) searchTime = time;
       exactMatchMode = true;
       setTimeout(() => {
         if (filteredEvents.length > 0) selectEvent(filteredEvents[0]);
@@ -60,6 +60,65 @@
     url.searchParams.delete('ip');
     url.searchParams.delete('time');
     window.history.pushState({}, '', url);
+  }
+
+  import { callKKUAI } from '../../../lib/utils/kkuai';
+
+  let aiFindingCve = false;
+  async function scanCveWithAI() {
+    if (!selectedEvent) return;
+    
+    aiFindingCve = true;
+    try {
+      const prompt = `Analyze this security event and identify the most likely CVE associated with it. 
+Event Data: ${JSON.stringify(selectedEvent)}
+Respond ONLY with the CVE ID (e.g., CVE-2023-1234) if you are confident. If it's a generic attack, respond with NONE.`;
+      
+      const res = await callKKUAI('', [
+        { role: 'system', content: 'You are an expert vulnerability analyst. You must identify specific CVEs from attack logs.' },
+        { role: 'user', content: prompt }
+      ]);
+      
+      const match = res.match(/CVE-\d{4}-\d{4,}/);
+      if (match) {
+        selectedEvent.cve = { id: match[0], name: 'AI Identified Vulnerability', score: 'N/A' };
+        events = [...events];
+      } else {
+        alert("AI could not confidently identify a specific CVE for this event.");
+      }
+    } catch (e: any) {
+      alert("AI Scan failed: " + e.message);
+    } finally {
+      aiFindingCve = false;
+    }
+  }
+
+  let aiGeneratingBrief = false;
+  let aiExplanation = '';
+
+  async function generateAiBriefing() {
+    if (!selectedEvent) return;
+    
+    aiGeneratingBrief = true;
+    try {
+      const prompt = `Analyze this security event and provide a comprehensive Incident Workflow:
+1. Explain what this attack is and how it works (in Thai).
+2. What is the risk/impact if successful?
+3. Recommended SOAR workflow steps to contain and eradicate this threat.
+Event Data: ${JSON.stringify(selectedEvent)}`;
+
+      const res = await callKKUAI('', [
+        { role: 'system', content: 'You are an elite SOC Analyst. Provide response formatted with HTML tags like <strong>, <ul>, <li> for readability, without markdown codeblocks.' },
+        { role: 'user', content: prompt }
+      ]);
+      aiExplanation = res;
+      // Attach to event so the Export Report can include it!
+      selectedEvent.aiAnalysis = res;
+    } catch (e: any) {
+      alert("AI Workflow Generation failed: " + e.message);
+    } finally {
+      aiGeneratingBrief = false;
+    }
   }
 </script>
 
@@ -205,11 +264,26 @@
       {#if selectedEvent}
         <div style="margin-bottom:20px;">
           <h4 style="margin:0 0 12px; font-size:13px; color:var(--text-muted);">Recommended Actions</h4>
+
+          {#if selectedEvent.cve}
+             <div class="cve-badge" style="margin-bottom:10px; padding:8px; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:4px;">
+               <strong>Found:</strong> <a href="/dashboard/cve?search={selectedEvent.cve.id}" target="_blank" style="color:#ef4444; text-decoration:underline;">{selectedEvent.cve.id}</a><br/>
+               <span style="font-size:11px;">{selectedEvent.cve.name} (CVSS: {selectedEvent.cve.score})</span>
+             </div>
+          {:else}
+             <button class="playbook-btn ai-scan" on:click={scanCveWithAI} disabled={aiFindingCve}>
+               <i class="ti {aiFindingCve ? 'ti-loader spin' : 'ti-brain'}"></i> {aiFindingCve ? 'Scanning...' : 'Identify CVE (AI)'}
+             </button>
+          {/if}
+
           <button class="playbook-btn danger" on:click={() => executePlaybook('Block IP')} disabled={isActionRunning}>
             <i class="ti ti-shield-x"></i> Block IP ({selectedEvent.ip})
           </button>
           <button class="playbook-btn" on:click={() => executePlaybook('Isolate Host')} disabled={isActionRunning}>
             <i class="ti ti-server-off"></i> Isolate Target Host
+          </button>
+          <button class="playbook-btn" on:click={generateAiBriefing} disabled={aiGeneratingBrief}>
+            <i class="ti {aiGeneratingBrief ? 'ti-loader spin' : 'ti-wand'}"></i> {aiGeneratingBrief ? 'Analyzing...' : 'Generate Playbook (AI)'}
           </button>
           
           {#if actionResult}
@@ -222,7 +296,13 @@
         <div>
           <h4 style="margin:0 0 12px; font-size:13px; color:var(--text-muted);">Ask AI Assistant</h4>
           <div style="display:flex; flex-direction:column; gap:8px;">
-            <div class="chat-bubble ai">The payload indicates a potential Brute Force attack. I recommend immediate WAF blocking.</div>
+            {#if aiExplanation}
+              <div class="chat-bubble ai">
+                {@html aiExplanation}
+              </div>
+            {:else}
+              <div class="chat-bubble ai">The payload indicates a potential Brute Force attack. I recommend immediate WAF blocking.</div>
+            {/if}
           </div>
         </div>
       {:else}
@@ -246,7 +326,7 @@
   .col-list { width: 320px; background: var(--bg-panel, #181b24); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
   .list-header { padding: 20px; border-bottom: 1px solid var(--border); }
   .list-filters { padding: 12px 20px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
-  .list-filters input, .list-filters select { width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; color: #fff; font-size: 13px; outline: none; }
+  .list-filters input, .list-filters select { box-sizing: border-box; width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; color: #fff; font-size: 13px; outline: none; }
   .queue-items { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   .q-item { padding: 12px; background: rgba(0,0,0,0.15); border: 1px solid transparent; border-radius: 8px; cursor: pointer; transition: 0.2s; }
   .q-item:hover { background: rgba(255,255,255,0.05); }

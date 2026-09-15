@@ -302,7 +302,7 @@
   }
   .am-btn.secondary:not(:disabled):hover { border-color: #8b5cf6; color: #8b5cf6; }
   .am-btn.primary {
-    background: #8b5cf6; color: #fff;
+    background: #8b5cf6; color: var(--text-primary);
   }
   .am-btn.primary:not(:disabled):hover { background: #7c3aed; }
 

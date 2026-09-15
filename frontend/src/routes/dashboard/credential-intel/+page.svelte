@@ -1,11 +1,13 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { eventsStore } from '../../../stores/events';
+  import PageHeader from '../../../lib/components/PageHeader.svelte';
+  import ExportBtn from '../../../lib/components/ExportBtn.svelte';
   import { downloadHTML } from '../../../lib/utils/export';
 
 
   $: events = $eventsStore;
 
-  // ── Filter SSH/Credential Attack Events ──────────────────────────────────
+  // â”€â”€ Filter SSH/Credential Attack Events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   $: credEvents = events.filter(e =>
     e.type?.toLowerCase().includes('brute') ||
     e.type?.toLowerCase().includes('login') ||
@@ -13,7 +15,7 @@
     e.type?.toLowerCase().includes('credential')
   );
 
-  // ── Extract usernames from detail field ───────────────────────────────────
+  // â”€â”€ Extract usernames from detail field â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // detail examples: "user=root pass=123456", "login attempt: admin/password"
   function extractUser(detail: string = ''): string | null {
     const m = detail.match(/user[=:]\s*([^\s,;|/]+)/i) ||
@@ -28,7 +30,7 @@
     return m ? m[1].trim() : null;
   }
 
-  // ── Computed Analytics ──────────────────────────────────────────────────
+  // â”€â”€ Computed Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   $: userStats = (() => {
     const counts: Record<string, number> = {};
     credEvents.forEach(e => {
@@ -62,7 +64,7 @@
   $: totalCred = credEvents.length;
   $: uniqueUsernames = new Set(credEvents.map(e => extractUser(e.detail)).filter(Boolean)).size;
   $: uniquePasswords = new Set(credEvents.map(e => extractPass(e.detail)).filter(Boolean)).size;
-  $: successRate = 0; // honeypot — no success
+  $: successRate = 0; // honeypot â€” no success
   $: attackSources = [...new Set(credEvents.map(e => e.ip))].length;
 
   // Top target username distribution (pie data)
@@ -96,27 +98,27 @@
 
 <div class="ci-wrap">
 
-  <!-- ── Header ──────────────────────────────────────────────────────────── -->
-  <div class="ci-header">
-    <div class="ci-title-wrap">
-      <div class="ci-icon"><i class="ti ti-key"></i></div>
-      <div>
-        <div class="ci-title">Honeypot Credential Intelligence</div>
-        <div class="ci-sub">วิเคราะห์ Credential Stuffing patterns จาก Brute Force attacks</div>
+  <div class="ci-sub">วิเคราะห์ Credential Stuffing patterns จาก Brute Force attacks</div>
+  <PageHeader title="Credential Intel" description="Monitor compromised credentials and dark web leaks." icon="ti-key">
+    <div slot="actions" style="display:flex;align-items:center;gap:8px;">
+      <div class="ci-badge" style="padding:6px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:20px;font-size:11px;font-weight:600;color:var(--green);display:flex;align-items:center;gap:4px;">
+        <i class="ti ti-shield-bolt"></i> Honeypot Mode - All credentials captured safely
       </div>
+      <ExportBtn config={{ pageType: 'cred-intel', reportTitle: 'Honeypot Credential Intelligence Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={honeypotCreds} />
     </div>
+  </PageHeader>
     <div style="display:flex;align-items:center;gap:8px;">
       <div class="ci-badge">
-        <i class="ti ti-shield-bolt"></i> Honeypot Mode — All credentials captured safely
+        <i class="ti ti-shield-bolt"></i> Honeypot Mode â€” All credentials captured safely
       </div>
-      <button style="display:inline-flex;align-items:center;gap:5px;padding:7px 13px;background:#1d9e75;border:none;border-radius:8px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;"
+      <button style="display:inline-flex;align-items:center;gap:5px;padding:7px 13px;background:#1d9e75;border:none;border-radius:8px;font-size:12px;font-weight:700;color: var(--text-primary);cursor:pointer;"
         on:click={() => downloadHTML(honeypotCreds.map(c => ({'Username': c.user, 'Password': c.pass, 'Attempts': String(c.count)})), ['Username','Password','Attempts'], 'credential-intel.html', 'Honeypot Credential Intelligence Report')}>
         <i class="ti ti-file-type-html"></i> Export
       </button>
     </div>
   </div>
 
-  <!-- ── KPI Row ──────────────────────────────────────────────────────────── -->
+  <!-- â”€â”€ KPI Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
   <div class="kpi-row">
     <div class="kpi-card red">
       <div class="kpi-icon"><i class="ti ti-sword"></i></div>
@@ -155,14 +157,14 @@
     </div>
   </div>
 
-  <!-- ── Main Grid ──────────────────────────────────────────────────────── -->
+  <!-- â”€â”€ Main Grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
   <div class="ci-main">
 
     <!-- Top Usernames -->
     <div class="ci-card">
       <div class="ci-card-head">
         <span><i class="ti ti-user"></i> Top Targeted Usernames</span>
-        <span class="ci-count">{userStats.length > 0 ? userStats.length : '—'} unique</span>
+        <span class="ci-count">{userStats.length > 0 ? userStats.length : 'â€”'} unique</span>
       </div>
       {#if userStats.length}
       <div class="cred-list">
@@ -203,7 +205,7 @@
     <div class="ci-card">
       <div class="ci-card-head">
         <span><i class="ti ti-key"></i> Top Attempted Passwords</span>
-        <span class="ci-count">{passStats.length > 0 ? passStats.length : '—'} unique</span>
+        <span class="ci-count">{passStats.length > 0 ? passStats.length : 'â€”'} unique</span>
       </div>
       {#if passStats.length}
       <div class="cred-list">
@@ -241,7 +243,7 @@
     <div class="ci-card">
       <div class="ci-card-head">
         <span><i class="ti ti-alert-triangle"></i> Top Credential Pairs</span>
-        <span class="ci-count" style="color:#ef4444">⚠️ Most dangerous</span>
+        <span class="ci-count" style="color:#ef4444">âš ï¸ Most dangerous</span>
       </div>
       <div class="pairs-list">
         {#each honeypotCreds as pair, i}
@@ -271,7 +273,7 @@
 
   </div>
 
-  <!-- ── Hourly Activity Heatmap ─────────────────────────────────────────── -->
+  <!-- â”€â”€ Hourly Activity Heatmap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
   <div class="ci-card full-width">
     <div class="ci-card-head">
       <span><i class="ti ti-chart-bar"></i> Credential Attack Activity (by Hour of Day)</span>
@@ -290,12 +292,10 @@
     </div>
   </div>
 
-</div>
-
 <style>
   .ci-wrap { display: flex; flex-direction: column; gap: 14px; padding-bottom: 2rem; }
 
-  /* ── Header ── */
+  /* â”€â”€ Header â”€â”€ */
   .ci-header {
     display: flex; align-items: center; justify-content: space-between;
     flex-wrap: wrap; gap: 10px;
@@ -317,7 +317,7 @@
     border-radius: 20px; padding: 6px 14px;
   }
 
-  /* ── KPI ── */
+  /* â”€â”€ KPI â”€â”€ */
   .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
   .kpi-card {
     display: flex; align-items: center; gap: 12px;
@@ -340,7 +340,7 @@
   .kpi-num { font-size: 22px; font-weight: 800; color: var(--text-primary); line-height:1; font-variant-numeric: tabular-nums; }
   .kpi-lbl { font-size: 10px; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
 
-  /* ── Main Grid ── */
+  /* â”€â”€ Main Grid â”€â”€ */
   .ci-main { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .ci-card {
     background: var(--bg-panel); border: 1px solid var(--border);
@@ -357,7 +357,7 @@
   .ci-card-head i { color: var(--green); margin-right: 4px; }
   .ci-count { font-size: 10px; color: var(--text-muted); }
 
-  /* ── Cred List ── */
+  /* â”€â”€ Cred List â”€â”€ */
   .cred-list { padding: 10px 16px; display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; scrollbar-width: thin; }
   .cred-row { display: flex; align-items: center; gap: 8px; }
   .cred-rank { font-size: 11px; font-weight: 700; min-width: 20px; }
@@ -372,7 +372,7 @@
   .cred-tag { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 8px; background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
   .demo-note { font-size: 10px; color: var(--text-muted); text-align: center; padding: 6px 0; border-top: 1px solid var(--border); margin-top: 4px; }
 
-  /* ── Pairs ── */
+  /* â”€â”€ Pairs â”€â”€ */
   .pairs-list { padding: 10px 16px; display: flex; flex-direction: column; gap: 8px; }
   .pair-row { display: flex; align-items: center; gap: 8px; }
   .pair-rank { font-size: 11px; font-weight: 700; min-width: 20px; color: var(--text-muted); }
@@ -393,7 +393,7 @@
     border: 1px solid rgba(16,185,129,0.2);
   }
 
-  /* ── Hourly Chart ── */
+  /* â”€â”€ Hourly Chart â”€â”€ */
   .hourly-chart {
     display: flex; align-items: flex-end; gap: 4px;
     padding: 16px; height: 130px;

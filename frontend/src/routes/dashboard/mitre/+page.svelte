@@ -1,9 +1,10 @@
-<svelte:head><title>MITRE ATT&CK Matrix - KKUSIEM</title></svelte:head>
+<svelte:head><title>MITRE ATT&CK&reg; Matrix - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { eventsStore } from '../../../stores/events';
-  import ExportReportBtn from '../../../lib/components/ExportReportBtn.svelte';
+  import PageHeader from '../../../lib/components/PageHeader.svelte';
   
-  $: events = $eventsStore;
+  
+  $: events = $eventsStore || [];
 
   // The 14 MITRE Tactics
   const tactics = [
@@ -61,13 +62,8 @@
 </script>
 
 <div class="mitre-page">
-  <!-- Header -->
-  <div class="header-row">
-    <div>
-      <h1 class="page-title">MITRE ATT&CK� Enterprise Matrix</h1>
-      <p class="page-sub">Mapping observed threat events to the globally accessible knowledge base of adversary tactics and techniques.</p>
-    </div>
-    <div style="display:flex; gap:12px;">
+  <PageHeader title="MITRE ATT&CK® Enterprise Matrix" description="Mapping observed threat events to the globally accessible knowledge base of adversary tactics and techniques." icon="ti-target">
+    <div slot="actions" style="display:flex; gap:12px;">
       <div class="summary-card">
         <div class="sc-val">{activeTacticsCount} / 14</div>
         <div class="sc-lbl">Active Tactics</div>
@@ -76,14 +72,8 @@
         <div class="sc-val">{totalHits}</div>
         <div class="sc-lbl">Mapped Events</div>
       </div>
-      <ExportReportBtn 
-        data={mitreExportRows} 
-        columns={mitreExportCols} 
-        filename="KKUSIEM_MITRE_Matrix"
-        title="MITRE ATT&CK Matrix Report"
-      />
     </div>
-  </div>
+  </PageHeader>
 
   <!-- Enterprise Matrix -->
   <div class="matrix-container custom-scrollbar">
@@ -128,22 +118,22 @@
   .mitre-page { display: flex; flex-direction: column; height: 100%; padding: 24px; gap: 24px; overflow: hidden; font-family: 'Inter', sans-serif; color: var(--text-primary); }
   
   .header-row { display: flex; justify-content: space-between; align-items: flex-end; flex-shrink: 0; }
-  .page-title { margin: 0; font-size: 24px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .page-title { margin: 0; font-size: 24px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
   .page-sub { margin: 6px 0 0; font-size: 14px; color: var(--text-muted); }
   
   .summary-card { background: rgba(0,0,0,0.2); border: 1px solid var(--border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 12px 20px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-  .sc-val { font-size: 20px; font-weight: 700; color: #fff; }
+  .sc-val { font-size: 20px; font-weight: 700; color: var(--text-primary); }
   .sc-lbl { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; }
   
   .matrix-container { flex: 1; overflow: auto; background: var(--bg-panel, #181b24); border: 1px solid var(--border); border-radius: 12px; }
   .mitre-matrix { border-collapse: separate; border-spacing: 4px; padding: 12px; min-width: 2800px; }
   .mitre-matrix th { background: rgba(255,255,255,0.05); border: 1px solid var(--border); padding: 12px; border-radius: 6px; text-align: left; vertical-align: top; width: 200px; }
-  .tac-name { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .tac-name { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
   .tac-count { font-size: 11px; color: var(--text-muted); }
   
   .mitre-matrix td { padding: 0; vertical-align: top; }
   .technique-cell { padding: 10px; border: 1px solid var(--border); border-radius: 6px; min-height: 80px; transition: 0.2s; position: relative; }
-  .technique-cell.active { border-color: rgba(255,255,255,0.3); color: #fff; box-shadow: inset 0 0 20px rgba(0,0,0,0.2); }
+  .technique-cell.active { border-color: rgba(255,255,255,0.3); color: var(--text-primary); box-shadow: inset 0 0 20px rgba(0,0,0,0.2); }
   .tech-id { font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 4px; }
   .tech-name { font-size: 13px; font-weight: 500; line-height: 1.4; }
   .tech-hits { position: absolute; bottom: 8px; right: 8px; font-size: 10px; font-weight: 700; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px; }

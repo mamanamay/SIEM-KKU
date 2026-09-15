@@ -152,14 +152,14 @@
   }
   .cyber-ai-badge i { font-size: 14px; }
   .cyber-ai-badge.idle { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border); }
-  .cyber-ai-badge.processing { background: var(--cyan); color: #fff; box-shadow: 0 0 10px rgba(14, 165, 233, 0.5); }
-  .cyber-ai-panel.result .cyber-ai-badge { background: #8e44ad; color: #fff; box-shadow: 0 0 10px rgba(142, 68, 173, 0.5); }
+  .cyber-ai-badge.processing { background: var(--cyan); color: var(--text-primary); box-shadow: 0 0 10px rgba(14, 165, 233, 0.5); }
+  .cyber-ai-panel.result .cyber-ai-badge { background: #8e44ad; color: var(--text-primary); box-shadow: 0 0 10px rgba(142, 68, 173, 0.5); }
   
   .cyber-ai-action p { color: var(--text-muted); font-size: 13px; margin: 0; }
   .btn-cyber-ai {
     margin-top: 10px;
     background: linear-gradient(135deg, #10b981, #059669);
-    color: white;
+    color: var(--text-primary);
     border: none;
     padding: 8px 20px;
     border-radius: 20px;

@@ -1,36 +1,14 @@
-<script lang="ts">
+﻿<script lang="ts">
   export let title = '';
   export let description = '';
   export let icon = 'ti-layout-dashboard';
-  export let exportData: any[] = [];
-  export let exportColumns: string[] = [];
-  export let exportFilename = 'kkusiem-export';
-  export let exportTitle = 'KKUSIEM Report';
-  export let showAI = false;
-
-  import { downloadCSV, downloadPDF, downloadHTML } from '../utils/export';
-  import ReportModal from './ReportModal.svelte';
-  
-  let showExportModal = false;
-  
-  function handleExportEvent(e: CustomEvent) {
-    const { format, fields } = e.detail;
-    if (format === 'pdf') {
-      downloadPDF(exportData, fields, exportFilename + '.pdf', exportTitle);
-    } else if (format === 'html') {
-      downloadHTML(exportData, fields, exportFilename + '.html', exportTitle);
-    } else {
-      downloadCSV(exportData, fields, exportFilename + '.csv');
-    }
-  }
 </script>
 
 <header class="page-header">
-  <!-- Left side -->
   <div class="header-left">
-    <span class="header-icon">
+    <div class="header-icon-block">
       <i class="ti {icon}"></i>
-    </span>
+    </div>
     <div class="header-text">
       <h1 class="header-title">{title}</h1>
       {#if description}
@@ -39,57 +17,41 @@
     </div>
   </div>
 
-  <!-- Right side -->
   <div class="header-actions">
-    {#if showAI}
-      <button class="btn btn-ai" on:click>
-        <i class="ti ti-brain"></i>
-        AI Summary
-      </button>
-    {/if}
-
-    {#if exportData.length > 0 && exportColumns.length > 0}
-      <button class="btn btn-export" on:click={() => showExportModal = true}>
-        <i class="ti ti-upload"></i>
-        Export
-      </button>
-      
-      <ReportModal 
-        bind:show={showExportModal} 
-        reportTitle={exportTitle}
-        availableFields={exportColumns}
-        previewData={exportData}
-        on:export={handleExportEvent}
-      />
-    {/if}
+    <slot name="actions"></slot>
   </div>
 </header>
 
 <style>
   .page-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
     flex-wrap: wrap;
-    padding: 0 0 20px 0;
+    margin-bottom: 24px;
   }
 
   .header-left {
     display: flex;
-    align-items: flex-start;
-    gap: 12px;
+    align-items: center;
+    gap: 16px;
   }
 
-  .header-icon {
+  .header-icon-block {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: var(--blue-bg);
+    color: var(--blue);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 24px;
-    color: var(--accent, #1d9e75);
-    margin-top: 2px;
     flex-shrink: 0;
   }
+
+  
 
   .header-text {
     display: flex;
@@ -99,112 +61,22 @@
 
   .header-title {
     font-size: 22px;
-    font-weight: 800;
-    color: var(--text-primary, #0f1117);
+    font-weight: 700;
+    color: var(--text-primary);
     margin: 0;
     line-height: 1.2;
   }
 
   .header-desc {
     font-size: 13px;
-    color: var(--text-muted, #64748b);
+    color: var(--text-secondary);
     margin: 0;
   }
 
   .header-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     flex-shrink: 0;
   }
-
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    padding: 7px 14px;
-    border-radius: 8px;
-    cursor: pointer;
-    border: 1px solid transparent;
-    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-    white-space: nowrap;
-    font-family: inherit;
-  }
-
-  .btn-export {
-    background: var(--bg-card, #ffffff);
-    border-color: var(--border, #e5e9f0);
-    color: var(--text-primary, #0f1117);
-  }
-
-  .btn-export:hover {
-    background: var(--bg-app, #f1f4f8);
-    border-color: #c8d0dc;
-  }
-
-  .btn-ai {
-    background: var(--accent, #1d9e75);
-    color: #ffffff;
-    border-color: transparent;
-  }
-
-  .btn-ai:hover {
-    background: #17896a;
-  }
-
-  .caret {
-    font-size: 12px;
-    transition: transform 0.15s;
-  }
-
-  .caret.rotated {
-    transform: rotate(180deg);
-  }
-
-  .export-wrapper {
-    position: relative;
-  }
-
-  .export-menu {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    min-width: 160px;
-    background: var(--bg-card, #ffffff);
-    border: 1px solid var(--border, #e5e9f0);
-    border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-    z-index: 200;
-    overflow: hidden;
-    padding: 4px 0;
-  }
-
-  .export-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 9px 14px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary, #0f1117);
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-    text-align: left;
-    transition: background 0.1s;
-  }
-
-  .export-item:hover {
-    background: var(--bg-app, #f1f4f8);
-  }
-
-  .export-item i {
-    font-size: 15px;
-    color: var(--text-muted, #64748b);
-  }
 </style>
-

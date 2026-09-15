@@ -70,6 +70,10 @@ export class ExportService {
     return await this.reportRepository.find({ order: { generatedAt: "DESC" } });
   }
 
+  async getHistoryForUser(username: string) {
+    return await this.reportRepository.find({ where: { author: username }, order: { generatedAt: "DESC" } });
+  }
+
   // ── Download report file ──────────────────────────────────────────────────
   async downloadReport(id: number, res: Response, inline: boolean = false) {
     const report = await this.reportRepository.findOne({ where: { id } });

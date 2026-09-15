@@ -1,0 +1,183 @@
+<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>Blocked IP Audit Report</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Sarabun', 'Segoe UI', sans-serif; font-size: 13px; color: #1e293b; line-height: 1.6; background: #fff; }
+  .report-page { max-width: 900px; margin: 0 auto; padding: 32px; }
+  .section { margin-bottom: 28px; }
+  .section-title { font-size: 15px; font-weight: 700; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 6px; margin-bottom: 14px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+  .info-row { display: flex; gap: 8px; font-size: 12px; }
+  .info-label { color: #64748b; min-width: 120px; font-weight: 600; }
+  .info-val { color: #1e293b; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; text-align: center; }
+  .stat-num { font-size: 28px; font-weight: 800; }
+  .stat-lbl { font-size: 11px; color: #64748b; margin-top: 2px; }
+  .stat-critical .stat-num { color: #dc2626; }
+  .stat-high .stat-num { color: #ea580c; }
+  .stat-medium .stat-num { color: #ca8a04; }
+  .stat-low .stat-num { color: #16a34a; }
+  .ip-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
+  .ip-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ip-addr { font-size: 14px; font-weight: 700; font-family: monospace; color: #1e3a8a; }
+  .ip-count { font-size: 12px; font-weight: 600; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .content-box { background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 14px 18px; border-radius: 4px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; }
+  .risk-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .risk-card { padding: 12px; border-radius: 8px; text-align: center; }
+  .risk-card .risk-lbl { font-size: 11px; font-weight: 600; margin-bottom: 4px; }
+  .risk-card .risk-val { font-size: 20px; font-weight: 800; }
+  .rec-list { list-style: none; padding: 0; }
+  .rec-list li { padding: 8px 12px; background: #f0fdf4; border-left: 4px solid #16a34a; margin-bottom: 8px; border-radius: 4px; font-size: 13px; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+  .data-table th { background: #1e3a8a; color: #fff; padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+  .data-table td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  .data-table tr:nth-child(even) td { background: #f8fafc; }
+  .data-table tr:hover td { background: #eff6ff; }
+  .review-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .review-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+  .review-role { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
+  .review-name { font-size: 14px; font-weight: 700; }
+  .report-cover { text-align: center; padding: 40px 20px 30px; border-bottom: 2px solid #1e3a8a; margin-bottom: 24px; }
+  .cover-logo { margin-bottom: 16px; }
+  .cover-org { font-size: 13px; color: #64748b; margin-bottom: 20px; }
+  .cover-title { font-size: 22px; font-weight: 800; color: #1e293b; margin-bottom: 8px; }
+  .cover-type { display: inline-block; padding: 4px 16px; background: #1e3a8a; color: #fff; border-radius: 20px; font-size: 12px; font-weight: 600; margin-bottom: 16px; }
+  .cover-id { font-size: 12px; color: #64748b; font-family: monospace; }
+  .classification-badge { display: inline-block; padding: 3px 12px; background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; border-radius: 4px; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
+  .footer { text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; margin-top: 32px; font-size: 11px; color: #94a3b8; line-height: 1.8; }
+  .ai-label { display: inline-block; padding: 2px 6px; background: rgba(139,92,246,0.1); color: #7c3aed; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px; }
+  .ev-label { display: inline-block; padding: 2px 6px; background: rgba(16,185,129,0.1); color: #059669; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px; }
+  @media print {
+    body { font-size: 11px; }
+    .report-page { padding: 16px; }
+    .stat-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+</style></head><body>
+  <div class="report-page">
+    
+  <div class="report-cover">
+    <div class="cover-logo">
+      <img src="/logo-odt.png" alt="ODT KKU Logo" style="height:72px;" onerror="this.src='/kku-odt-logo.png';this.onerror=function(){this.style.display='none';}"/>
+    </div>
+    <div class="cover-org">สำนักงานเทคโนโลยีดิจิทัล มหาวิทยาลัยขอนแก่น</div>
+    <div class="classification-badge">ระดับชั้นความลับ: ใช้ภายในองค์กร</div>
+    <div class="cover-title">Blocked IP Audit Report</div>
+    <div style="margin:10px 0;"><span class="cover-type">Executive Summary</span></div>
+    <div class="cover-id">รหัสรายงาน: KKU-SOC-RPT-2026-000003 | เวอร์ชัน: v1.0</div>
+    <div style="margin-top:10px; font-size:12px; color:#64748b;">สร้างเมื่อ: 15 กันยายน 2569 เวลา 12:51:21 (UTC+7)</div>
+  </div>
+    
+  <div class="section">
+    <div class="section-title">1. ข้อมูลรายงาน</div>
+    <div class="info-grid">
+      <div class="info-row"><span class="info-label">รหัสรายงาน:</span><span class="info-val" style="font-family:monospace">KKU-SOC-RPT-2026-000003</span></div>
+      <div class="info-row"><span class="info-label">เวอร์ชัน:</span><span class="info-val">v1.0</span></div>
+      <div class="info-row"><span class="info-label">ประเภทรายงาน:</span><span class="info-val">Executive Summary</span></div>
+      <div class="info-row"><span class="info-label">แหล่งที่มา:</span><span class="info-val">blocked-ip</span></div>
+      <div class="info-row"><span class="info-label">ช่วงเวลา:</span><span class="info-val">15 กันยายน 2569 เวลา 00:00:00 (UTC+7) – 15 กันยายน 2569 เวลา 23:59:59 (UTC+7)</span></div>
+      <div class="info-row"><span class="info-label">เขตเวลา:</span><span class="info-val">UTC+7 (Asia/Bangkok)</span></div>
+      
+      
+      <div class="info-row"><span class="info-label">ผู้ส่งออก:</span><span class="info-val" style="font-weight:700;color:#1e3a8a;">admin</span></div>
+      <div class="info-row"><span class="info-label">ระดับชั้นความลับ:</span><span class="info-val">ใช้ภายในองค์กร</span></div>
+    </div>
+  </div>
+    <div class="section">
+      <div class="section-title">2. บทสรุปผู้บริหาร</div>
+      <div class="content-box">ไม่มีข้อมูล</div>
+    </div>
+    
+  <div class="section">
+    <div class="section-title">3. ภาพรวมความมั่นคงปลอดภัย</div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-num" style="color:#1e3a8a">0</div><div class="stat-lbl">เหตุการณ์ทั้งหมด</div></div>
+      <div class="stat-card stat-critical"><div class="stat-num">0</div><div class="stat-lbl">ระดับวิกฤต</div></div>
+      <div class="stat-card stat-high"><div class="stat-num">0</div><div class="stat-lbl">ระดับสูง</div></div>
+      <div class="stat-card stat-medium"><div class="stat-num">0</div><div class="stat-lbl">ระดับกลาง</div></div>
+    </div>
+    <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stat-card stat-low"><div class="stat-num">0</div><div class="stat-lbl">ระดับต่ำ</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:#7c3aed">0</div><div class="stat-lbl">IP ที่ไม่ซ้ำ</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:#0891b2">0</div><div class="stat-lbl">ประเภทการโจมตี</div></div>
+    </div>
+  </div>
+    
+    <div class="section">
+      <div class="section-title">4. ภัยคุกคามสำคัญ</div>
+      <div style="color:#64748b">ไม่มีข้อมูล</div>
+    </div>
+    
+    
+    
+  <div class="section">
+    <div class="section-title">6. การประเมินโดย AI <span class="ai-label">AI-Assisted Assessment</span></div>
+    <div class="content-box">ไม่มีข้อมูล</div>
+    
+    
+  </div>
+    
+  <div class="section">
+    <div class="section-title">7. การประเมินความเสี่ยง <span class="ev-label">Evidence-based</span></div>
+    <div style="text-align:center;margin-bottom:16px;">
+      <div style="font-size:13px;color:#64748b;margin-bottom:6px;">ระดับความเสี่ยง</div>
+      <div style="font-size:36px;font-weight:800;color:#16a34a">Low</div>
+    </div>
+    <div class="risk-grid">
+      <div class="risk-card" style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.3)">
+        <div class="risk-lbl" style="color:#dc2626">Critical</div>
+        <div class="risk-val" style="color:#dc2626">0</div>
+      </div>
+      <div class="risk-card" style="background:rgba(234,88,12,0.08);border:1px solid rgba(234,88,12,0.3)">
+        <div class="risk-lbl" style="color:#ea580c">High</div>
+        <div class="risk-val" style="color:#ea580c">0</div>
+      </div>
+      <div class="risk-card" style="background:rgba(202,138,4,0.08);border:1px solid rgba(202,138,4,0.3)">
+        <div class="risk-lbl" style="color:#ca8a04">Medium</div>
+        <div class="risk-val" style="color:#ca8a04">0</div>
+      </div>
+      <div class="risk-card" style="background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.3)">
+        <div class="risk-lbl" style="color:#16a34a">Low</div>
+        <div class="risk-val" style="color:#16a34a">0</div>
+      </div>
+    </div>
+  </div>
+    
+  <div class="section">
+    <div class="section-title">8. ข้อเสนอแนะ</div>
+    <div class="content-box" style="color:#64748b">ไม่มีข้อมูล</div>
+  </div>
+    
+    
+    
+  <div class="section">
+    <div class="section-title">11. การตรวจทานโดย Analyst</div>
+    <div class="review-grid">
+      <div class="review-card">
+        <div class="review-role">ผู้จัดทำ</div>
+        <div class="review-name">admin</div>
+        <div style="margin-top:20px;border-top:1px solid #e2e8f0;padding-top:8px;font-size:11px;color:#64748b">Signature / Date</div>
+      </div>
+      <div class="review-card">
+        <div class="review-role">ผู้ตรวจสอบ</div>
+        <div class="review-name">-</div>
+        <div style="margin-top:20px;border-top:1px solid #e2e8f0;padding-top:8px;font-size:11px;color:#64748b">Signature / Date</div>
+      </div>
+      <div class="review-card">
+        <div class="review-role">ผู้ส่งออก</div>
+        <div class="review-name" style="color:#1e3a8a">admin</div>
+        <div style="margin-top:4px;font-size:11px;color:#64748b">15 กันยายน 2569 เวลา 12:51:21 (UTC+7)</div>
+      </div>
+    </div>
+    
+  </div>
+    
+  <div class="footer">
+    ออกโดย: สำนักงานเทคโนโลยีดิจิทัล มหาวิทยาลัยขอนแก่น<br/>
+    รหัสรายงาน: KKU-SOC-RPT-2026-000003 | เวอร์ชัน: v1.0 | สร้างเมื่อ: 15 กันยายน 2569 เวลา 12:51:21 (UTC+7)<br/>
+    ผู้ส่งออก: admin
+    
+  </div>
+  </div>
+</body></html>

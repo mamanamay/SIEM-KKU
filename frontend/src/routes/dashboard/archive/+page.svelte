@@ -36,12 +36,7 @@
 </script>
 
 <div class="bento-dashboard archive-dashboard">
-  <div class="bento-header">
-    <div class="header-title">
-      <h2><i class="ti ti-terminal"></i> Data Lake & Threat Archive</h2>
-      <div class="subtitle">Long-term telemetry retention and historical querying</div>
-    </div>
-  </div>
+  <PageHeader title="Threat Archive" description="Access resolved cases and historical threat records." icon="ti-archive" />
 
   <!-- Query Builder Panel -->
   <div class="bento-cell query-terminal">
