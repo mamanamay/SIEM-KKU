@@ -77,8 +77,8 @@
     }
 
     async function addUser() {
-        if (!newUser.username || !newUser.firstName || !newUser.lastName) {
-            showNotification('warning', 'Warning', 'Please fill required fields');
+        if (!newUser.username) {
+            showNotification('warning', 'Warning', 'Please enter a username');
             return;
         }
         saving = true;
@@ -96,10 +96,12 @@
                 newUser = { username: '', firstName: '', lastName: '', email: '', role: 'guest', authMethod: 'local' };
                 await loadUsers();
             } else {
-                showNotification('error', 'Error', 'Failed to save user');
+                const errorData = await res.json().catch(() => ({}));
+                showNotification('error', 'Error', errorData.message || 'Failed to save user');
             }
-        } catch (err) {
-            showNotification('error', 'Error', 'Network error');
+        } catch (error) {
+            console.error('Error saving user:', error);
+            showNotification('error', 'Error', 'Failed to save user');
         } finally {
             saving = false;
         }
@@ -349,12 +351,12 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="firstName">First Name *</label>
-                            <input type="text" id="firstName" bind:value={newUser.firstName} required />
+                            <label for="firstName">First Name</label>
+                            <input type="text" id="firstName" bind:value={newUser.firstName} />
                         </div>
                         <div class="form-group">
-                            <label for="lastName">Last Name *</label>
-                            <input type="text" id="lastName" bind:value={newUser.lastName} required />
+                            <label for="lastName">Last Name</label>
+                            <input type="text" id="lastName" bind:value={newUser.lastName} />
                         </div>
                     </div>
                     <div class="form-group">
@@ -417,6 +419,20 @@
                         <button type="submit" class="save-btn" disabled={saving}>{saving ? 'Saving...' : (isEditing ? 'Save Changes' : 'Add User')}</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    {/if}
+
+    {#if showConfirmModal}
+        <div class="modal-backdrop">
+            <div class="confirm-modal">
+                <div class="cm-icon"><i class="{confirmIcon}"></i></div>
+                <h3>{confirmTitle}</h3>
+                <p>{confirmMessage}</p>
+                <div class="cm-actions">
+                    <button class="cancel-btn" on:click={() => showConfirmModal = false}>Cancel</button>
+                    <button class="save-btn" on:click={executeConfirmAction} style="background:var(--danger, #ef4444);">Confirm</button>
+                </div>
             </div>
         </div>
     {/if}
