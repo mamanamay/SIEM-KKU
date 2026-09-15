@@ -36,47 +36,27 @@ export class SettingsController {
 
     let models: any[] = [];
     try {
-      const response = await axios.post(apiUrl + '/chat/models-list', {}, {
+      // First try standard OpenAI endpoint
+      const response2 = await axios.get(apiUrl + '/models', {
         headers: { 'Authorization': `Bearer ${apiKey}` },
         timeout: 5000
       });
-      models = response.data || [];
-    } catch (e: any) {
-      console.error('POST /chat/models-list failed:', e.message, '- Trying GET /models');
-      try {
-        const response2 = await axios.get(apiUrl + '/models', {
-          headers: { 'Authorization': `Bearer ${apiKey}` },
-          timeout: 5000
-        });
-        models = response2.data?.data || response2.data || [];
-      } catch (err: any) {
-         console.error('GET /models failed:', err.message);
-      }
+      models = response2.data?.data || response2.data || [];
+    } catch (err: any) {
+       console.error('GET /models failed:', err.message);
+       // Fallback for custom implementations
+       try {
+         const response = await axios.post(apiUrl + '/chat/models-list', {}, {
+           headers: { 'Authorization': `Bearer ${apiKey}` },
+           timeout: 5000
+         });
+         models = response.data || [];
+       } catch (e: any) {
+         console.error('POST /chat/models-list failed:', e.message);
+       }
     }
-    
-    // Check quota for each model
-    const modelsWithQuota = await Promise.all(models.map(async (model) => {
-        try {
-            const res = await axios.post(apiUrl + '/chat/completions', {
-                model: model.id,
-                messages: [{ role: 'user', content: 'ping' }],
-                max_tokens: 1
-            }, {
-                headers: { 'Authorization': `Bearer ${apiKey}` },
-                timeout: 3000
-            });
-            const quota = res.data?.model_quota || null;
-            return { ...model, quota };
-        } catch (error: any) {
-            const msg = error.response?.data?.error?.message || error.response?.data || '';
-            if (String(msg).includes('daily limit') || error.response?.status === 401 || error.response?.status === 403) {
-                return { ...model, quota: { daily_remaining_tokens: 0, daily_quota_tokens: 0 }, error: 'Quota Exceeded' };
-            }
-            return { ...model, quota: null, error: 'Ping failed' };
-        }
-    }));
 
-    return modelsWithQuota;
+    return { models };
   }
 
 

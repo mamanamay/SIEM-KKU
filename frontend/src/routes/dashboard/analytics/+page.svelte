@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { eventsStore } from '../../../stores/events';
   import { downloadHTML, downloadPDF, downloadCSV } from '../../../lib/utils/export';
   import Chart from 'chart.js/auto';
@@ -11,7 +11,7 @@
 
   let activeTab = 'overview';
 
-  // â”€â”€â”€ Data Computations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Data Computations ──────────────────────────────────────────────────────
 
   $: topIps = (() => {
     const counts: Record<string, number> = {};
@@ -92,7 +92,7 @@
   }
 
 
-  // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Helpers ────────────────────────────────────────────────────────────────
   const TYPE_COLORS: Record<string, string> = {
     ssh: '#ef4444', compromised: '#ef4444', brute: '#ef4444',
     port: '#f97316', scan: '#3b82f6', web: '#3b82f6',
@@ -136,11 +136,11 @@
 
   function getFlagEmoji(country: string) {
     const flags: Record<string, string> = {
-      'Russia': '🇷🇺', 'China': '🇨🇳', 'Brazil': '🇧🇷',
-      'United States': '🇺🇸', 'USA': '🇺🇸', 'Germany': '🇩🇪',
-      'Local Network': '💻'
+      'Russia': '????', 'China': '????', 'Brazil': '????',
+      'United States': '????', 'USA': '????', 'Germany': '????',
+      'Local Network': '??'
     };
-    return flags[country] || '🌍';
+    return flags[country] || '??';
   }
 
   function shortType(type: string) {
@@ -173,12 +173,12 @@
 <div style="display:flex;flex-direction:column;gap:16px;padding:24px 32px 2rem;max-width:1400px;margin:0 auto;">
   <!-- Page Header -->
   <PageHeader title="Analyst Center" description="Analyze attacker IPs, countries, attack vectors, and payload activity." icon="ti-chart-bar">
-    <div slot="actions">
-      <ExportBtn config={{ pageType: 'analytics', reportTitle: 'Attacker Analytics', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={events} />
-    </div>
+    <!-- <div slot="actions">
+      <ExportBtn config={{ pageType: 'analytics', reportTitle: 'Attacker Analytics', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={events} /> -->
+    <!-- </div> -->
   </PageHeader>
 
-  <!-- â”€â”€â”€ Tab Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+  <!-- ─── Tab Navigation ──────────────────────────────────────────────────── -->
 
   <div class="ds-filters">
     <button class="ds-btn {activeTab === 'overview' ? 'primary' : ''}" on:click={() => activeTab = 'overview'}>
@@ -192,9 +192,9 @@
     </button>
   </div>
 
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- OVERVIEW TAB                                                          -->
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   {#if activeTab === 'overview'}
     <!-- Stat Cards Row -->
     <div class="ds-kpi-row" style="margin-bottom:0;">
@@ -233,7 +233,7 @@
           <span class="panel-badge">Real Data</span>
         </div>
         {#if topIps.length === 0}
-          <div class="empty-state"><i class="ti ti-database-off"></i><br>ไม่มีข้อมูลการโจมตี</div>
+          <div class="empty-state"><i class="ti ti-database-off"></i><br>???????????????????</div>
         {:else}
           <div style="height: 200px; padding: 16px;"><canvas bind:this={chartCanvasIp}></canvas></div>
           <div class="rank-list" style="border-top:1px solid var(--border);">
@@ -265,7 +265,7 @@
           <span class="panel-badge">By Type</span>
         </div>
         {#if topTypes.length === 0}
-          <div class="empty-state"><i class="ti ti-database-off"></i><br>ไม่มีข้อมูลการโจมตี</div>
+          <div class="empty-state"><i class="ti ti-database-off"></i><br>???????????????????</div>
         {:else}
           <div style="height: 200px; padding: 16px;"><canvas bind:this={chartCanvasType}></canvas></div>
           <div class="type-chips" style="border-top:1px solid var(--border);">
@@ -283,9 +283,9 @@
     </div>
   {/if}
 
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- GEOGRAPHIC TAB                                                        -->
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   {#if activeTab === 'geographic'}
     <div class="ds-card" style="padding:0;overflow:hidden;">
       <div class="ds-card-head" style="padding:16px;border-bottom:1px solid var(--border);">
@@ -295,7 +295,7 @@
 
 
       {#if topCountries.length === 0}
-        <div class="empty-state"><i class="ti ti-world-off"></i><br>ไม่มีข้อมูลประเทศ</div>
+        <div class="empty-state"><i class="ti ti-world-off"></i><br>?????????????????</div>
       {:else}
         <div class="geo-list">
           {#each topCountries as item, i}
@@ -319,9 +319,9 @@
     </div>
   {/if}
 
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- ATTACK VECTORS TAB                                                    -->
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   {#if activeTab === 'vectors'}
     <div class="ds-card" style="padding:0;overflow:hidden;">
       <div class="ds-card-head" style="padding:16px;border-bottom:1px solid var(--border);">
@@ -331,7 +331,7 @@
 
 
       {#if topTypes.length === 0}
-        <div class="empty-state"><i class="ti ti-shield-off"></i><br>ไม่มีข้อมูลรูปแบบการโจมตี</div>
+        <div class="empty-state"><i class="ti ti-shield-off"></i><br>?????????????????????????</div>
       {:else}
         <div class="vector-list">
           {#each topTypes as item, i}
@@ -362,7 +362,7 @@
 
 </div>
 <style>
-/* â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Page ──────────────────────────────────────────────────────────────────── */
 .analytics-page {
   padding: 0 0 2rem 0;
   display: flex;
@@ -370,7 +370,7 @@
   gap: 16px;
 }
 
-/* â”€â”€â”€ Tab Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Tab Bar ───────────────────────────────────────────────────────────────── */
 .tabs-bar {
   display: flex;
   gap: 4px;
@@ -417,7 +417,7 @@
   color: var(--text-primary);
 }
 
-/* â”€â”€â”€ Stat Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Stat Cards ─────────────────────────────────────────────────────────────── */
 .stat-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -456,7 +456,7 @@
 .sc-val { font-size: 26px; font-weight: 800; color: var(--text-primary); line-height: 1; }
 .sc-lbl { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
 
-/* â”€â”€â”€ Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Panel ──────────────────────────────────────────────────────────────────── */
 .overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .panel {
   background: var(--bg-panel);
@@ -497,7 +497,7 @@
   margin: 0 0 18px 0;
 }
 
-/* â”€â”€â”€ Rank List (Top IPs / Overview) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Rank List (Top IPs / Overview) ────────────────────────────────────────── */
 .rank-list { display: flex; flex-direction: column; gap: 0; margin-top: 10px; padding: 0 16px 16px; }
 .rank-row {
   display: flex;
@@ -517,7 +517,7 @@
 .rv-num { font-size: 15px; font-weight: 700; color: var(--text-primary); display: block; }
 .rv-unit { font-size: 10px; color: var(--text-muted); font-weight: 500; }
 
-/* â”€â”€â”€ Type Chips (Attack Distribution) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Type Chips (Attack Distribution) ──────────────────────────────────────── */
 .type-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 0 16px 16px; }
 .type-chip {
   display: flex;
@@ -533,7 +533,7 @@
 .tc-count { font-size: 14px; font-weight: 800; }
 .tc-pct { font-size: 11px; color: var(--text-muted); font-weight: 600; min-width: 36px; text-align: right; }
 
-/* â”€â”€â”€ Geographic List â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Geographic List ────────────────────────────────────────────────────────── */
 .geo-list { display: flex; flex-direction: column; gap: 0; padding: 0 16px 16px; }
 .geo-row {
   display: flex;
@@ -553,7 +553,7 @@
 .geo-hits { font-size: 16px; font-weight: 800; color: var(--text-primary); display: block; }
 .geo-pct { font-size: 11px; color: var(--text-muted); font-weight: 600; }
 
-/* â”€â”€â”€ Vector List â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Vector List ────────────────────────────────────────────────────────────── */
 .vector-list { display: flex; flex-direction: column; gap: 10px; padding: 0 16px 16px; }
 .vector-row {
   display: flex;
@@ -586,7 +586,7 @@
 .vv-num { font-size: 18px; font-weight: 800; color: var(--text-primary); display: block; }
 .vv-unit { font-size: 11px; color: var(--text-muted); font-weight: 500; }
 
-/* â”€â”€â”€ Payload List â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Payload List ───────────────────────────────────────────────────────────── */
 .payload-list { display: flex; flex-direction: column; gap: 10px; padding: 0 16px 16px; }
 .payload-row {
   background: var(--bg-secondary);
@@ -623,7 +623,7 @@
 }
 .payload-prompt { font-size: 12px; color: var(--text-muted); flex-shrink: 0; margin-top: 1px; }
 
-/* â”€â”€â”€ Empty State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Empty State ────────────────────────────────────────────────────────────── */
 .empty-state {
   text-align: center;
   color: var(--text-muted);
@@ -635,7 +635,7 @@
 }
 .empty-state i { font-size: 28px; opacity: 0.4; }
 
-/* â”€â”€â”€ Responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Responsive ─────────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .stat-cards { grid-template-columns: 1fr 1fr; }
   .overview-grid { grid-template-columns: 1fr; }

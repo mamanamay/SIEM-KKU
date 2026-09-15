@@ -33,11 +33,11 @@
                     await fetchModels();
                 }
             } else {
-                showNotification('Failed to load integrations', 'error');
+                showNotification('error', 'Error', 'Failed to load integrations');
             }
         } catch (error) {
             console.error('Error fetching settings:', error);
-            showNotification('Error loading integrations', 'error');
+            showNotification('error', 'Error', 'Error loading integrations');
         } finally {
             loading = false;
         }
@@ -63,7 +63,7 @@
                 const data = await res.json();
                 models = data.models || [];
             } else {
-                showNotification('Failed to load AI models', 'warning');
+                showNotification('warning', 'Warning', 'Failed to load AI models');
             }
         } catch (error) {
             console.error('Error fetching models:', error);
@@ -108,9 +108,9 @@
             });
 
             if (res.ok) {
-                showNotification('Integrations saved successfully', 'success');
+                showNotification('success', 'Success', 'Integrations saved successfully');
             } else {
-                showNotification('Failed to save integrations', 'error');
+                showNotification('error', 'Error', 'Failed to save integrations');
             }
         } catch (error) {
             console.error('Error saving integrations:', error);

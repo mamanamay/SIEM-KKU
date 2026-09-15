@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { onMount } from 'svelte';
   import { roleStore } from '../../../stores/events';
   
@@ -90,7 +90,7 @@
     "Targeted Port": b.port || 'Any'
   }));
 
-  // â”€â”€ Manual Block â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Manual Block ──────────────────────────────────────────────────────────
   let manualBlockIp = '';
   let manualBlockReason = '';
   let isBlocking = false;
@@ -99,7 +99,7 @@
   async function blockManualIP() {
     const ip = manualBlockIp.trim();
     const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-    if (!ipRegex.test(ip)) { blockError = 'รูปแบบ IP ไม่ถูกต้อง (เช่น 192.168.1.1)'; return; }
+    if (!ipRegex.test(ip)) { blockError = '?????? IP ?????????? (???? 192.168.1.1)'; return; }
     blockError = '';
     isBlocking = true;
     try {
@@ -114,13 +114,13 @@
         await fetchBlockedIPs();
       } else {
         const d = await res.json();
-        blockError = d.message || 'Block ไม่สำเร็จ';
+        blockError = d.message || 'Block ?????????';
       }
-    } catch { blockError = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้'; }
+    } catch { blockError = '????????????????????????????????'; }
     isBlocking = false;
   }
 
-  // â”€â”€ Confirm Unblock Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Confirm Unblock Modal ─────────────────────────────────────────────────
   let confirmUnblockIp: string | null = null;
   function confirmUnblock(ip: string) { confirmUnblockIp = ip; }
   async function doUnblock() {
@@ -135,12 +135,12 @@
 <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:2rem">
 
   <PageHeader title="Blocked IP Audit" description="Review and manage historically blocked external IPs." icon="ti-ban">
-    <div slot="actions">
-      <ExportBtn config={{ pageType: 'blocked-ip', reportTitle: 'Blocked IP Audit Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={fullExportData} />
-    </div>
+    <!-- <div slot="actions">
+      <ExportBtn config={{ pageType: 'blocked-ip', reportTitle: 'Blocked IP Audit Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={fullExportData} /> -->
+    <!-- </div> -->
   </PageHeader>
 
-  <!-- â”€â”€ Manual Block Form (Admin only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+  <!-- ── Manual Block Form (Admin only) ────────────────────────────── -->
   {#if $roleStore === 'admin'}
   <div class="ds-card" style="padding: 16px;">
     <div class="ds-card-head" style="margin-bottom: 12px;">
@@ -150,14 +150,14 @@
       <div style="flex: 1; min-width: 160px;">
         <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">IP Address *</div>
         <input class="ds-input" type="text" bind:value={manualBlockIp}
-          placeholder="เช่น 192.168.1.100"
+          placeholder="???? 192.168.1.100"
           on:keydown={(e) => e.key === 'Enter' && blockManualIP()}
         />
       </div>
       <div style="flex: 2; min-width: 200px;">
-        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">เหตุผลในการบล็อก</div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">????????????????</div>
         <input class="ds-input" type="text" bind:value={manualBlockReason}
-          placeholder="เช่น Suspicious activity, Port scan detected"
+          placeholder="???? Suspicious activity, Port scan detected"
           on:keydown={(e) => e.key === 'Enter' && blockManualIP()}
         />
       </div>
@@ -271,14 +271,14 @@
 <div class="modal-overlay" on:click={() => confirmUnblockIp = null} role="dialog" aria-modal="true">
   <div class="confirm-modal" on:click|stopPropagation>
     <div style="font-size: 24px; color: var(--orange); margin-bottom: 12px;"><i class="ti ti-alert-triangle"></i></div>
-    <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">ยืนยันการ Unblock IP</div>
+    <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">????????? Unblock IP</div>
     <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
+      IP ???????????????????????????????????
       IP นี้จะสามารถเชื่อมต่อระบบได้อีกครั้ง
-      IP à¸™à¸µà¹‰à¸ˆà¸°à¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­à¸£à¸°à¸šà¸šà¹„à¸”à¹‰à¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡
     </div>
     <div style="display: flex; gap: 10px; justify-content: flex-end;">
+      <button class="ds-btn btn-unblock" on:click={doUnblock}><i class="ti ti-unlock"></i> ?????? Unblock</button>
       <button class="ds-btn btn-unblock" on:click={doUnblock}><i class="ti ti-unlock"></i> ยืนยัน Unblock</button>
-      <button class="ds-btn btn-unblock" on:click={doUnblock}><i class="ti ti-unlock"></i> à¸¢à¸·à¸™à¸¢à¸±à¸™ Unblock</button>
     </div>
   </div>
 </div>

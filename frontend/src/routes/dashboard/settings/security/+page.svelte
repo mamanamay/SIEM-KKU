@@ -27,11 +27,11 @@
             if (res.ok) {
                 user = await res.json();
             } else {
-                showNotification('Failed to load user info', 'error');
+                showNotification('error', 'Error', 'Failed to load user info');
             }
         } catch (error) {
             console.error('Error fetching user:', error);
-            showNotification('Error loading user info', 'error');
+            showNotification('error', 'Error', 'Error loading user info');
         } finally {
             loading = false;
         }
@@ -39,11 +39,11 @@
 
     async function changePassword() {
         if (!currentPassword || !newPassword || !confirmPassword) {
-            showNotification('Please fill all password fields', 'warning');
+            showNotification('warning', 'Warning', 'Please fill all password fields');
             return;
         }
         if (newPassword !== confirmPassword) {
-            showNotification('New passwords do not match', 'error');
+            showNotification('error', 'Error', 'New passwords do not match');
             return;
         }
 
@@ -60,17 +60,17 @@
             });
 
             if (res.ok) {
-                showNotification('Password changed successfully', 'success');
+                showNotification('success', 'Success', 'Password changed successfully');
                 currentPassword = '';
                 newPassword = '';
                 confirmPassword = '';
             } else {
                 const errorData = await res.json().catch(() => ({}));
-                showNotification(errorData.message || 'Failed to change password', 'error');
+                showNotification('error', 'Error', errorData.message || 'Failed to change password');
             }
         } catch (error) {
             console.error('Error changing password:', error);
-            showNotification('Error changing password', 'error');
+            showNotification('error', 'Error', 'Error changing password');
         } finally {
             changingPassword = false;
         }
@@ -91,17 +91,17 @@
                 setupSecret = data.secret;
                 setupBackupCodes = data.backupCodes || [];
             } else {
-                showNotification('Failed to start 2FA setup', 'error');
+                showNotification('error', 'Error', 'Failed to start 2FA setup');
             }
         } catch (error) {
             console.error('Error setting up 2FA:', error);
-            showNotification('Error setting up 2FA', 'error');
+            showNotification('error', 'Error', 'Error setting up 2FA');
         }
     }
 
     async function confirm2FA() {
         if (!totpCode) {
-            showNotification('Please enter verification code', 'warning');
+            showNotification('warning', 'Warning', 'Please enter verification code');
             return;
         }
 
@@ -118,17 +118,17 @@
             });
 
             if (res.ok) {
-                showNotification('2FA enabled successfully', 'success');
+                showNotification('success', 'Success', '2FA enabled successfully');
                 user.totpEnabled = true;
                 setupQrUrl = '';
                 setupSecret = '';
                 totpCode = '';
             } else {
-                showNotification('Invalid verification code', 'error');
+                showNotification('error', 'Error', 'Invalid verification code');
             }
         } catch (error) {
             console.error('Error confirming 2FA:', error);
-            showNotification('Error confirming 2FA', 'error');
+            showNotification('error', 'Error', 'Error confirming 2FA');
         } finally {
             verifyingTotp = false;
         }
@@ -153,6 +153,9 @@
             <!-- Password Management -->
             <div class="card">
                 <h2>Password Management</h2>
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+                    * รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 12 ตัวอักษร และประกอบด้วยตัวอักษรพิมพ์ใหญ่, พิมพ์เล็ก, และตัวเลข
+                </p>
                 <div class="form-group">
                     <label for="currentPassword">Current Password</label>
                     <input type="password" id="currentPassword" bind:value={currentPassword} class="input-field" />

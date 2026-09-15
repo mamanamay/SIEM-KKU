@@ -607,13 +607,13 @@ export class AuthController {
 
     // New password validation
     if (!newPassword || newPassword.length < 12) {
-      throw new BadRequestException('Password must be at least 12 characters long');
+      throw new BadRequestException('รหัสผ่านต้องมีความยาวอย่างน้อย 12 ตัวอักษร');
     }
     if (newPassword.toLowerCase().includes(user.username.toLowerCase())) {
-      throw new BadRequestException('Password cannot contain username');
+      throw new BadRequestException('รหัสผ่านต้องไม่มีชื่อผู้ใช้งาน (username) อยู่ในนั้น');
     }
     if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      throw new BadRequestException('Password must contain uppercase, lowercase, and numbers');
+      throw new BadRequestException('รหัสผ่านต้องประกอบด้วยตัวอักษรพิมพ์ใหญ่ พิมพ์เล็ก และตัวเลข');
     }
 
     user.passwordHash = await bcrypt.hash(newPassword, 10);

@@ -300,7 +300,7 @@
       <button class="btn-primary" on:click={openAddModal}>
         <i class="ti ti-plus"></i> เพิ่ม IP ใหม่
       </button>
-      <ExportBtn config={{ pageType: 'network-map', reportTitle: 'Network Map Audit', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={editableRecords} />
+      <!-- ExportBtn removed -->
     </div>
   </PageHeader>
 
