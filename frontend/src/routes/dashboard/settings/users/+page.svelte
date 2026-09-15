@@ -124,7 +124,7 @@
             showNotification('error', 'Restricted', 'Cannot delete the primary admin account');
             return;
         }
-        promptConfirm('Delete User', `Are you sure you want to delete user "${username}"? This action cannot be undone.`, 'ti-trash', async () => {
+        promptConfirm('ยืนยันการลบบัญชีผู้ใช้', `คุณแน่ใจหรือไม่ว่าต้องการลบบัญชี "${username}"? การกระทำนี้ไม่สามารถย้อนกลับได้`, 'ti-trash', async () => {
             try {
                 const res = await fetch(`/api/settings/users/${id}`, {
                     method: 'DELETE',
@@ -426,12 +426,12 @@
     {#if showConfirmModal}
         <div class="modal-backdrop">
             <div class="confirm-modal">
-                <div class="cm-icon"><i class="{confirmIcon}"></i></div>
+                <div class="cm-icon"><i class="{confirmIcon.startsWith('ti ') ? confirmIcon : 'ti ' + confirmIcon}"></i></div>
                 <h3>{confirmTitle}</h3>
                 <p>{confirmMessage}</p>
                 <div class="cm-actions">
-                    <button class="cancel-btn" on:click={() => showConfirmModal = false}>Cancel</button>
-                    <button class="save-btn" on:click={executeConfirmAction} style="background:var(--danger, #ef4444);">Confirm</button>
+                    <button class="cancel-btn" on:click={() => showConfirmModal = false}>ยกเลิก</button>
+                    <button class="save-btn" on:click={executeConfirmAction} style="background:var(--danger, #ef4444);">ยืนยัน</button>
                 </div>
             </div>
         </div>
