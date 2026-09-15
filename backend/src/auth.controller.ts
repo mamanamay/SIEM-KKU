@@ -60,7 +60,7 @@ export class AuthController {
 
     if (user && await bcrypt.compare(password, user.passwordHash)) {
       // Password correct — determine 2FA stage
-      if (!user.totpEnabled || user.username === 'admin') {
+      if (!user.totpEnabled) {
         // User does not have 2FA enabled, log them in directly
         const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
         await this.sessionRepository.save({

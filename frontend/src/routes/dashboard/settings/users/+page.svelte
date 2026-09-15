@@ -83,17 +83,20 @@
         }
         saving = true;
         try {
-            const res = await fetch('/api/settings/users', { method: 'POST',
+            const endpoint = isEditing ? `/api/settings/users/${editTargetId}` : '/api/settings/users';
+            const method = isEditing ? 'PUT' : 'POST';
+            const res = await fetch(endpoint, {
+                method: method,
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(newUser)
             });
             if (res.ok) {
-                showNotification('success', 'Success', 'User added successfully');
+                showNotification('success', 'Success', isEditing ? 'User updated successfully' : 'User added successfully');
                 showModal = false;
                 newUser = { username: '', firstName: '', lastName: '', email: '', role: 'guest', authMethod: 'local' };
                 await loadUsers();
             } else {
-                showNotification('error', 'Error', 'Failed to add user');
+                showNotification('error', 'Error', 'Failed to save user');
             }
         } catch (err) {
             showNotification('error', 'Error', 'Network error');
@@ -124,7 +127,7 @@
             const res = await fetch(`/api/settings/users/${resetTargetId}/reset-password`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ newPassword: newPasswordForReset })
+                body: JSON.stringify({ password: newPasswordForReset })
             });
             if (res.ok) {
                 showNotification('success', 'Success', 'Password reset successfully');

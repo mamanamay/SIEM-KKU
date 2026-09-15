@@ -104,7 +104,7 @@
                     'Content-Type': 'application/json',
                     'Authorization': token ? `Bearer ${token}` : ''
                 },
-                body: JSON.stringify(apiConfig)
+                body: JSON.stringify({ apiConfig: apiConfig })
             });
 
             if (res.ok) {
@@ -187,6 +187,21 @@
                         {/each}
                     </select>
                 </div>
+
+                {#if apiConfig.aiModel && models.length > 0}
+                    {@const selectedObj = models.find(m => (m.id || m) === apiConfig.aiModel)}
+                    {#if selectedObj && selectedObj.quota}
+                        <div style="margin-bottom: 20px; font-size: 13px; display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.02); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                            <span style="font-weight: 600; color: var(--text-secondary);"><i class="ti ti-battery"></i> Model Quota:</span>
+                            <div style="flex:1; background: #e2e8f0; border-radius: 4px; height: 10px; overflow: hidden; max-width: 200px;">
+                                <div style="height: 100%; width: {Math.max(0, Math.min(100, (selectedObj.quota.daily_remaining_tokens / (selectedObj.quota.daily_quota_tokens || 1)) * 100))}%; background: {(selectedObj.quota.daily_remaining_tokens / (selectedObj.quota.daily_quota_tokens || 1)) < 0.1 ? '#ef4444' : '#10b981'};"></div>
+                            </div>
+                            <span style="color: var(--text-secondary); font-variant-numeric: tabular-nums;">
+                                {selectedObj.quota.daily_remaining_tokens.toLocaleString()} / {selectedObj.quota.daily_quota_tokens.toLocaleString()} Tokens
+                            </span>
+                        </div>
+                    {/if}
+                {/if}
                 <div class="card-actions">
                     <button type="button" class="btn-secondary" on:click={() => promptConfirm('Test AI Connection', 'Are you sure you want to test the connection to the AI provider?', 'ti-plug', () => testConnection('/api/settings/integrations/test-ai'))}>Test AI Connection</button>
                 </div>

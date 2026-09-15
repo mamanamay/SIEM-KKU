@@ -42,7 +42,16 @@ export class SettingsController {
       });
       models = response.data || [];
     } catch (e: any) {
-      console.error('Error fetching AI models:', e.message);
+      console.error('POST /chat/models-list failed:', e.message, '- Trying GET /models');
+      try {
+        const response2 = await axios.get(apiUrl + '/models', {
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+          timeout: 5000
+        });
+        models = response2.data?.data || response2.data || [];
+      } catch (err: any) {
+         console.error('GET /models failed:', err.message);
+      }
     }
     
     // Check quota for each model
