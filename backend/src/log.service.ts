@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EventsGateway } from './events.gateway';
 import { AiService } from './ai.service';
+import { NetworkMapService } from './network-map.service';
 import { Attack } from './entities/attack.entity';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -35,12 +36,14 @@ export class LogService implements OnModuleInit {
   private recentConnections: { ip: string; faculty: any; service: string; time: number }[] = [];
   private sessionToIpMap = new Map<string, string>();
   private ipStats = new Map<string, { count: number; lastTime: number }>();
+    private aggregationCache = new Map<string, { lastSeen: number, entityId: number, count: number }>();
 
   // ── Ingest Health Tracking ────────────────────────────────────────────────
   private ingestHealth = new Map<string, { lastSeen: number; totalCount: number }>();
 
   constructor(
     private eventsGateway: EventsGateway,
+    private networkMapService: NetworkMapService,
     private aiService: AiService,
     @InjectRepository(Attack)
     private attackRepository: Repository<Attack>,
@@ -315,8 +318,30 @@ export class LogService implements OnModuleInit {
   }
 
   // ─── Save to DB + Broadcast via WebSocket ─────────────────────────────────
-  private async saveAndBroadcast(payload: any) {
+    private async saveAndBroadcast(payload: any) {
     try {
+      // --- LOG REDUCTION: Aggregation & Thresholding ---
+      const aggKey = `${payload.ip}-${payload.type}`;
+      const now = Date.now();
+      const cached = this.aggregationCache.get(aggKey);
+      const TIME_WINDOW_MS = 60000; // 1 minute window
+      const UPDATE_THRESHOLD = 5; // Update DB every 5 hits to save IO
+
+      if (cached && (now - cached.lastSeen < TIME_WINDOW_MS)) {
+        // [Aggregation] Same attack type from same IP within time window
+        cached.lastSeen = now;
+        cached.count++;
+        this.aggregationCache.set(aggKey, cached);
+
+        // [Thresholding] Only hit the DB periodically, don't spam UI
+        if (cached.count % UPDATE_THRESHOLD === 0) {
+          await this.attackRepository.update(cached.entityId, { hitCount: cached.count });
+          this.logger.log(`[SIEM Aggregation] ${payload.ip} ${payload.type} count reached ${cached.count}`);
+        }
+        return; // STOP! Don't insert a new row, don't broadcast duplicate to UI.
+      }
+      // --------------------------------------------------
+
       const saved = await this.attackRepository.save({
         timeStr:       payload.time,
         ip:            payload.ip,
@@ -330,7 +355,15 @@ export class LogService implements OnModuleInit {
         threatScore:   payload.threatScore,
         sessionId:     payload.sessionId,
         timestampMs:   payload.timestamp,
+        hitCount:      1, // Initial count
       }) as Attack;
+
+      // Start new aggregation cycle
+      this.aggregationCache.set(aggKey, {
+        lastSeen: now,
+        entityId: saved.id,
+        count: 1
+      });
 
       // Check blocked IP list
       let isBlockedRepeat = false;
@@ -346,11 +379,12 @@ export class LogService implements OnModuleInit {
         accessLayer:      payload.accessLayer || null,
         cncLayer:         payload.cncLayer    || null,
         source:           payload.source      || 'unknown',
+        organization:     this.networkMapService.getOrganization(saved.ip, saved.country),
         is_blocked_repeat: isBlockedRepeat,
         aiAnalysis: null,
       };
 
-      // 🤖 AI Analysis — async, non-blocking, HIGH/CRITICAL only
+      // ?? - AI Analysis - async, non-blocking, HIGH/CRITICAL only
       if (payload.severity === 'high' || payload.severity === 'critical') {
         this.aiService.analyzeAlert(payload).then(async (analysis) => {
           if (!analysis) return;
@@ -365,6 +399,8 @@ export class LogService implements OnModuleInit {
       this.logger.error(`[!] Failed to save attack: ${err}`);
     }
   }
+
+  
   // ─── File Tailer (Replaces UDP receiver) ──────────────────────────────────
   private startFileTail(filePath: string, sourceName: string) {
     const fs = require('fs');

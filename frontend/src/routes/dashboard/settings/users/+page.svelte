@@ -93,7 +93,7 @@
             if (res.ok) {
                 showNotification('success', 'Success', isEditing ? 'User updated successfully' : 'User added successfully');
                 showModal = false;
-                newUser = { username: '', firstName: '', lastName: '', email: '', role: 'guest', authMethod: 'local' };
+                newUser = { username: '', firstName: '', lastName: '', email: '', role: 'guest', authMethod: 'local', password: '', is2faEnabled: false, require2fa: false };
                 await loadUsers();
             } else {
                 const errorData = await res.json().catch(() => ({}));
@@ -777,3 +777,4 @@
     .toggle-switch input:checked + .slider { background: #3b82f6; }
     .toggle-switch input:checked + .slider::before { transform: translateX(16px); }
     </style>
+

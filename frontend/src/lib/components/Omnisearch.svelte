@@ -1,4 +1,4 @@
-
+﻿
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
@@ -14,8 +14,7 @@
     { label: "Go to SOAR (Kill-Chain)", path: "/dashboard/soar", icon: "ti-bolt" },
     { label: "Go to Network Map", path: "/dashboard/network-map", icon: "ti-sitemap" },
     { label: "Go to Archive Logs", path: "/dashboard/archive", icon: "ti-archive" },
-    { label: "Go to Settings", path: "/dashboard/settings", icon: "ti-settings" },
-    { label: "View Scorecard", path: "/dashboard/scorecard", icon: "ti-trophy" }
+    { label: "Go to Settings", path: "/dashboard/settings", icon: "ti-settings" }
   ];
   
   $: filteredCommands = searchQuery 
@@ -204,4 +203,5 @@
     color: var(--blue);
   }
 </style>
+
 

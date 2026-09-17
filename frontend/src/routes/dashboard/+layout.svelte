@@ -242,9 +242,6 @@
         <a href="/dashboard" class="nav-item {$page.url.pathname === '/dashboard' ? 'active' : ''}">
           <i class="ti ti-dashboard"></i> Dashboard
         </a>
-        <a href="/dashboard/scorecard" class="nav-item {$page.url.pathname === '/dashboard/scorecard' ? 'active' : ''}">
-          <i class="ti ti-shield-check"></i> Security Scorecard
-        </a>
   
         <div class="nav-group-title mt-2">DETECTION & ANALYSIS</div>
         <a href="/dashboard/hunting" class="nav-item {$page.url.pathname === '/dashboard/hunting' ? 'active' : ''}">
@@ -298,8 +295,8 @@
         <button class="profile-btn" on:click={() => showProfileMenu = !showProfileMenu}>
           <div class="avatar"><i class="ti ti-user"></i></div>
           <div class="profile-info">
-            <span class="p-name">นภัสวรรณ ชัยบาล</span>
-            <span class="p-role">นักวิเคราะห์ SOC</span>
+            <span class="p-name">{userProfile.firstName} {userProfile.lastName}</span>
+            <span class="p-role" style="text-transform: capitalize;">{$roleStore}</span>
           </div>
           <i class="ti ti-chevron-up" style="margin-left: auto; color: var(--text-muted); font-size: 14px;"></i>
         </button>
@@ -425,7 +422,7 @@
             <button class="btn-icon" on:click={toggleNotifications} title="Notifications">
               <i class="ti ti-bell"></i>
               {#if unreadCount > 0}
-                <span class="badge-dot">{unreadCount}</span>
+                <span class="badge-dot">{unreadCount > 99 ? '99+' : unreadCount}</span>
               {/if}
             </button>
             
@@ -486,29 +483,7 @@
       <slot />
     </div>
 
-    <!-- Global Toast Notification -->
-    {#if activeToast}
-      <a href="/dashboard/investigate?ip={activeToast.ip}&time={activeToast.timeStr}" class="toast-notification {activeToast.is_blocked_repeat ? 'toast-repeat' : (activeToast.severity === 'critical' ? 'toast-critical' : 'toast-high')}">
-        <div class="toast-icon">
-          {#if activeToast.is_blocked_repeat}
-            <i class="ti ti-shield-x" style="color: #ef4444;"></i>
-          {:else}
-            <i class="ti ti-alert-octagon"></i>
-          {/if}
-        </div>
-        <div class="toast-content">
-          <div class="toast-title">
-            {#if activeToast.is_blocked_repeat}
-              🚨 BLOCKED IP BREACH ATTEMPT!
-            {:else}
-              New Attack Detected!
-            {/if}
-          </div>
-          <div class="toast-desc">{activeToast.type || 'Intrusion Attempt'} from <strong>{activeToast.ip}</strong></div>
-        </div>
-        <button class="toast-close" on:click|preventDefault={() => activeToast = null}><i class="ti ti-x"></i></button>
-      </a>
-    {/if}
+    <!-- Global Toast Notification Removed as requested -->
 
   </main>
 </div>
@@ -658,7 +633,7 @@
 .topbar-right { display: flex; align-items: center; gap: 15px; }
 .btn-icon { background: none; border: none; font-size: 20px; color: var(--text-secondary); cursor: pointer; position: relative; padding: 4px; display: flex; align-items: center; justify-content: center; transition: 0.2s; border-radius: 6px; }
 .btn-icon:hover { background: var(--bg-secondary); color: var(--text-primary); }
-.badge-dot { position: absolute; top: 0; right: 0; background: var(--red); color: #fff; font-size: 9px; font-weight: bold; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid var(--bg-panel); }
+.badge-dot { position: absolute; top: -2px; right: -2px; background: var(--red); color: #fff; font-size: 10px; font-weight: bold; min-width: 16px; height: 16px; padding: 0 4px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 2px solid var(--bg-panel); }
 
 /* Notification Dropdown */
 .notification-wrapper { position: relative; }

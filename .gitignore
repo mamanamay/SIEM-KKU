@@ -56,3 +56,4 @@ backend/README.md
 backend/src/app.controller.spec.ts
 backend/test/
 backend/*.sqlite
+trash/

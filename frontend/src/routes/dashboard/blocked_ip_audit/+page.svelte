@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { roleStore } from '../../../stores/events';
+  import OrgBadge from '../../../lib/components/OrgBadge.svelte';
   
   let blockedList: any[] = [];
   let searchText = '';
@@ -64,19 +65,6 @@
 
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
-  
-  let showExportMenu = false;
-  
-  function handleExportPDF() {
-    const cols = ['IP Address','Blocked At','Reason','Source','Status','Country','Threat Score','Block Duration','Targeted Port'];
-    downloadPDF(fullExportData, cols, 'blocked_ip_audit.pdf', 'KKUSIEM - Blocked IP History');
-    showExportMenu = false;
-  }
-  function handleExportHTML() {
-    const cols = ['IP Address','Blocked At','Reason','Source','Status','Country','Threat Score','Block Duration','Targeted Port'];
-    downloadHTML(fullExportData, cols, 'blocked_ip_audit.html', 'KKUSIEM - Blocked IP History');
-    showExportMenu = false;
-  }
 
   $: fullExportData = (blockedList || []).map(b => ({
     "IP Address": b.ip,
@@ -99,7 +87,7 @@
   async function blockManualIP() {
     const ip = manualBlockIp.trim();
     const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-    if (!ipRegex.test(ip)) { blockError = '?????? IP ?????????? (???? 192.168.1.1)'; return; }
+    if (!ipRegex.test(ip)) { blockError = 'รูปแบบ IP ไม่ถูกต้อง (เช่น 192.168.1.1)'; return; }
     blockError = '';
     isBlocking = true;
     try {
@@ -114,9 +102,9 @@
         await fetchBlockedIPs();
       } else {
         const d = await res.json();
-        blockError = d.message || 'Block ?????????';
+        blockError = d.message || 'Block ไม่สำเร็จ';
       }
-    } catch { blockError = '????????????????????????????????'; }
+    } catch { blockError = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้'; }
     isBlocking = false;
   }
 
@@ -135,9 +123,9 @@
 <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:2rem">
 
   <PageHeader title="Blocked IP Audit" description="Review and manage historically blocked external IPs." icon="ti-ban">
-    <!-- <div slot="actions">
-      <ExportBtn config={{ pageType: 'blocked-ip', reportTitle: 'Blocked IP Audit Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={fullExportData} /> -->
-    <!-- </div> -->
+    <div slot="actions">
+      <ExportBtn config={{ pageType: 'blocked-ip', reportTitle: 'Blocked IP Audit Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={fullExportData} />
+    </div>
   </PageHeader>
 
   <!-- ── Manual Block Form (Admin only) ────────────────────────────── -->
@@ -150,14 +138,14 @@
       <div style="flex: 1; min-width: 160px;">
         <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">IP Address *</div>
         <input class="ds-input" type="text" bind:value={manualBlockIp}
-          placeholder="???? 192.168.1.100"
+          placeholder="เช่น 192.168.1.100"
           on:keydown={(e) => e.key === 'Enter' && blockManualIP()}
         />
       </div>
       <div style="flex: 2; min-width: 200px;">
-        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">????????????????</div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">เหตุผลในการบล็อก</div>
         <input class="ds-input" type="text" bind:value={manualBlockReason}
-          placeholder="???? Suspicious activity, Port scan detected"
+          placeholder="เช่น Suspicious activity, Port scan detected"
           on:keydown={(e) => e.key === 'Enter' && blockManualIP()}
         />
       </div>
@@ -268,16 +256,20 @@
 
 <!-- Confirm Unblock Modal -->
 {#if confirmUnblockIp}
+<!-- svelte-ignore a11y-click-events-have-key-events -->
+<!-- svelte-ignore a11y-no-static-element-interactions -->
 <div class="modal-overlay" on:click={() => confirmUnblockIp = null} role="dialog" aria-modal="true">
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div class="confirm-modal" on:click|stopPropagation>
     <div style="font-size: 24px; color: var(--orange); margin-bottom: 12px;"><i class="ti ti-alert-triangle"></i></div>
-    <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">????????? Unblock IP</div>
-    <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
-      IP ???????????????????????????????????
+    <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">ยืนยันการ Unblock IP</div>
+    <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5;">
+      คุณแน่ใจหรือไม่ว่าต้องการปลดบล็อก IP <strong>{confirmUnblockIp}</strong>?<br>
       IP นี้จะสามารถเชื่อมต่อระบบได้อีกครั้ง
     </div>
     <div style="display: flex; gap: 10px; justify-content: flex-end;">
-      <button class="ds-btn btn-unblock" on:click={doUnblock}><i class="ti ti-unlock"></i> ?????? Unblock</button>
+      <button class="ds-btn" style="background: var(--bg-secondary); color: var(--text-primary);" on:click={() => confirmUnblockIp = null}>ยกเลิก</button>
       <button class="ds-btn btn-unblock" on:click={doUnblock}><i class="ti ti-unlock"></i> ยืนยัน Unblock</button>
     </div>
   </div>

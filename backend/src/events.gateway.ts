@@ -14,7 +14,7 @@ import { JWT_SECRET } from './jwt.config';
 @WebSocketGateway({
   cors: {
     // รับจาก origin เดียวกับ server (Nginx proxy) และ localhost สำหรับ dev
-    origin: '*',
+    origin: true,
     credentials: true,
   },
   // transports รองรับ WebSocket + polling fallback เพื่อให้ Nginx proxy ได้

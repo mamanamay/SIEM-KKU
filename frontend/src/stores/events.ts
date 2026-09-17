@@ -1,11 +1,14 @@
 import { writable } from 'svelte/store';
 import { io, Socket } from 'socket.io-client';
+import { getFacultyForIP } from './faculties';
 
-const initialEvents = typeof localStorage !== 'undefined'
-  ? (JSON.parse(localStorage.getItem('cachedEvents') || '[]') || [])
+// Guard: typeof localStorage alone doesn't work in Node.js 22+ (localStorage exists but throws).
+// typeof window === 'undefined' is the reliable SSR check.
+const initialEvents = typeof window !== 'undefined'
+  ? (() => { try { return JSON.parse(localStorage.getItem('cachedEvents') || '[]') || []; } catch { return []; } })()
   : [];
-// We can't map it here easily without moving the function up. Wait, enrichEventWithCVE is defined below. 
-// I'll just leave it and the initial_data socket event will overwrite it shortly anyway.
+// Note: the initial_data socket event will overwrite this shortly after connect anyway.
+
 
 export const eventsStore      = writable<any[]>(initialEvents);
 export const socketStore      = writable<Socket | null>(null);
@@ -19,20 +22,9 @@ export const selectedDateStore = writable<string>(new Date().toISOString().split
 let socket: Socket | null = null;
 
 export function enrichEventWithCVE(e: any) {
-  if (e.cve) return e; // Already enriched
-  if (e.type && typeof e.type === 'string') {
-    const t = e.type.toUpperCase();
-    if (t.includes('LOG4J')) {
-      e.cve = { id: 'CVE-2021-44228', score: 10.0, severity: 'critical', name: 'Log4j RCE' };
-    } else if (t.includes('SQL')) {
-      e.cve = { id: 'CVE-2023-XXXX', score: 7.5, severity: 'high', name: 'SQL Injection' };
-    } else if (t.includes('TRAVERSAL') || t.includes('DIRECTORY')) {
-      e.cve = { id: 'CVE-2022-XXXX', score: 5.3, severity: 'medium', name: 'Path Traversal' };
-    } else if (t.includes('SSHD') || t.includes('BRUTE')) {
-      e.cve = { id: 'CVE-2023-38408', score: 9.8, severity: 'critical', name: 'SSH Vulnerability' };
-    } else if (t.includes('BEACON') || t.includes('MALWARE')) {
-      e.cve = { id: 'CVE-2021-34527', score: 8.8, severity: 'high', name: 'PrintNightmare / Malware C2' };
-    }
+  const fac = getFacultyForIP(e.ip);
+  if (fac) {
+    e.organization = fac.name;
   }
   return e;
 }

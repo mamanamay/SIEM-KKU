@@ -1,18 +1,18 @@
-﻿<script lang="ts">
+<script lang="ts">
   export let actions: any = { immediate: [], investigation: [], preventive: [] };
 </script>
 
 <div class="actions-card">
   <div class="actions-header">
-    <i class="ti ti-shield-check"></i> AI Recommended Actions
+    <i class="ti ti-shield-check"></i> ข้อเสนอแนะแนวทางป้องกัน (Recommended Actions)
   </div>
   <div class="actions-body">
-    {#if actions.immediate.length === 0 && actions.investigation.length === 0 && actions.preventive.length === 0}
-      <div class="empty">No recommendations available.</div>
+    {#if !actions.immediate || !actions.investigation || !actions.preventive || (actions.immediate.length === 0 && actions.investigation.length === 0 && actions.preventive.length === 0)}
+      <div class="empty">ไม่มีข้อเสนอแนะในขณะนี้ (No recommendations available.)</div>
     {:else}
       <div class="action-grid">
         <div class="action-col">
-          <div class="col-head text-red"><i class="ti ti-alert-triangle"></i> Immediate Actions</div>
+          <div class="col-head text-red"><i class="ti ti-alert-triangle"></i> ดำเนินการทันที (Immediate)</div>
           <ul class="act-list">
             {#each actions.immediate as act}
               <li>{act}</li>
@@ -21,7 +21,7 @@
         </div>
         
         <div class="action-col">
-          <div class="col-head text-orange"><i class="ti ti-search"></i> Investigation</div>
+          <div class="col-head text-orange"><i class="ti ti-search"></i> ตรวจสอบเพิ่มเติม (Investigation)</div>
           <ul class="act-list">
             {#each actions.investigation as act}
               <li>{act}</li>
@@ -30,7 +30,7 @@
         </div>
         
         <div class="action-col">
-          <div class="col-head text-green"><i class="ti ti-shield"></i> Preventive</div>
+          <div class="col-head text-green"><i class="ti ti-shield"></i> การป้องกันล่วงหน้า (Preventive)</div>
           <ul class="act-list">
             {#each actions.preventive as act}
               <li>{act}</li>

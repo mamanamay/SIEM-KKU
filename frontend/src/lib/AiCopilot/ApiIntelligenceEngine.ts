@@ -14,6 +14,7 @@ CRITICAL RULES (Anti-Hallucination):
 2. If evidence is missing, state "ไม่พบข้อมูลเพียงพอในระบบ SIEM" (Not enough data in SIEM).
 3. Do not state a system is compromised without explicit evidence.
 4. Separate confirmed facts from possible suspicions.
+5. If the event context contains an "organization" field (which represents a faculty or department name), YOU MUST explicitly mention the faculty/organization name in your analysis to provide better context.
 
 USER QUERY: ${query}
 DETECTED INTENT: ${intent}

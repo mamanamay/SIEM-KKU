@@ -3,11 +3,30 @@
   import { formatEventTime } from '../../../lib/formatTime';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
+  import { onMount } from 'svelte';
+  import { page as pageStore } from '$app/stores';
+  import { isIpInCidr } from '../../../lib/utils/ip';
+  import OrgBadge from '../../../lib/components/OrgBadge.svelte';
 
-  $: events = $eventsStore;
+  let isLive = true;
+  let frozenEvents: any[] = [];
+  $: events = isLive ? $eventsStore : frozenEvents;
+
+  function toggleLive() {
+    if (isLive) {
+      frozenEvents = $eventsStore;
+      isLive = false;
+    } else {
+      isLive = true;
+    }
+  }
 
   // Search state
   let searchIp = '';
+  onMount(() => {
+    searchIp = $pageStore.url.searchParams.get('ip') || '';
+    if (searchIp) hasSearched = true;
+  });
   let searchType = '';
   let searchCountry = '';
   let searchSeverity = 'all';
@@ -20,7 +39,13 @@
 
   $: results = (() => {
     let filtered = events;
-    if (searchIp) filtered = filtered.filter(e => (e.ip || '').toLowerCase().includes(searchIp.toLowerCase()));
+    if (searchIp) {
+      if (searchIp.includes('/')) {
+        filtered = filtered.filter(e => isIpInCidr(e.ip, searchIp));
+      } else {
+        filtered = filtered.filter(e => (e.ip || '').toLowerCase().includes(searchIp.toLowerCase()));
+      }
+    }
     if (searchType) filtered = filtered.filter(e => (e.type || '').toLowerCase().includes(searchType.toLowerCase()));
     if (searchCountry) filtered = filtered.filter(e => (e.country || '').toLowerCase().includes(searchCountry.toLowerCase()));
     if (searchSeverity !== 'all') filtered = filtered.filter(e => e.severity === searchSeverity);
@@ -131,7 +156,14 @@
           Showing recent events <strong>({events.length})</strong>
         {/if}
       </div>
-      
+      <button
+        class="btn-live-toggle {isLive ? 'live' : 'paused'}"
+        title={isLive ? 'Pause live updates' : 'Resume live updates'}
+        on:click={toggleLive}
+      >
+        <i class="ti {isLive ? 'ti-player-play' : 'ti-player-pause'}"></i>
+        {isLive ? 'Live Updates Active' : 'Live Updates Paused'}
+      </button>
     </div>
     
     <div class="data-grid-wrap custom-scrollbar">
@@ -140,7 +172,7 @@
           <tr>
             <th>Time</th>
             <th>Source IP</th>
-            <th>Country</th>
+            <th>Origin / Org</th>
             <th>Event Type / Alert</th>
             <th>Severity</th>
             <th>Action</th>
@@ -152,8 +184,7 @@
               <td class="font-mono text-muted">{formatEventTime(e.time || e.createdAt)}</td>
               <td class="font-mono font-bold text-ip">{e.ip}</td>
               <td>
-                <span class="flag-badge">{(e.country || 'UN').substring(0, 2).toUpperCase()}</span> 
-                {e.country || 'Unknown'}
+                <OrgBadge organization={e.organization} country={e.country} />
               </td>
               <td>
                 {e.type}
@@ -236,6 +267,15 @@
   }
   .results-info { font-size: 14px; color: var(--text-muted); }
   .results-info strong { color: var(--text-primary); }
+
+  .btn-live-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 700;
+    cursor: pointer; transition: 0.2s; border: 1px solid transparent;
+  }
+  .btn-live-toggle.live { background: rgba(16, 185, 129, 0.1); color: #10b981; border-color: #10b981; }
+  .btn-live-toggle.paused { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-color: #f59e0b; }
 
   /* Data Grid */
   .data-grid-wrap { flex: 1; overflow-y: auto; }

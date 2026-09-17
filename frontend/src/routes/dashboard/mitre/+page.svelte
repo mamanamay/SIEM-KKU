@@ -27,11 +27,11 @@
   // Map events to techniques
   $: techniqueCounts = events.reduce((acc, e) => {
     let t = '';
-    if (e.type.includes('Scan') || e.type.includes('Nmap')) { t = 'T1595'; acc['T1046'] = (acc['T1046'] || 0) + 1; }
-    else if (e.type.includes('SQL') || e.type.includes('Traversal') || e.type.includes('XSS')) t = 'T1190';
-    else if (e.type.includes('Brute') || e.type.includes('Login')) t = 'T1110';
-    else if (e.type.includes('Command') || e.type.includes('Exec')) t = 'T1059';
-    else if (e.type.includes('Compromised') || e.type.includes('Botnet')) t = 'T1071';
+    if ((e.type || '').includes('Scan') || (e.type || '').includes('Nmap')) { t = 'T1595'; acc['T1046'] = (acc['T1046'] || 0) + 1; }
+    else if ((e.type || '').includes('SQL') || (e.type || '').includes('Traversal') || (e.type || '').includes('XSS')) t = 'T1190';
+    else if ((e.type || '').includes('Brute') || (e.type || '').includes('Login')) t = 'T1110';
+    else if ((e.type || '').includes('Command') || (e.type || '').includes('Exec')) t = 'T1059';
+    else if ((e.type || '').includes('Compromised') || (e.type || '').includes('Botnet')) t = 'T1071';
     
     if (t) acc[t] = (acc[t] || 0) + 1;
     return acc;

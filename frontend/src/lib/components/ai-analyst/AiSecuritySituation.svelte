@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { createEventDispatcher } from 'svelte';
   export let summary = '';
   export let riskLevel = 'Low';
@@ -20,11 +20,11 @@
 <div class="ai-card">
   <div class="ai-card-header">
     <div class="ai-title">
-      <i class="ti ti-brain"></i> AI Security Situation Assessment
+      <i class="ti ti-brain"></i> สรุปสถานการณ์ความปลอดภัยโดย AI (Situation Assessment)
     </div>
     <div class="ai-meta">
       <button class="btn-regen" on:click={() => dispatch('regenerate')} disabled={isGenerating}>
-        <i class="ti ti-refresh {isGenerating ? 'ti-spin' : ''}"></i> {isGenerating ? 'Analyzing...' : 'Regenerate Analysis'}
+        <i class="ti ti-refresh {isGenerating ? 'ti-spin' : ''}"></i> {isGenerating ? 'กำลังวิเคราะห์...' : 'ประมวลผลใหม่'}
       </button>
     </div>
   </div>
@@ -34,25 +34,25 @@
       {#if summary}
         {@html summary}
       {:else}
-        <div class="empty-state">No AI assessment generated yet. Click Regenerate to analyze today's events.</div>
+        <div class="empty-state">ยังไม่มีบทสรุปจาก AI กรุณากด "ประมวลผลใหม่" (Regenerate)</div>
       {/if}
     </div>
     
     <div class="ai-footer-stats">
       <div class="stat-badge">
-        <span class="lbl">Risk Level:</span>
+        <span class="lbl">ระดับความเสี่ยง (Risk):</span>
         <span class="val" style="color: {getRiskColor(riskLevel)}">{riskLevel}</span>
       </div>
       <div class="stat-badge">
-        <span class="lbl">AI Confidence:</span>
+        <span class="lbl">ความมั่นใจของ AI:</span>
         <span class="val">{confidence}</span>
       </div>
       <div class="stat-badge">
-        <span class="lbl">Analyzed Range:</span>
+        <span class="lbl">ช่วงข้อมูล:</span>
         <span class="val">{dataRange || '-'}</span>
       </div>
       <div class="stat-badge">
-        <span class="lbl">Generated At:</span>
+        <span class="lbl">ประมวลผลเมื่อ:</span>
         <span class="val">{generatedAt || '-'}</span>
       </div>
     </div>

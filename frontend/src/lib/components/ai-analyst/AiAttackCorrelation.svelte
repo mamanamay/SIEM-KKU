@@ -1,16 +1,16 @@
-﻿<script lang="ts">
+<script lang="ts">
   export let correlations: any[] = [];
 </script>
 
 <div class="corr-card">
   <div class="corr-header">
-    <i class="ti ti-git-merge"></i> Attack Correlation & Campaigns
+    <i class="ti ti-git-merge"></i> ความเชื่อมโยงของการโจมตี (Attack Campaigns)
   </div>
   <div class="corr-body">
     {#if correlations.length === 0}
-      <div class="empty">No correlated campaigns identified.</div>
+      <div class="empty">ไม่พบความเชื่อมโยงหรือรูปแบบการโจมตีที่เป็นระบบ (No correlated campaigns)</div>
     {:else}
-      <div class="campaign-list">
+      <div class="campaign-list custom-scrollbar">
         {#each correlations as c}
           <div class="campaign-item">
             <div class="c-head">

@@ -12,29 +12,46 @@ Write-Host ""
 if (-not $ServerIP) { $ServerIP = Read-Host "Enter Server IP (e.g. 192.168.1.100)" }
 if (-not $Username) { $Username = Read-Host "Enter SSH Username (e.g. ubuntu or root)" }
 
-# Files / folders to EXCLUDE from deployment
-$excludePatterns = @(
-    ".git", ".gitattributes",
-    "node_modules",
-    "frontend/node_modules", "backend/node_modules", "webtrap/node_modules",
-    "frontend/build", "frontend/.svelte-kit",
+# ----------------------------------------------------
+# 1. Define files/folders to EXPLICITLY INCLUDE
+# ----------------------------------------------------
+$includeItems = @(
+    "backend",
     ".env",
-    "check_divs.js", "fix_divs.js", "fix_text_2.js",
-    "update_analytics.js", "update_ds.js", "test_db.js",
-    "extract.py", "proxy.js",
-    "simulate_attack.ps1", "start_proxy.ps1", "init-git.sh",
-    "CLAUDE.md", "docker-compose.dev.yml",
-    "deploy.tar.gz", "deploy.tar"
+    "backend/.env",
+    "frontend",
+    "honeypots",
+    "nginx",
+    "tools",
+    "docker-compose.yml",
+    ".dockerignore",
+    ".env.example",
+    "README.md",
+    "DEPLOY.md",
+    "INGEST_GUIDE.md"
 )
 
-Write-Host "[1/4] Packing project files (excluding junk and node_modules)..." -ForegroundColor Yellow
+# ----------------------------------------------------
+# 2. Define patterns to EXCLUDE from the included folders
+# ----------------------------------------------------
+$excludePatterns = @(
+    "node_modules",
+    "frontend/build", 
+    "frontend/.svelte-kit",
+    "backend/dist",
+    "*.log"
+)
 
-# Create tar command with proper --exclude flags so nested directories are ignored
+Write-Host "[1/4] Packing project files (only necessary files for production)..." -ForegroundColor Yellow
+
 $tarArgs = "-czf deploy.tar.gz "
 foreach ($ex in $excludePatterns) {
     $tarArgs += "--exclude='$ex' "
 }
-$tarArgs += "."
+foreach ($item in $includeItems) {
+    $tarArgs += "$item "
+}
+
 try {
     Invoke-Expression "tar $tarArgs"
     Write-Host "  [OK] Packed -> deploy.tar.gz" -ForegroundColor Green

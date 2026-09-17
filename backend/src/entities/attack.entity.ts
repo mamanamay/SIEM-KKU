@@ -5,6 +5,9 @@ export class Attack {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ type: 'int', default: 1 })
+  hitCount: number;
+
   @Column()
   timeStr: string;
 

@@ -14,7 +14,8 @@ function createAiCopilotStore() {
   // Try to load from local storage
   let savedState: any = null;
   if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('kkusiem_ai_copilot');
+    const currentUser = localStorage.getItem('username') || 'guest';
+    const stored = localStorage.getItem(`kkusiem_ai_copilot_${currentUser}`);
     if (stored) {
       try {
         savedState = JSON.parse(stored);
@@ -31,7 +32,8 @@ function createAiCopilotStore() {
     subscribe(state => {
       // Don't save isOpen state, always default to closed on reload
       const stateToSave = { ...state, isOpen: false };
-      localStorage.setItem('kkusiem_ai_copilot', JSON.stringify(stateToSave));
+      const currentUser = localStorage.getItem('username') || 'guest';
+      localStorage.setItem(`kkusiem_ai_copilot_${currentUser}`, JSON.stringify(stateToSave));
     });
   }
 
@@ -47,7 +49,7 @@ function createAiCopilotStore() {
     startNewSession: (initialContext: SecurityContext, mode: AiMode = 'local') => {
       const newSession: InvestigationSession = {
         id: crypto.randomUUID(),
-        userId: 'current-user', // Should get from auth store
+        userId: (typeof window !== 'undefined' ? localStorage.getItem('username') : 'guest') || 'guest',
         title: 'New Investigation',
         createdAt: new Date().toISOString(),
         lastActivity: new Date().toISOString(),

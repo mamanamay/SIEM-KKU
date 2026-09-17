@@ -3,6 +3,7 @@
 </svelte:head>
 
 <script lang="ts">
+  import OrgBadge from '../../lib/components/OrgBadge.svelte';
   import { eventsStore } from '../../stores/events';
   import { onMount, onDestroy } from 'svelte';
   import WorldMap from '../../lib/components/WorldMap.svelte';
@@ -16,7 +17,7 @@
 
   const unsub = eventsStore.subscribe(val => {
     if (!isPaused) {
-      if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      if (typeof window !== 'undefined' && 'requestAnimationFrame' in window) {
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         animationFrameId = requestAnimationFrame(() => {
           events = val;
@@ -59,7 +60,7 @@
   // Top IPs
   $: sourceIPs = events.reduce((acc, e) => {
     const ip = e.ip || e.sourceIp || 'Unknown';
-    if (!acc[ip]) acc[ip] = { count: 0, severity: e.severity, type: e.type, events: [] };
+    if (!acc[ip]) acc[ip] = { count: 0, severity: e.severity, type: e.type, events: [], country: e.country || 'Unknown' };
     acc[ip].count++;
     acc[ip].events.push(e);
     if (e.severity === 'critical') acc[ip].severity = 'critical';
@@ -68,14 +69,25 @@
   $: topAttackers = Object.entries(sourceIPs).map(([ip, data]: any) => ({ ip, ...data })).sort((a,b) => b.count - a.count).slice(0, 8);
   
   // Custom simple IP to X,Y hash to map them across the WorldMap dimensions (0-950, 0-620)
-  function getPosFromIP(ip: string) {
-    if (!ip) return { x: 50, y: 50 };
+  function getPosFromCountry(country: string, ip: string) {
+    const c = (country || '').toLowerCase();
+    const jitterX = (ip.charCodeAt(ip.length-1) % 4) - 2; // small random spread
+    const jitterY = (ip.charCodeAt(ip.length-2) % 4) - 2;
+    
+    if (c.includes('united states') || c === 'us') return { x: 26 + jitterX, y: 32 + jitterY };
+    if (c.includes('russia') || c === 'ru') return { x: 68 + jitterX, y: 22 + jitterY };
+    if (c.includes('china') || c === 'cn') return { x: 74 + jitterX, y: 37 + jitterY };
+    if (c.includes('brazil') || c === 'br') return { x: 33 + jitterX, y: 62 + jitterY };
+    if (c.includes('germany') || c === 'de') return { x: 49 + jitterX, y: 28 + jitterY };
+    if (c.includes('thailand') || c === 'th' || c.includes('local')) return { x: 76 + jitterX, y: 45 + jitterY };
+
+    // Fallback if country is unknown: pseudo-random but avoiding deep oceans (x < 25)
     let hash = 0;
     for (let i = 0; i < ip.length; i++) hash = Math.imul(31, hash) + ip.charCodeAt(i) | 0;
     hash = Math.abs(hash);
     return {
-      x: 10 + (hash % 80), // 10% to 90%
-      y: 15 + ((hash >> 8) % 60) // 15% to 75%
+      x: 28 + (hash % 50), // x: 28 to 78
+      y: 20 + ((hash >> 8) % 40) // y: 20 to 60
     };
   }
 </script>
@@ -158,7 +170,7 @@
 
           <!-- Active Attack Nodes and Arcs -->
           {#each topAttackers as attacker (attacker.ip)}
-            {@const pos = getPosFromIP(attacker.ip)}
+            {@const pos = getPosFromCountry(attacker.country, attacker.ip)}
             {@const hqX = 77}
             {@const hqY = 44}
             {@const controlX = (hqX - pos.x) / 2}
@@ -224,7 +236,7 @@
           <div class="attacker-list">
             {#each topAttackers as attacker (attacker.ip)}
               <div class="attacker-item">
-                <div class="ai-ip">{attacker.ip}</div>
+                <div class="ai-ip" style="display:flex; align-items:center; gap:8px;">{attacker.ip} <OrgBadge organization={attacker.organization || attacker.events[0]?.organization} country={attacker.country || attacker.events[0]?.country} /></div>
                 <div class="ai-bar-wrap">
                    <div class="ai-bar bg-{attacker.severity}" style="width: {Math.min(attacker.count * 2, 100)}%;"></div>
                 </div>
@@ -262,7 +274,7 @@
                title="Click to Investigate in SOAR">
              <span class="t-time">[{new Date(event.time || event.createdAt).toISOString()}]</span>
              <span class="t-fac">daemon.alert</span>
-             <span class="t-ip">{event.ip || event.sourceIp} {event.country ? `[${event.country}]` : ''}</span>
+             <span class="t-ip" style="display:flex; align-items:center; gap:8px;">{event.ip || event.sourceIp} <OrgBadge organization={event.organization} country={event.country} /></span>
              <span class="t-type">[{event.type.replace(/ /g, '_').toUpperCase()}]</span>
              <span class="t-msg">
                {#if event.description || event.message}
@@ -475,7 +487,7 @@
     display: flex; align-items: center; gap: 12px;
     background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border-dim);
   }
-  .ai-ip { font-weight: 700; font-family: monospace; font-size: 12px; color: #fff; width: 110px; flex-shrink: 0; }
+  .ai-ip { font-weight: 700; font-family: monospace; font-size: 12px; color: #fff; width: 190px; flex-shrink: 0; }
   .ai-bar-wrap { flex: 1; height: 6px; background: rgba(0,0,0,0.5); border-radius: 3px; overflow: hidden; }
   .ai-bar { height: 100%; box-shadow: 0 0 10px currentColor; }
   .bg-critical { background: var(--color-critical); color: var(--color-critical); }
@@ -487,7 +499,7 @@
   .term-line { display: flex; gap: 20px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px; align-items: center; }
   .t-time { color: var(--text-dim); width: 175px; flex-shrink: 0; }
   .t-fac { color: #6b7280; width: 90px; flex-shrink: 0; }
-  .t-ip { color: var(--color-info); width: 120px; flex-shrink: 0; font-weight: 700; }
+  .t-ip { color: var(--color-info); width: 190px; flex-shrink: 0; font-weight: 700; }
   .t-type { color: #fff; width: 230px; flex-shrink: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.5px; }
   .t-msg { color: var(--text-term); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   

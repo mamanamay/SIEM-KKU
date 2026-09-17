@@ -2,11 +2,26 @@
   import { eventsStore } from '../../../stores/events';
   import { downloadHTML, downloadPDF, downloadCSV } from '../../../lib/utils/export';
   import Chart from 'chart.js/auto';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte'; 
 
-  $: events = $eventsStore;
+  let events: any[] = [];
+  
+  const REFRESH_INTERVAL_MS = 90000;
+  let intervalId: any;
+
+  onMount(() => {
+    events = get(eventsStore);
+    intervalId = setInterval(() => {
+      events = get(eventsStore);
+    }, REFRESH_INTERVAL_MS);
+  });
+
+  onDestroy(() => {
+    if (intervalId) clearInterval(intervalId);
+  });
 
 
   let activeTab = 'overview';
@@ -136,11 +151,11 @@
 
   function getFlagEmoji(country: string) {
     const flags: Record<string, string> = {
-      'Russia': '????', 'China': '????', 'Brazil': '????',
-      'United States': '????', 'USA': '????', 'Germany': '????',
-      'Local Network': '??'
+      'Russia': '🇷🇺', 'China': '🇨🇳', 'Brazil': '🇧🇷',
+      'United States': '🇺🇸', 'USA': '🇺🇸', 'Germany': '🇩🇪',
+      'Local Network': '🖥️'
     };
-    return flags[country] || '??';
+    return flags[country] || '🏳️';
   }
 
   function shortType(type: string) {
@@ -233,7 +248,7 @@
           <span class="panel-badge">Real Data</span>
         </div>
         {#if topIps.length === 0}
-          <div class="empty-state"><i class="ti ti-database-off"></i><br>???????????????????</div>
+          <div class="empty-state"><i class="ti ti-database-off"></i><br>ไม่พบข้อมูล</div>
         {:else}
           <div style="height: 200px; padding: 16px;"><canvas bind:this={chartCanvasIp}></canvas></div>
           <div class="rank-list" style="border-top:1px solid var(--border);">
@@ -265,7 +280,7 @@
           <span class="panel-badge">By Type</span>
         </div>
         {#if topTypes.length === 0}
-          <div class="empty-state"><i class="ti ti-database-off"></i><br>???????????????????</div>
+          <div class="empty-state"><i class="ti ti-database-off"></i><br>ไม่พบข้อมูล</div>
         {:else}
           <div style="height: 200px; padding: 16px;"><canvas bind:this={chartCanvasType}></canvas></div>
           <div class="type-chips" style="border-top:1px solid var(--border);">
@@ -295,7 +310,7 @@
 
 
       {#if topCountries.length === 0}
-        <div class="empty-state"><i class="ti ti-world-off"></i><br>?????????????????</div>
+        <div class="empty-state"><i class="ti ti-world-off"></i><br>ไม่พบข้อมูล</div>
       {:else}
         <div class="geo-list">
           {#each topCountries as item, i}
@@ -331,7 +346,7 @@
 
 
       {#if topTypes.length === 0}
-        <div class="empty-state"><i class="ti ti-shield-off"></i><br>?????????????????????????</div>
+        <div class="empty-state"><i class="ti ti-shield-off"></i><br>ไม่พบข้อมูล</div>
       {:else}
         <div class="vector-list">
           {#each topTypes as item, i}

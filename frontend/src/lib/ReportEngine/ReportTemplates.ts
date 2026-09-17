@@ -436,6 +436,20 @@ function renderFooter(session: ExportSession, lbl: typeof L.th, hash?: string): 
 export function generateExecutiveSummaryHtml(session: ExportSession, hash?: string): string {
   const lang = session.language;
   const lbl = lang === "en" ? L.en : L.th;
+  
+  // Dedicated layout for CVE reports
+  if (session.sourcePage === 'cve') {
+    return `<!DOCTYPE html><html lang="${lang}"><head><meta charset="UTF-8"><title>${session.reportTitle}</title>${BASE_STYLE}</head><body>
+    <div class="report-page">
+      ${renderCover(session, lbl)}
+      ${renderReportInfo(session, lbl)}
+      ${renderCveSpecificDetails(session, lbl, 2)}
+      ${renderAnalystReview(session, lbl, 3)}
+      ${renderFooter(session, lbl, hash)}
+    </div>
+    </body></html>`;
+  }
+
   const s = computeStats(session);
 
   const majorThreatsHtml = Object.entries(s.typeCounts)
@@ -496,7 +510,38 @@ export function generateExecutiveSummaryHtml(session: ExportSession, hash?: stri
   }
 
 
-// ─── CVE Similarity Section ───────────────────────────────────────────────────
+// ----------------------------------------------------
+function renderCveSpecificDetails(session: ExportSession, lbl: typeof L.th, sectionNum: number): string {
+  if (!session.dataset || session.dataset.length === 0) return '';
+  const cvesHtml = session.dataset.map((cve: any) => `
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+        <div style="font-weight:700; color:#1e293b; font-size:16px;">${cve.id || cve.name || 'Unknown CVE'}</div>
+        <div style="font-weight:700; color:${sevColor((cve.severity || 'unknown').toLowerCase())};">${cve.score || 'N/A'} CVSS</div>
+      </div>
+      <div style="font-size:13px; color:#475569; margin-bottom:12px; line-height: 1.5;">${cve.desc || cve.name || ''}</div>
+      ${cve.mitigations ? `
+      <div style="font-size:13px; color:#16a34a; margin-bottom:4px; font-weight:600;">Remediation & Mitigation</div>
+      <ul style="font-size:12px; color:#475569; padding-left:16px; margin-top:0; margin-bottom:12px;">
+        ${cve.mitigations.map((m: string) => `<li>${m}</li>`).join('')}
+      </ul>
+      ` : ''}
+      <div style="font-size:12px; color:#64748b; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+        <strong>Severity:</strong> <span style="text-transform: uppercase;">${cve.severity || 'Unknown'}</span>
+        ${cve.affected ? `<br/><strong>Affected:</strong> ${cve.affected.slice(0,5).join(', ')}${cve.affected.length > 5 ? '...' : ''}` : ''}
+      </div>
+    </div>
+  `).join('');
+  
+  return `
+    <div class="section">
+      <div class="section-title">${sectionNum}. CVE Intelligence</div>
+      ${cvesHtml}
+    </div>
+  `;
+}
+
+// ----------------------------------------------------
 function renderCveSimilarity(session: ExportSession, lbl: typeof L.th, sectionNum: number): string {
   const results = (session as any).cveSimilarityResults;
   if (!results || results.length === 0) return '';

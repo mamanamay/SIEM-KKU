@@ -22,6 +22,7 @@ import { AttacksController } from './attacks.controller';
 import { IngestController } from './ingest.controller';
 import { WazuhController } from './wazuh.controller'; // Legacy shim — forwards to /api/ingest
 import { LogService } from './log.service';
+import { NetworkMapService } from './network-map.service';
 import { AiService } from './ai.service';
 import { EventsGateway } from './events.gateway';
 import { CryptoService } from './crypto.service';
@@ -73,6 +74,7 @@ const typeOrmConfig: any = DATABASE_URL
   // WazuhController — Legacy compatibility shim (ยังคง /api/wazuh ไว้เพื่อ backward compat)
   controllers: [AuthController, AttacksController, IngestController, WazuhController, SettingsController, AuditController, ExportController, CVEController, WebhookController],
   providers: [
+    NetworkMapService,
     LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService, AuditService, ExportService, WebhookService
   ],
 })

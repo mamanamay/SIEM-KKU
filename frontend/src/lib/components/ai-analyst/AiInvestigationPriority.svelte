@@ -1,23 +1,24 @@
-﻿<script lang="ts">
+<script lang="ts">
+  import OrgBadge from '../OrgBadge.svelte';
   import { createEventDispatcher } from 'svelte';
   export let priorities: any[] = [];
   
   const dispatch = createEventDispatcher();
   
   function getBadgeClass(level: number) {
-    if (level === 1) return 'bg-red';
-    if (level === 2) return 'bg-orange';
-    return 'bg-yellow';
+    if (level === 1) return 'text-red';
+    if (level === 2) return 'text-orange';
+    return 'text-yellow';
   }
 </script>
 
 <div class="priority-card">
-  <div class="priority-header">
-    <i class="ti ti-target"></i> AI Investigation Priority
+  <div class="priority-header text-orange">
+    <i class="ti ti-target"></i> เป้าหมายสำคัญที่ควรเร่งตรวจสอบ (Investigation Priorities)
   </div>
-  <div class="priority-body">
+  <div class="priority-body custom-scrollbar">
     {#if priorities.length === 0}
-      <div class="empty">No priorities identified or AI analysis not run.</div>
+      <div class="empty">ไม่พบเป้าหมายสำคัญ หรือยังไม่ได้ประมวลผล (No priorities identified)</div>
     {:else}
       <div class="priority-list">
         {#each priorities as p}
@@ -26,7 +27,12 @@
               Priority {p.priorityLevel}
             </div>
             <div class="p-content">
-              <div class="p-entity">{p.entity}</div>
+              <div class="p-entity">
+                {p.entity}
+                {#if p.organization}
+                  <OrgBadge organization={p.organization} full={true} />
+                {/if}
+              </div>
               <div class="p-reason">{p.reason}</div>
               <div class="p-action"><strong>Action:</strong> {p.recommendedAction}</div>
             </div>
@@ -103,6 +109,18 @@
     font-weight: 700;
     font-size: 15px;
     color: var(--text-primary);
+  }
+  .org-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid rgba(59, 130, 246, 0.2);
   }
   .p-reason {
     font-size: 13px;

@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { onMount, afterUpdate } from 'svelte';
   
   export let messages: { role: string, content: string }[] = [];
@@ -21,39 +21,40 @@
   });
 </script>
 
-<div class="copilot-card">
-  <div class="copilot-header">
-    <div class="cp-title"><i class="ti ti-robot"></i> KKU AI Copilot</div>
-    <div class="cp-subtitle">Context-Aware Assistant</div>
+<div class="ai-card h-100">
+  <div class="card-hdr copilot-hdr">
+    <div class="cp-title"><i class="ti ti-robot"></i> ผู้ช่วยวิเคราะห์ AI (KKU AI Copilot)</div>
+    <div class="cp-subtitle">ผู้ช่วยอัจฉริยะ (Context-Aware Assistant)</div>
   </div>
-  
-  <div class="chat-area" bind:this={chatContainer}>
-    {#if messages.length === 0}
-      <div class="empty-chat">
-        <i class="ti ti-messages"></i>
-        <div>Ask AI to analyze specific IPs, summarize attacks, or investigate patterns.</div>
-        <div class="suggestions">
-          <button on:click={() => { inputValue = 'วิเคราะห์ SQL Injection วันนี้'; sendMessage(); }}>วิเคราะห์ SQL Injection วันนี้</button>
-          <button on:click={() => { inputValue = 'เหตุการณ์ใดควรตรวจสอบก่อน'; sendMessage(); }}>เหตุการณ์ใดควรตรวจสอบก่อน</button>
+  <div class="card-body" style="padding: 0; display:flex; flex-direction:column;">
+    <div class="chat-window custom-scrollbar" bind:this={chatContainer}>
+      {#if messages.length === 0}
+        <div class="chat-empty">
+          <i class="ti ti-messages"></i>
+          <div>สอบถาม AI เพื่อวิเคราะห์ IP, สรุปรูปแบบการโจมตี, หรือเจาะลึกข้อมูลต่างๆ</div>
+          <div class="suggested-queries">
+            <button on:click={() => { inputValue = 'วิเคราะห์ SQL Injection วันนี้'; sendMessage(); }}>วิเคราะห์ SQL Injection วันนี้</button>
+            <button on:click={() => { inputValue = 'เหตุการณ์ใดควรตรวจสอบก่อน'; sendMessage(); }}>เหตุการณ์ใดควรตรวจสอบก่อน</button>
+          </div>
         </div>
-      </div>
-    {:else}
-      {#each messages as msg}
-        <div class="msg {msg.role}">
-          <div class="msg-bubble">{@html msg.content.replace(/\n/g, '<br/>')}</div>
-        </div>
-      {/each}
-      {#if isTyping}
-        <div class="msg ai">
-          <div class="msg-bubble typing"><i class="ti ti-dots"></i> Thinking...</div>
-        </div>
+      {:else}
+        {#each messages as msg}
+          <div class="msg {msg.role}">
+            <div class="msg-bubble">{@html msg.content.replace(/\n/g, '<br/>')}</div>
+          </div>
+        {/each}
+        {#if isTyping}
+          <div class="msg assistant">
+            <div class="msg-bubble typing"><i class="ti ti-dots"></i> กำลังประมวลผล... (Thinking)</div>
+          </div>
+        {/if}
       {/if}
-    {/if}
-  </div>
+    </div>
   
-  <div class="chat-input">
-    <input type="text" placeholder="Ask AI Analyst..." bind:value={inputValue} on:keydown={e => e.key === 'Enter' && sendMessage()} />
-    <button on:click={sendMessage} disabled={!inputValue.trim()}><i class="ti ti-send"></i></button>
+    <div class="chat-input">
+      <input type="text" placeholder="สอบถามผู้ช่วย AI..." bind:value={inputValue} on:keydown={e => e.key === 'Enter' && sendMessage()} />
+      <button on:click={sendMessage} disabled={!inputValue.trim()}><i class="ti ti-send"></i></button>
+    </div>
   </div>
 </div>
 

@@ -1,4 +1,4 @@
-﻿<svelte:head>
+<svelte:head>
   <title>AI Daily Briefing - KKUSIEM</title>
 </svelte:head>
 
@@ -6,39 +6,98 @@
   import { onMount } from 'svelte';
   import { eventsStore } from '../../../stores/events';
   
-  // Import the 5 restored components
   import AiSecuritySituation from '../../../lib/components/ai-analyst/AiSecuritySituation.svelte';
   import AiInvestigationPriority from '../../../lib/components/ai-analyst/AiInvestigationPriority.svelte';
   import AiRecommendedActions from '../../../lib/components/ai-analyst/AiRecommendedActions.svelte';
   import AiAttackCorrelation from '../../../lib/components/ai-analyst/AiAttackCorrelation.svelte';
-  import { aiCopilotStore } from '../../../stores/aiCopilotStore';
+  import AiTargetedOrganizations from '../../../lib/components/ai-analyst/AiTargetedOrganizations.svelte';
   
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
 
   $: events = $eventsStore;
+
+  let aiSummary = "กำลังประมวลผลข้อมูลสถานการณ์สรุป... (Generating AI Briefing...)";
+  let riskLevel = "Low";
+  let confidence = "High";
+  let generatedAt = new Date().toLocaleString();
+  let dataRange = "ย้อนหลัง 24 ชั่วโมง";
   
-  // Dummy data just for rendering the UI identically to the screenshot
-  const aiSummary = "AI Assessment: ตรวจพบเหตุการณ์ผิดปกติ 14 รายการ จาก 6 IPs...";
-  const riskLevel = "High";
-  const confidence = "High";
-  const generatedAt = "8/31/2026, 11:11:26 AM";
-  const dataRange = "Last 24 Hours";
-  
-  const priorities = [
-    { priority: 1, ip: '192.168.1.105', description: 'Repeated attacks', action: 'Check logs' }
-  ];
-  
-  const recommendations = [
-    { type: 'immediate', title: 'Immediate Actions', actions: ['Block IP'] },
-    { type: 'investigation', title: 'Investigation', actions: ['Check DB logs'] },
-    { type: 'preventive', title: 'Preventive', actions: ['Update WAF'] }
-  ];
-  
-  const campaigns = [
-    { name: 'Possible Campaign 1', description: 'Same subnet', confidence: 'Medium' }
-  ];
-  
+  let priorities = [];
+  let recommendations: any = { immediate: [], investigation: [], preventive: [] };
+  let campaigns = [];
+  let topOrganizations = [];
+  let loading = true;
+
+  async function generateBriefing() {
+    loading = true;
+    const now = new Date();
+    generatedAt = now.toLocaleString();
+    
+    const total = events.length;
+    let critical = 0, high = 0, medium = 0;
+    const ips = new Set();
+    const countries = new Set();
+    const typeCount = {};
+    const countryCount = {};
+    const ipCount = {};
+    const orgCount = {};
+    
+    events.forEach(e => {
+      if (e.severity === 'critical') critical++;
+      if (e.severity === 'high') high++;
+      if (e.severity === 'medium') medium++;
+      ips.add(e.ip);
+      const c = e.country || 'Unknown';
+      countries.add(c);
+      
+      typeCount[e.type] = (typeCount[e.type] || 0) + 1;
+      countryCount[c] = (countryCount[c] || 0) + 1;
+      ipCount[e.ip] = (ipCount[e.ip] || 0) + 1;
+      
+      const org = e.organization || e.country || 'Unknown';
+      if (org !== 'Unknown') {
+        orgCount[org] = (orgCount[org] || 0) + 1;
+      }
+    });
+
+    const topTypes = Object.entries(typeCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,3).map(x => ({type: x[0], count: x[1]}));
+    const topCountries = Object.entries(countryCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,3).map(x => ({country: x[0], count: x[1]}));
+    const topIPs = Object.entries(ipCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,5).map(x => ({ip: x[0], count: x[1]}));
+    topOrganizations = Object.entries(orgCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,5).map(x => ({org: x[0], count: x[1], percentage: (Number(x[1]) / total) * 100}));
+
+    try {
+      const res = await fetch('/api/attacks/ai-briefing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          total, critical, high, medium,
+          uniqueIPs: ips.size, uniqueCountries: countries.size,
+          topTypes, topCountries, topIPs, topOrganizations,
+          date: now.toLocaleDateString()
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        aiSummary = data.briefing || "No summary returned.";
+        if (data.riskLevel) riskLevel = data.riskLevel;
+        if (data.confidence) confidence = data.confidence;
+        if (data.priorities) priorities = data.priorities;
+        if (data.recommendations) recommendations = data.recommendations;
+        if (data.campaigns) campaigns = data.campaigns;
+      } else {
+        aiSummary = "Error fetching AI briefing from backend.";
+      }
+    } catch (e) {
+      aiSummary = "Network error while connecting to backend for AI briefing.";
+    }
+    loading = false;
+  }
+
+  onMount(() => {
+    // Generate right away based on current events
+    generateBriefing();
+  });
 </script>
 
 <div class="page-container">
@@ -53,44 +112,35 @@
     
     <div class="ai-dashboard-grid">
       <div class="grid-full">
-        <AiSecuritySituation 
+                <AiSecuritySituation 
           summary={aiSummary} 
           {riskLevel} 
           {confidence} 
-          {generatedAt} 
-          {dataRange} 
-          on:regenerate={() => {}} 
+          {generatedAt}
+          {dataRange}
+          isGenerating={loading}
+          on:regenerate={generateBriefing}
         />
       </div>
       
       <div class="grid-half">
-        <AiInvestigationPriority priorities={priorities} />
+        <AiInvestigationPriority priorities={priorities} on:investigate={(e) => window.location.href = '/dashboard/hunting?ip=' + e.detail} />
       </div>
       
       <div class="grid-half">
-        <AiRecommendedActions {recommendations} />
+        <AiTargetedOrganizations organizations={topOrganizations} />
       </div>
       
       <div class="grid-half">
-        <AiAttackCorrelation {campaigns} />
+        <AiRecommendedActions actions={recommendations} />
       </div>
       
       <div class="grid-half">
-        <div class="copilot-card">
-          <div class="card-header">
-            <h3><i class="ti ti-robot"></i> Advanced AI Copilot</h3>
-          </div>
-          <div class="card-body" style="text-align: center; padding: 40px 20px;">
-            <i class="ti ti-robot" style="font-size: 3rem; color: #3b82f6; margin-bottom: 16px; display:block;"></i>
-            <p style="color: #475569; margin-bottom: 24px;">AI Copilot is now a global feature. You can access it from anywhere in the system to analyze logs, investigate IPs, and correlate events.</p>
-            <button class="btn btn-ai" on:click={() => aiCopilotStore.openPanel()} style="background: #3b82f6; color: var(--text-primary); border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer;">
-              Open Global AI Copilot
-            </button>
-          </div>
-        </div>
-      </div>
+        <AiAttackCorrelation correlations={campaigns} />
+            </div>
     </div>
   </div>
+</div>
 
 <style>
   .page-container {
@@ -179,5 +229,3 @@
     color: var(--text-primary);
   }
 </style>
-
-</div>

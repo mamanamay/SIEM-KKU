@@ -1,4 +1,4 @@
-﻿import { Controller, Post, Body, Res, Get, Param, Delete, UseGuards, HttpException, HttpStatus, Request, Query } from "@nestjs/common";
+import { Controller, Post, Body, Res, Get, Param, Delete, UseGuards, HttpException, HttpStatus, Request, Query } from "@nestjs/common";
 import type { Response } from "express";
 import { ExportService } from "./export.service";
 import { AiService } from "./ai.service";
@@ -222,26 +222,25 @@ export class ExportController {
   @Get("history")
   @UseGuards(AuthGuard)
   async getHistory(@Request() req: any) {
-    if (req.user?.role === 'admin') {
-      return await this.exportService.getHistory();
-    } else {
-      return await this.exportService.getHistoryForUser(req.user?.username || '');
-    }
+    // Everyone can view all reports regardless of role
+    return await this.exportService.getHistory();
   }
 
-  // ── DOWNLOAD FILE ─────────────────────────────────────────────────────────
+  // ■ DOWNLOAD FILE ■
   @Get("download/:id")
   async downloadReport(@Param("id") id: number, @Res() res: Response, @Query("inline") inline?: string) {
     await this.exportService.downloadReport(id, res, inline === "true");
   }
 
-  // ── DELETE REPORT ─────────────────────────────────────────────────────────
+  // ■ DELETE REPORT ■
   @Delete(":id")
   @UseGuards(AuthGuard)
   async deleteReport(@Param("id") id: number, @Request() req: any) {
     const report = await this.reportRepository.findOne({ where: { id: +id } });
     if (!report) throw new HttpException("Report not found", HttpStatus.NOT_FOUND);
-    if (req.user?.role !== "admin" && report.exportedBy !== req.user?.username) {
+    
+    // Only the owner or the user with username 'admin' can delete
+    if (req.user?.username !== "admin" && report.exportedBy !== req.user?.username) {
       throw new HttpException("Forbidden", HttpStatus.FORBIDDEN);
     }
     await this.reportRepository.remove(report);

@@ -1,94 +1,56 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+      import { onMount } from "svelte";
   import { eventsStore } from "../../../stores/events";
-  import ReportWizard from "../../components/ReportWizard.svelte";
   import ReportPreviewDrawer from "./ReportPreviewDrawer.svelte";
-  import { downloadPDF, downloadHTML, downloadDOCX } from "../../utils/export";
-  import { formatEventTime } from "../../formatTime";
+  import { showNotification } from "../../../stores/notificationStore";
+  import { openReportWizard } from "../../../stores/globalReportStore";
 
-  let showWizard = false;
   let previewReport: any = null;
   let showPreview = false;
-
-  // Load history from localStorage
-  function loadHistory() {
-    try {
-      const stored = localStorage.getItem("kkusiem_report_history");
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return [
-      { id: 1, name: "Weekly Executive Summary", date: "2026-08-01 08:00", format: "PDF", author: "System", previewHtml: null },
-      { id: 2, name: "Critical Incident Report (July)", date: "2026-07-31 16:30", format: "DOCX", author: "Admin", previewHtml: null },
-      { id: 3, name: "Compliance Audit Log", date: "2026-07-28 09:15", format: "HTML", author: "Security Officer", previewHtml: null }
-    ];
-  }
-
   let recentReports: any[] = [];
+  let loadingHistory = true;
 
-  onMount(() => {
-    recentReports = loadHistory();
+  onMount(async () => {
+    await fetchHistory();
   });
+
+  async function fetchHistory() {
+    try {
+      loadingHistory = true;
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/export/history', {
+        headers: { 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        recentReports = data.map((r: any) => ({
+          id: r.id,
+          name: r.title,
+          date: new Date(r.generatedAt).toLocaleString("th-TH"),
+          format: (r.format || "").toUpperCase(),
+          author: r.author || r.exportedBy,
+          previewHtml: r.summary,
+        }));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      loadingHistory = false;
+    }
+  }
 
   function openPreview(report: any) {
     previewReport = report;
     showPreview = true;
   }
 
-  function handleGenerateReport(e: CustomEvent) {
-    const { dateRange, minSeverity, format } = e.detail;
-    let filtered = $eventsStore;
-
-    if (minSeverity !== "all") {
-      const levels = { low: 1, medium: 2, high: 3, critical: 4 };
-      const minLevel = levels[minSeverity as keyof typeof levels] || 1;
-      filtered = filtered.filter((ev) => {
-        const evLevel = levels[(ev.severity || "low") as keyof typeof levels] || 1;
-        return evLevel >= minLevel;
-      });
-    }
-
-    if (dateRange !== "all") {
-      const now = Date.now();
-      const limits: Record<string, number> = { "24h": 86400000, "7d": 604800000, "30d": 2592000000 };
-      const limit = now - (limits[dateRange] || 0);
-      filtered = filtered.filter((ev) => {
-        const t = ev.time || ev.createdAt || ev.timestamp;
-        return t ? new Date(t).getTime() >= limit : true;
-      });
-    }
-
-    const exportData = filtered.map((e) => ({
-      Time: formatEventTime(e.time || e.createdAt || e.timestamp),
-      "Source IP": e.ip,
-      Country: e.country || "Unknown",
-      "Event Type": e.type,
-      Severity: e.severity,
-      Status: e.status || "NEW",
-    }));
-    const exportCols = ["Time", "Source IP", "Country", "Event Type", "Severity", "Status"];
-    const title = `Security Report - ${new Date().toLocaleDateString()}`;
-    const filename = `kkusiem_report_${Date.now()}`;
-
-    if (format === "pdf") downloadPDF(exportData, exportCols, `${filename}.pdf`, title);
-    else if (format === "html") downloadHTML(exportData, exportCols, `${filename}.html`, title);
-    else if (format === "docx") downloadDOCX(exportData, exportCols, `${filename}.doc`, title);
-
-    const newReport = {
-      id: Date.now(),
-      name: `Generated Report (${format.toUpperCase()})`,
-      date: new Date().toLocaleString("th-TH"),
-      format: format.toUpperCase(),
-      author: localStorage.getItem("username") || "You",
-      previewHtml: null,
-    };
-    recentReports = [newReport, ...recentReports];
-    saveHistory();
-  }
-
-  function saveHistory() {
-    try {
-      localStorage.setItem("kkusiem_report_history", JSON.stringify(recentReports.slice(0, 50)));
-    } catch {}
+  function handleNewReport() {
+    openReportWizard(
+      { pageType: 'general', reportTitle: 'Security Summary Report', allowExecOnly: true },
+      {},
+      $eventsStore,
+      ['Time', 'Source IP', 'Country', 'Event Type', 'Severity', 'Status']
+    );
   }
 
   function formatBadgeColor(fmt: string) {
@@ -111,7 +73,7 @@
       </div>
     </div>
     <div class="page-header-right">
-      <button class="btn-primary" on:click={() => (showWizard = true)}>
+      <button class="btn-primary" on:click={handleNewReport}>
         <i class="ti ti-plus"></i> New Report
       </button>
     </div>
@@ -156,9 +118,6 @@
                   >
                     <i class="ti ti-eye"></i>
                   </button>
-                  <button class="btn-ghost" title="Download Again">
-                    <i class="ti ti-download"></i>
-                  </button>
                 </div>
               </td>
             </tr>
@@ -177,7 +136,7 @@
   </div>
 </div>
 
-<ReportWizard bind:show={showWizard} on:generate={handleGenerateReport} />
+
 <ReportPreviewDrawer bind:show={showPreview} report={previewReport} />
 
 <style>
@@ -202,3 +161,5 @@
   }
   .btn-primary:hover { filter: brightness(1.1); box-shadow: 0 0 10px rgba(0,212,255,0.3); }
 </style>
+
+

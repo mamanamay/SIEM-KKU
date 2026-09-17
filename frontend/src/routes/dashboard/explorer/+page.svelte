@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { eventsStore } from '../../../stores/events';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
+  import OrgBadge from '../../../lib/components/OrgBadge.svelte';
   let searchQuery = '';
   let dateRange = 'last24h';
   let isSearching = false;
@@ -24,10 +25,10 @@
       const q = searchQuery.toLowerCase();
       searchResults = $eventsStore.filter((e: any) => {
         if (!q) return true;
-        return (e.ip || '').toLowerCase().includes(q) || 
-               (e.severity || '').toLowerCase().includes(q) ||
-               (e.type || '').toLowerCase().includes(q) ||
-               (e.payload || '').toLowerCase().includes(q);
+        return String(e.ip || '').toLowerCase().includes(q) || 
+               String(e.severity || '').toLowerCase().includes(q) ||
+               String(e.type || '').toLowerCase().includes(q) ||
+               String(typeof e.payload === "string" ? e.payload : JSON.stringify(e.payload || "")).toLowerCase().includes(q);
       });
       executionTime = Math.round(performance.now() - start);
       isSearching = false;
@@ -84,7 +85,7 @@
         <tr>
           <th style="width: 150px;">Time</th>
           <th style="width: 120px;">Severity</th>
-          <th style="width: 140px;">Source IP</th>
+          <th style="width: 180px;">Source IP / Org</th>
           <th style="width: 180px;">Event Type</th>
           <th>Raw Payload</th>
         </tr>
@@ -94,9 +95,13 @@
           <tr>
             <td class="col-time">{new Date(row.time || row.createdAt).toLocaleString('en-GB')}</td>
             <td>
-              <span class="badge {row.severity}">{row.severity?.toUpperCase()}</span>
+              <span class="badge {row.severity}">{String(row.severity || '').toUpperCase()}</span>
             </td>
-              <td class="col-ip">{row.ip}</td>
+              <td class="col-ip">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  {row.ip} <OrgBadge organization={row.organization} country={row.country} />
+                </div>
+              </td>
               <td class="col-type">
                 {row.type}
                 {#if row.cve}

@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { onMount, tick } from 'svelte';
   import { aiCopilotStore } from '../../../stores/aiCopilotStore';
   import { eventsStore, roleStore } from '../../../stores/events';
@@ -30,12 +30,18 @@
     createNewInvestigation();
   }
 
+  let showConfirmModal = false;
+
   function createNewInvestigation() {
     if (activeSession && activeSession.messages.length > 0) {
-      const confirmNew = window.confirm("Are you sure you want to archive the current investigation and start a new one?");
-      if (!confirmNew) return;
+      showConfirmModal = true;
+      return;
     }
-    
+    executeNewInvestigation();
+  }
+
+  function executeNewInvestigation() {
+    showConfirmModal = false;
     // Auto-detect context with Role
     const context = SecurityContextBuilder.build('UNKNOWN', currentPage, $eventsStore, '', $roleStore);
     aiCopilotStore.startNewSession(context, 'local');
@@ -387,3 +393,19 @@
     </div>
   </div>
 </div>
+
+{#if showConfirmModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="modal-backdrop" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); display:flex; justify-content:center; align-items:center; z-index:10000;">
+    <div style="background:var(--bg-panel, #ffffff); color:var(--text-primary, #1e293b); padding:24px; border-radius:12px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.5); border: 1px solid var(--border, #e2e8f0); max-width: 320px; width: 100%;" on:click|stopPropagation>
+      <div style="font-size: 32px; color: #3b82f6; margin-bottom: 12px;"><i class="ti ti-question-mark"></i></div>
+      <h3 style="margin:0 0 8px 0; font-size: 18px;">Start New Investigation?</h3>
+      <p style="margin:0 0 20px 0; font-size: 14px; color: var(--text-secondary); line-height: 1.5;">Are you sure you want to archive the current investigation and start a new one?</p>
+      <div style="display:flex; justify-content:center; gap: 12px;">
+        <button class="btn btn-outline" on:click={() => showConfirmModal = false} style="border: 1px solid var(--border); padding: 8px 16px; border-radius: 6px; cursor: pointer; color: var(--text-primary); background: transparent;">Cancel</button>
+        <button on:click={executeNewInvestigation} style="background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;">OK</button>
+      </div>
+    </div>
+  </div>
+{/if}

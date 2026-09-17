@@ -256,6 +256,7 @@ export class AttacksController {
       topTypes: Array<{type: string; count: number}>;
       topCountries: Array<{country: string; count: number}>;
       topIPs: Array<{ip: string; count: number}>;
+      topOrganizations?: Array<{org: string; count: number}>;
       date: string;
     },
     @Headers('x-gemini-key') headerKey?: string
@@ -264,15 +265,38 @@ export class AttacksController {
     const generateRuleBasedBriefing = () => {
       const topType = body.topTypes?.[0]?.type || 'SSH Brute Force';
       const topCountry = body.topCountries?.[0]?.country || 'Unknown';
+      const isCritical = body.critical > 5;
       return {
         briefing: `📋 สรุปภัยคุกคามประจำวัน ${body.date}\n\n` +
           `🔴 ตรวจพบเหตุการณ์ความปลอดภัยทั้งหมด ${body.total} รายการ ` +
           `แบ่งเป็น Critical ${body.critical} รายการ High ${body.high} รายการ และ Medium ${body.medium} รายการ\n\n` +
           `🌍 การโจมตีมาจาก ${body.uniqueIPs} IP ที่ไม่ซ้ำกัน ใน ${body.uniqueCountries} ประเทศ ` +
           `ประเทศที่โจมตีมากที่สุดคือ ${topCountry}\n\n` +
-          `⚔️ ประเภทการโจมตีที่พบบ่อยที่สุดคือ "${topType}" ` +
-          `${body.critical > 5 ? '⚠️ ระดับความเสี่ยงสูง — แนะนำตรวจสอบ Critical alerts ทันที' : '✅ สถานการณ์โดยรวมอยู่ในระดับปกติ'}\n\n` +
-          `💡 คำแนะนำ: ตรวจสอบ IP ที่โจมตีซ้ำและพิจารณา block IP จาก ${topCountry} หากพบรูปแบบผิดปกติ`,
+          `⚔️ ประเภทการโจมตีที่พบบ่อยที่สุดคือ "${topType}"\n\n` +
+          `💡 คำแนะนำ: ตรวจสอบ IP ที่โจมตีซ้ำและพิจารณา block IP จาก ${topCountry}`,
+        riskLevel: isCritical ? 'High' : 'Low',
+        confidence: 'High',
+        priorities: (body.topIPs || []).slice(0, 3).map((ipData, i) => ({
+          priorityLevel: i + 1,
+          entity: ipData.ip,
+          organization: 'Unknown',
+          reason: `โจมตีซ้ำซาก (${ipData.count} ครั้ง)`, 
+          recommendedAction: 'บล็อก IP นี้ที่ Firewall'
+        })),
+        recommendations: {
+          immediate: isCritical ? ['บล็อก IP ที่โจมตีสูงสุดโดยอัตโนมัติ', 'ตรวจสอบช่องโหว่ระดับ Critical ทันที'] : [],
+          investigation: isCritical ? ['กักกันเครื่อง (Isolate) ที่ได้รับผลกระทบ'] : ['ตรวจสอบ Log ระดับ Medium ที่น่าสงสัย'],
+          preventive: ['อัปเดต WAF Rules', 'พิจารณาแบ่งแยกโซนเครือข่าย']
+        },
+        campaigns: (body.topTypes && body.topCountries) ? [{
+          campaignName: `รูปแบบ ${topType}`,
+          reason: `การโจมตีอย่างเป็นระบบ ส่วนใหญ่มาจาก ${topCountry}`,
+          confidence: isCritical ? 'สูง (High)' : 'ปานกลาง (Medium)',
+          timeline: [
+            { time: 'T-2h', type: topType, ip: body.topIPs?.[0]?.ip || 'Unknown', desc: 'เริ่มสแกนสำรวจเครือข่าย' },
+            { time: 'T-10m', type: topType, ip: body.topIPs?.[0]?.ip || 'Unknown', desc: 'พยายามเจาะระบบ' }
+          ]
+        }] : [],
         mode: 'rule-based'
       };
     };
@@ -281,25 +305,30 @@ export class AttacksController {
       return generateRuleBasedBriefing();
     }
 
-    // Build Gemini prompt
     const topTypesStr = (body.topTypes || []).slice(0,5).map(t => `${t.type}(${t.count})`).join(', ');
     const topCountriesStr = (body.topCountries || []).slice(0,5).map(c => `${c.country}(${c.count})`).join(', ');
-    const topIPsStr = (body.topIPs || []).slice(0,3).map(i => `${i.ip}(${i.count}ครั้ง)`).join(', ');
+    const topIPsStr = (body.topIPs || []).slice(0,3).map(i => `${i.ip}(${i.count})`).join(', ');
+    const topOrgsStr = (body.topOrganizations || []).slice(0,3).map(o => `${o.org}(${o.count})`).join(', ');
 
-    const prompt = `คุณคือ SOC Analyst อาวุโสของมหาวิทยาลัยขอนแก่น สรุปสถานการณ์ความปลอดภัยประจำวันเป็นภาษาไทย กระชับ เข้าใจง่าย ใช้ emoji เหมาะสม
+    const prompt = `คุณคือ SOC Analyst อาวุโส สรุปสถานการณ์ประจำวันเป็นภาษาไทย และตอบกลับเป็น JSON FORMAT เท่านั้น โดยมีโครงสร้างดังนี้:
+{
+  "briefing": "สรุปภาพรวม 1-2 ย่อหน้า ใช้ emoji ประกอบ",
+  "riskLevel": "Low หรือ Medium หรือ High หรือ Critical",
+  "confidence": "Low หรือ Medium หรือ High",
+  "priorities": [ { "priorityLevel": 1, "entity": "IP หรือชื่อองค์กร", "reason": "เหตุผลสั้นๆ", "recommendedAction": "สิ่งที่ควรทำ" } ],
+  "recommendations": { "immediate": ["ข้อ1", "ข้อ2"], "investigation": ["ข้อ1"], "preventive": ["ข้อ1"] },
+  "campaigns": [ { "campaignName": "ชื่อแคมเปญ", "reason": "เหตุผลสั้นๆ", "confidence": "สูง/กลาง/ต่ำ", "timeline": [ { "time": "T-1h", "type": "SSH Brute Force", "ip": "1.1.1.1", "desc": "รายละเอียดสั้นๆ" } ] } ]
+}
 
 ข้อมูลวันที่ ${body.date}:
 - เหตุการณ์ทั้งหมด: ${body.total} (Critical: ${body.critical}, High: ${body.high}, Medium: ${body.medium})
 - แหล่งโจมตี: ${body.uniqueIPs} IP จาก ${body.uniqueCountries} ประเทศ
-- ประเภทโจมตีหลัก: ${topTypesStr}
-- ประเทศผู้โจมตี: ${topCountriesStr}
-- IP โจมตีมากที่สุด: ${topIPsStr}
+- ประเภทการโจมตีหลัก: ${topTypesStr}
+- ประเทศต้นทางหลัก: ${topCountriesStr}
+- IP โจมตีสูงสุด: ${topIPsStr}
+- เป้าหมายที่ถูกโจมตี: ${topOrgsStr || 'ไม่ระบุ'}
 
-สรุปเป็น 4 ส่วนสั้นๆ:
-1. สรุปภาพรวม (1-2 ประโยค)
-2. ภัยคุกคามหลักที่น่ากังวล
-3. ประเมินระดับความเสี่ยง (ต่ำ/ปานกลาง/สูง/วิกฤต)
-4. คำแนะนำเร่งด่วน (2-3 ข้อ)`;
+สร้าง JSON วิเคราะห์ข้อมูลข้างต้นอย่างสมจริง ห้ามมีข้อความอื่นนอกเหนือจาก JSON.`;
 
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
@@ -312,14 +341,15 @@ export class AttacksController {
       const data = await res.json() as any;
       if (data.error) throw new Error(data.error.message);
       
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) return { briefing: text, mode: 'gemini' };
+      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      text = text.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+      const parsed = JSON.parse(text);
+      parsed.mode = 'gemini';
+      return parsed;
     } catch (e) {
       console.error('[AI Briefing] Gemini call failed:', e);
       return generateRuleBasedBriefing();
     }
-
-    return generateRuleBasedBriefing();
   }
 
   // ── AI Full Report Generator (Rule-based) ─────────────────────────────────

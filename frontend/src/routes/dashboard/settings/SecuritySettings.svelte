@@ -242,8 +242,8 @@
               inputmode="numeric" 
               pattern="[0-9]*" 
               style="text-align: center; font-size: 28px; letter-spacing: 12px; font-weight: bold; width: 100%; padding: 16px; background: var(--bg-body); border: 2px solid var(--border-color); border-radius: 8px; color: var(--text-base); outline: none; transition: border-color 0.2s;" 
-              on:focus={(e) => (e.target as HTMLInputElement).style.borderColor = '#3b82f6'}
-              on:blur={(e) => (e.target as HTMLInputElement).style.borderColor = 'var(--border-color)'}
+              on:focus={function(e) { this.style.borderColor = '#3b82f6'; }}
+              on:blur={function(e) { this.style.borderColor = 'var(--border-color)'; }}
             />
           </div>
           

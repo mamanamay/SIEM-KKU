@@ -73,7 +73,7 @@
     if (!r['Faculty/Dept'] && r['Faculty/Dept'] !== '') return false;
     
     // Search IP/Route
-    if (searchBottomIP && (!r.Route || !r.Route.toLowerCase().includes(searchBottomIP.toLowerCase()))) return false;
+    if (searchBottomIP && (!r.Route || (!r.Route.toLowerCase().includes(searchBottomIP.toLowerCase()) && !isIpInCidr(searchBottomIP, r.Route)))) return false;
 
     // Filter Type
     const rType = r.Type || r.type || 'LAN';
@@ -386,7 +386,7 @@
             <td>
               <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
                 {#if hasMatch(record.Route)}
-                  <a href="/dashboard/investigate?ip={record.Route.split('/')[0].split('.').slice(0,3).join('.')}" 
+                  <a href="/dashboard/hunting?ip={encodeURIComponent(record.Route)}" 
                      class="badge" style="background:rgba(239,68,68,0.15); color:#ef4444; border-color:#ef4444; text-decoration:none; margin-right:8px;">
                     <i class="ti ti-target"></i> ALERT
                   </a>

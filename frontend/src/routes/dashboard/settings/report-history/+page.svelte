@@ -1,13 +1,15 @@
 <script>
   import { onMount } from 'svelte';
   import { showNotification } from '../../../../stores/notificationStore';
+  import { roleStore, usernameStore } from '../../../../stores/events';
   
   let reports = [];
   let loading = true;
   let previewHtml = null;
   let previewId = null;
   
-  onMount(async () => {
+  async function loadReports() {
+    loading = true;
     try {
       const res = await fetch('/api/export/history', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
       if (res.ok) {
@@ -18,34 +20,46 @@
     } finally {
       loading = false;
     }
+  }
+
+  onMount(() => {
+    loadReports();
   });
 
   let selectedFilter = 'All';
   $: filteredReports = reports.filter(r => selectedFilter === 'All' || (r.title && r.title.includes(selectedFilter)));
 
   
-  async function confirmDeleteReport(id) {
-    reportToDelete = id;
-    showDeleteModal = true;
+  let reportToDelete = null;
+
+  function promptDelete(report) {
+    if ($roleStore !== 'admin' && report.exportedBy !== $usernameStore) {
+      showNotification('warning', 'Permission Denied', 'คุณสามารถลบได้เฉพาะรายงานของคุณเองเท่านั้น');
+      return;
+    }
+    reportToDelete = report;
   }
 
-  async function executeDeleteReport() {
+  async function confirmDelete() {
     if (!reportToDelete) return;
+    const id = reportToDelete.id;
+    
     try {
-      const res = await fetch(`/api/export/${reportToDelete}`, {
+      const res = await fetch(`/api/export/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       if (res.ok) {
-        showNotification('success', 'Report deleted successfully');
+        showNotification('success', 'Success', 'Report deleted successfully');
         loadReports();
+      } else if (res.status === 403) {
+        showNotification('error', 'Error', 'คุณสามารถลบได้เฉพาะรายงานของคุณเองเท่านั้น (ยกเว้นแอดมิน)');
       } else {
-        showNotification('error', 'Failed to delete report');
+        showNotification('error', 'Error', 'Failed to delete report');
       }
     } catch {
-      showNotification('error', 'Error deleting report');
+      showNotification('error', 'Error', 'Error deleting report');
     } finally {
-      showDeleteModal = false;
       reportToDelete = null;
     }
   }
@@ -122,7 +136,7 @@
               <td>
   <div style="display: flex; gap: 8px;">
     <button class="btn-sm" on:click={() => viewPreview(report.id)}><i class="ti ti-eye"></i> Preview</button>
-    <button class="btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05);" on:click={() => confirmDeleteReport(report.id)}><i class="ti ti-trash"></i> Delete</button>
+    <button class="btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05); {($roleStore !== 'admin' && report.exportedBy !== $usernameStore) ? 'opacity: 0.5; cursor: not-allowed;' : ''}" on:click={() => promptDelete(report)}><i class="ti ti-trash"></i> Delete</button>
   </div>
 </td>
             </tr>
@@ -132,6 +146,25 @@
     {/if}
   </div>
 </div>
+
+{#if reportToDelete}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="modal-backdrop" on:click={() => reportToDelete = null}>
+    <div class="modal-content" style="max-width: 400px; height: auto;" on:click|stopPropagation>
+      <div class="modal-header" style="border-bottom: none; padding-bottom: 0;">
+        <h3 style="color: var(--text-primary);"><i class="ti ti-alert-triangle" style="color: #ef4444; font-size: 24px;"></i> Delete Report</h3>
+      </div>
+      <div class="modal-body" style="padding: 16px 24px; font-size: 15px; color: var(--text-secondary);">
+        Are you sure you want to delete the report <strong>{reportToDelete.title}</strong>? This action cannot be undone.
+      </div>
+      <div class="modal-header" style="justify-content: flex-end; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border); border-bottom: none; background: var(--bg-primary);">
+        <button class="btn-sm" on:click={() => reportToDelete = null}>Cancel</button>
+        <button class="btn-primary" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;" on:click={confirmDelete}>Yes, Delete</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if previewHtml}
   <!-- svelte-ignore a11y-click-events-have-key-events -->

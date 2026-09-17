@@ -43,7 +43,19 @@
             return;
         }
         if (newPassword !== confirmPassword) {
-            showNotification('error', 'Error', 'New passwords do not match');
+            showNotification('error', 'Error', 'รหัสผ่านใหม่ไม่ตรงกัน');
+            return;
+        }
+        if (newPassword.length < 12) {
+            showNotification('error', 'Error', 'รหัสผ่านใหม่ต้องมีความยาวขั้นต่ำ 12 ตัวอักษร');
+            return;
+        }
+        if (user && user.username && newPassword.toLowerCase().includes(user.username.toLowerCase())) {
+            showNotification('error', 'Error', 'รหัสผ่านใหม่ต้องไม่ใกล้เคียงกับชื่อผู้ใช้งาน (username) มากเกินไป');
+            return;
+        }
+        if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+            showNotification('error', 'Error', 'รหัสผ่านใหม่ต้องประกอบด้วยตัวพิมพ์ใหญ่ พิมพ์เล็ก และตัวเลข');
             return;
         }
 
