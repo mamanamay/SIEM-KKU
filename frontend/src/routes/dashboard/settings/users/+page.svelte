@@ -1,6 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { showNotification } from '../../../../stores/notificationStore';
+    import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 
     let users = [];
     let loading = true;
@@ -124,7 +125,7 @@
             showNotification('error', 'Restricted', 'Cannot delete the primary admin account');
             return;
         }
-        promptConfirm('ยืนยันการลบบัญชีผู้ใช้', `คุณแน่ใจหรือไม่ว่าต้องการลบบัญชี "${username}"? การกระทำนี้ไม่สามารถย้อนกลับได้`, 'ti-trash', async () => {
+        promptConfirm('ยืนยันการลบผู้ใช้งาน', `คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้งาน "${username}"? การกระทำนี้ไม่สามารถกู้คืนได้`, 'ti-trash', async () => {
             try {
                 const res = await fetch(`/api/settings/users/${id}`, {
                     method: 'DELETE',
@@ -139,7 +140,7 @@
             } catch (err) {
                 showNotification('error', 'Error', 'Network error');
             }
-        });
+        }, '#ef4444');
     }
 
     async function submitResetPassword() {
@@ -197,12 +198,14 @@
     let confirmMessage = '';
     let confirmIcon = 'ti-question-mark';
     let confirmAction = null;
+    let confirmColor = '#3b82f6';
 
-    function promptConfirm(title, message, icon, actionFn) {
+    function promptConfirm(title, message, icon, actionFn, color = '#3b82f6') {
         confirmTitle = title;
         confirmMessage = message;
         confirmIcon = icon;
         confirmAction = actionFn;
+        confirmColor = color;
         showConfirmModal = true;
     }
 
@@ -212,12 +215,12 @@
     }
 
     async function resetUser2fa() {
-        promptConfirm('Reset 2FA Device?', 'This will disable 2FA for this user and require them to pair a new device on next login. Are you sure?', 'ti-shield-x', async () => {
+        promptConfirm('รีเซ็ตอุปกรณ์ 2FA?', 'การกระทำนี้จะปิดใช้งาน 2FA สำหรับผู้ใช้นี้ และจะต้องสแกนเชื่อมต่ออุปกรณ์ใหม่เมื่อเข้าสู่ระบบครั้งถัดไป คุณแน่ใจหรือไม่?', 'ti-shield-x', async () => {
             // Mocking API call for now. In real app, call API to reset 2FA.
             newUser.is2faEnabled = false;
             newUser.require2fa = true; // Auto-enforce setup again
             showNotification('success', '2FA Reset', 'User 2FA device has been reset.');
-        });
+        }, '#ef4444');
     }
 </script>
 
@@ -423,19 +426,7 @@
         </div>
     {/if}
 
-    {#if showConfirmModal}
-        <div class="modal-backdrop">
-            <div class="confirm-modal">
-                <div class="cm-icon"><i class="{confirmIcon.startsWith('ti ') ? confirmIcon : 'ti ' + confirmIcon}"></i></div>
-                <h3>{confirmTitle}</h3>
-                <p>{confirmMessage}</p>
-                <div class="cm-actions">
-                    <button class="cancel-btn" on:click={() => showConfirmModal = false}>ยกเลิก</button>
-                    <button class="save-btn" on:click={executeConfirmAction} style="background:var(--danger, #ef4444);">ยืนยัน</button>
-                </div>
-            </div>
-        </div>
-    {/if}
+    <ConfirmModal bind:visible={showConfirmModal} title={confirmTitle} message={confirmMessage} icon={confirmIcon} confirmColor={confirmColor} iconColor={confirmColor} on:confirm={executeConfirmAction} on:cancel={() => showConfirmModal = false} />
 </div>
 
 <style>

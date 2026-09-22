@@ -1,5 +1,62 @@
 // Report Types — Export System v3
 
+// ─── AI Briefing Context (data from /api/attacks/ai-briefing) ─────────────────
+
+export interface AiBriefingPriority {
+  priorityLevel: number;
+  entity: string;
+  organization?: string;
+  reason: string;
+  recommendedAction: string;
+}
+
+export interface AiBriefingRecommendations {
+  immediate: string[];
+  investigation: string[];
+  preventive: string[];
+}
+
+export interface AiBriefingCampaignTimeline {
+  time: string;
+  type: string;
+  ip: string;
+  desc: string;
+}
+
+export interface AiBriefingCampaign {
+  campaignName: string;
+  confidence: string;
+  reason: string;
+  timeline: AiBriefingCampaignTimeline[];
+}
+
+export interface AiBriefingOrganization {
+  org: string;
+  count: number;
+  percentage: number;
+}
+
+export interface AiBriefingContext {
+  aiSummary: string;
+  riskLevel: string;
+  confidence: string;
+  generatedAt: string;
+  dataRange: string;
+  priorities: AiBriefingPriority[];
+  recommendations: AiBriefingRecommendations;
+  campaigns: AiBriefingCampaign[];
+  topOrganizations: AiBriefingOrganization[];
+  // Derived stats from events
+  total: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  uniqueIPs: number;
+  topTypes: { type: string; count: number }[];
+  topCountries: { country: string; count: number }[];
+}
+
 export interface ReportConfig {
   pageType: string;
   reportTitle: string;
@@ -167,6 +224,11 @@ export interface ExportSession {
   dataset: any[];
   config: ReportConfig | null;
   currentStep: number;
+
+  // AI Briefing Context (populated only when sourcePage === 'ai-briefing')
+  aiContext: AiBriefingContext | null;
+  // Sections selected in Step 2 for AI Briefing (instead of IP list)
+  selectedSections: string[];
 
   // Legacy
   dataModel: ReportDataModel | null;

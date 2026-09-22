@@ -48,11 +48,22 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     console.log(`[WS] ✅ Client connected: ${client.id}`);
 
-    // ส่งข้อมูลเดิมทั้งหมดให้ client ที่เพิ่ง connect (จัดเรียงเก่าไปใหม่ เพื่อให้ Frontend นำไปต่อท้ายได้ถูกต้อง)
+    // ส่งข้อมูลเดิมของวันนี้ทั้งหมดให้ client ที่เพิ่ง connect (จัดเรียงเก่าไปใหม่ เพื่อให้ Frontend นำไปต่อท้ายได้ถูกต้อง)
     try {
+      const now = new Date();
+      // Adjust to Thailand time (UTC+7)
+      const thaiTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      const todayStr = thaiTime.toISOString().split('T')[0];
+      
+      const startDate = new Date(`${todayStr}T00:00:00.000+07:00`);
+      const endDate = new Date(`${todayStr}T23:59:59.999+07:00`);
+
       const attacks = await this.attackRepository.find({
+        where: {
+          createdAt: require('typeorm').Between(startDate, endDate)
+        },
         order: { id: 'DESC' },
-        take: 500, // จำกัดไม่ให้ส่งมากเกินไป
+        take: 500
       });
       client.emit('initial_data', attacks.reverse());
     } catch (e) {

@@ -20,9 +20,10 @@ import axios from 'axios';
 @UseGuards(AuthGuard, RolesGuard)
 export class SettingsController {
   @Post('integrations/ai-proxy/models')
-  async getAiModels(@Body() body: { aiApiUrl?: string, aiKey?: string }) {
-    const config = await this.configRepo.findOne({ where: { id: 1 } });
-    const apiConfig = config && config.apiConfigJson ? JSON.parse(config.apiConfigJson) : {};
+  async getAiModels(@Body() body: { aiApiUrl?: string, aiKey?: string }, @Req() req: any) {
+    const user = await this.userRepository.findOne({ where: { id: req.user.sub } });
+    if (!user) throw new BadRequestException('User not found');
+    const apiConfig = user && user.apiConfigJson ? JSON.parse(user.apiConfigJson) : {};
     
     const apiUrl = (body.aiApiUrl || apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1').replace(/\/$/, '');
     let apiKey = body.aiKey;
@@ -79,13 +80,14 @@ export class SettingsController {
   }
 
 
-  @Roles('admin', 'analyst_l2', 'analyst', 'threat_hunter')
+  @Roles('admin', 'analyst_l2', 'analyst', 'threat_hunter', 'guest')
   @Post('integrations/ai-proxy/chat/completions')
   async aiProxyChat(@Body() body: any, @Req() req: any, @Res({ passthrough: true }) res: any) {
-    const config = await this.configRepo.findOne({ where: { id: 1 } });
-    if (!config || !config.apiConfigJson) throw new BadRequestException('AI is not configured in Settings');
+    const user = await this.userRepository.findOne({ where: { id: req.user.sub } });
+    if (!user) throw new BadRequestException('User not found');
+    if (!user || !user.apiConfigJson) throw new BadRequestException('AI is not configured for your account. Please set it in Settings > Integrations.');
     
-    const apiConfig = JSON.parse(config.apiConfigJson);
+    const apiConfig = JSON.parse(user.apiConfigJson);
     const apiUrl = (apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1').replace(/\/$/, '');
     const apiKey = apiConfig.aiKey;
     if (!apiKey) throw new BadRequestException('AI API Key is missing in Settings');
@@ -152,7 +154,7 @@ export class SettingsController {
   ) {}
 
   @Get()
-  async getSettings() {
+  async getSettings(@Req() req: any) {
     let config = await this.configRepo.findOne({ where: { id: 1 } });
     if (!config) {
       config = this.configRepo.create({
@@ -160,18 +162,20 @@ export class SettingsController {
         sysConfigJson: JSON.stringify({
           retentionDays: 90, criticalThreshold: 85, autoBlockEnabled: true,
           alertEmail: 'soc@kku.ac.th', autoLogout: 30
-        }),
-        apiConfigJson: JSON.stringify({
-          aiApiUrl: 'https://ai.kku.ac.th/api/v1', aiKey: '',
-          scorecardApiUrl: '', scorecardKey: '',
-          slackUrl: '', teamsUrl: '', lineToken: ''
         })
       });
       await this.configRepo.save(config);
     }
     
     const sys = config.sysConfigJson ? JSON.parse(config.sysConfigJson) : {};
-    const api = config.apiConfigJson ? JSON.parse(config.apiConfigJson) : {};
+    
+    const user = await this.userRepository.findOne({ where: { id: req.user.sub } });
+    if (!user) throw new BadRequestException('User not found');
+    const api = user && user.apiConfigJson ? JSON.parse(user.apiConfigJson) : {
+        aiApiUrl: 'https://gen.ai.kku.ac.th/api/v1', aiKey: '',
+        scorecardApiUrl: '', scorecardKey: '',
+        slackUrl: '', teamsUrl: '', lineToken: ''
+    };
     
     // Mask secrets
     if (api.aiKey) api.aiKey = '********';
@@ -182,29 +186,35 @@ export class SettingsController {
   }
 
   @Post()
-  @Roles('admin')
   async updateSettings(@Body() body: { sysConfig?: any, apiConfig?: any }, @Req() req: any) {
-    let config = await this.configRepo.findOne({ where: { id: 1 } });
-    if (!config) { config = this.configRepo.create({ id: 1 }); }
+    const user = await this.userRepository.findOne({ where: { id: req.user.sub } });
+    if (!user) throw new BadRequestException('User not found');
+
+    if (body.sysConfig) {
+      if (req.user.role !== 'admin') {
+         throw new BadRequestException('Only admins can update system config');
+      }
+      let config = await this.configRepo.findOne({ where: { id: 1 } });
+      if (!config) { config = this.configRepo.create({ id: 1 }); }
+      config.sysConfigJson = JSON.stringify(body.sysConfig);
+      await this.configRepo.save(config);
+    }
     
-    const existingApi = config.apiConfigJson ? JSON.parse(config.apiConfigJson) : {};
-    
-    if (body.sysConfig) config.sysConfigJson = JSON.stringify(body.sysConfig);
     if (body.apiConfig) {
+      const existingApi = user.apiConfigJson ? JSON.parse(user.apiConfigJson) : {};
       const newApi = body.apiConfig;
       // Restore secrets if masked
       if (newApi.aiKey === '********') newApi.aiKey = existingApi.aiKey;
       if (newApi.scorecardKey === '********') newApi.scorecardKey = existingApi.scorecardKey;
       if (newApi.lineToken === '********') newApi.lineToken = existingApi.lineToken;
       
-      config.apiConfigJson = JSON.stringify(newApi);
+      user.apiConfigJson = JSON.stringify(newApi);
+      await this.userRepository.save(user);
     }
-    
-    await this.configRepo.save(config);
 
     this.auditService.log({
-      action: 'UPDATE_SYSTEM_CONFIG',
-      username: 'admin', // Ideally from JWT
+      action: 'UPDATE_SETTINGS',
+      username: req.user.username,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
       result: 'SUCCESS'
@@ -246,9 +256,10 @@ export class SettingsController {
   async testAiIntegration(@Body() body: { aiApiUrl: string, aiKey: string, aiModel: string }, @Req() req: any) {
     let key = body.aiKey;
     if (key === '********') {
-        const config = await this.configRepo.findOne({ where: { id: 1 } });
-        if (config && config.apiConfigJson) {
-            const api = config.apiConfigJson ? JSON.parse(config.apiConfigJson) : {};
+        const user = await this.userRepository.findOne({ where: { id: req.user.sub } });
+    if (!user) throw new BadRequestException('User not found');
+        if (user && user.apiConfigJson) {
+            const api = user.apiConfigJson ? JSON.parse(user.apiConfigJson) : {};
             key = api.aiKey;
         }
     }

@@ -90,9 +90,13 @@ export function initSocket() {
     if (!isHistorical) {
       const enriched = enrichEventWithCVE(data);
       eventsStore.update(events => {
-        const newEvents = [enriched, ...events].slice(0, 2000);
+        const newEvents = [enriched, ...events].slice(0, 1000); // Prevent memory leak and localStorage quota errors
         if (typeof localStorage !== 'undefined') {
-          localStorage.setItem('cachedEvents', JSON.stringify(newEvents));
+          try {
+            localStorage.setItem('cachedEvents', JSON.stringify(newEvents));
+          } catch (e) {
+            console.warn('localStorage quota exceeded for cachedEvents');
+          }
         }
         return newEvents;
       });

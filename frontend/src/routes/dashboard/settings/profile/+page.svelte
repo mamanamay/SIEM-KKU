@@ -1,6 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { showNotification } from '../../../../stores/notificationStore';
+    import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 
     let user = {
         firstName: '',
@@ -13,6 +14,25 @@
     };
     let loading = true;
     let saving = false;
+    
+    let showConfirmModal = false;
+    let confirmTitle = '';
+    let confirmMessage = '';
+    let confirmIcon = 'ti-question-mark';
+    let confirmAction = null;
+
+    function promptConfirm(title, message, icon, actionFn) {
+        confirmTitle = title;
+        confirmMessage = message;
+        confirmIcon = icon;
+        confirmAction = actionFn;
+        showConfirmModal = true;
+    }
+
+    function executeConfirmAction() {
+        showConfirmModal = false;
+        if (confirmAction) confirmAction();
+    }
 
     onMount(async () => {
         try {
@@ -20,20 +40,16 @@
             if (res.ok) {
                 user = await res.json();
             } else {
-                showNotification('error', 'Failed to load profile');
+                showNotification('error', 'Error', 'Failed to load profile');
             }
         } catch (err) {
-            showNotification('error', 'Network error');
+            showNotification('error', 'Error', 'Network error');
         } finally {
             loading = false;
         }
     });
 
     async function saveProfile() {
-        if (!user.firstName || !user.lastName) {
-            showNotification('warning', 'First Name and Last Name are required');
-            return;
-        }
         saving = true;
         try {
             const res = await fetch('/api/auth/me', {
@@ -49,17 +65,25 @@
                 })
             });
             if (res.ok) {
-                showNotification('success', 'Profile updated successfully');
+                showNotification('success', 'สำเร็จ', 'อัปเดตข้อมูลโปรไฟล์เรียบร้อยแล้ว');
                 const updated = await res.json();
                 user = { ...user, ...updated };
             } else {
-                showNotification('error', 'Failed to update profile');
+                showNotification('error', 'ผิดพลาด', 'ไม่สามารถอัปเดตข้อมูลโปรไฟล์ได้');
             }
         } catch (err) {
-            showNotification('error', 'Network error');
+            showNotification('error', 'ผิดพลาด', 'ข้อผิดพลาดเครือข่าย');
         } finally {
             saving = false;
         }
+    }
+    
+    function requestSaveProfile() {
+        if (!user.firstName || !user.lastName) {
+            showNotification('warning', 'คำเตือน', 'กรุณากรอกชื่อและนามสกุลให้ครบถ้วน');
+            return;
+        }
+        promptConfirm('บันทึกโปรไฟล์', 'คุณต้องการบันทึกการเปลี่ยนแปลงข้อมูลโปรไฟล์หรือไม่?', 'ti-device-floppy', saveProfile);
     }
 
     function getInitials(first, last) {
@@ -94,7 +118,7 @@
                     </div>
                 </div>
             </div>
-            <form on:submit|preventDefault={saveProfile} class="card-body">
+            <form on:submit|preventDefault={requestSaveProfile} class="card-body">
                 <div class="form-group">
                     <label for="firstName">First Name *</label>
                     <input type="text" id="firstName" bind:value={user.firstName} required />
@@ -113,6 +137,8 @@
             </form>
         </div>
     {/if}
+    
+    <ConfirmModal bind:visible={showConfirmModal} title={confirmTitle} message={confirmMessage} icon={confirmIcon} on:confirm={executeConfirmAction} on:cancel={() => showConfirmModal = false} />
 </div>
 
 <style>

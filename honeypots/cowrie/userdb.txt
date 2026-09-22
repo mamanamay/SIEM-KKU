@@ -1,7 +1,0 @@
-root:x:root
-root:x:admin
-root:x:123456
-root:x:password
-admin:x:admin
-ubuntu:x:ubuntu
-guest:x:guest

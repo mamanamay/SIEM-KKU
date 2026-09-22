@@ -174,7 +174,6 @@
   function getPageTitle(path: string) {
     const titles: Record<string, string> = {
       '/dashboard': 'Overview Dashboard',
-      '/dashboard/alert': 'Alerts & SOAR',
       '/dashboard/investigate': 'Threat Investigation',
       '/dashboard/analytics': 'Attacker Analytics',
       '/dashboard/mitre': 'MITRE ATT&CK Matrix',
@@ -184,7 +183,6 @@
       '/dashboard/threats': 'Security Logs',
       '/dashboard/network-map': 'Network Map',
       '/dashboard/ai-briefing': 'AI Daily Briefing',
-      '/dashboard/credential-intel': 'Credential Intelligence',
       '/dashboard/api-history': 'API History',
       '/dashboard/reports': 'Report Generation'
     };
@@ -258,7 +256,7 @@
           <i class="ti ti-external-link" style="margin-left:auto;font-size:11px;opacity:0.5;"></i>
         </a>
         <a href="/dashboard/soar" class="nav-item {$page.url.pathname === '/dashboard/soar' ? 'active' : ''}">
-          <i class="ti ti-zoom-in"></i> Incident & SOAR
+          <i class="ti ti-zoom-in"></i> Deep Incident 
         </a>
         <a href="/dashboard/explorer" class="nav-item {$page.url.pathname === '/dashboard/explorer' ? 'active' : ''}">
           <i class="ti ti-terminal-2"></i> Log Explorer

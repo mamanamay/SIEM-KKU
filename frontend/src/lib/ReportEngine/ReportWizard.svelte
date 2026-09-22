@@ -142,7 +142,10 @@
         const eventsToAnalyze = selectedBundles.flatMap(b => b.logs.slice(0, 10));
         const res = await fetch('/api/export/ai-generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
           body: JSON.stringify({ events: eventsToAnalyze })
         });
         const data = await res.json();
@@ -163,7 +166,10 @@
     try {
       const res = await fetch('/api/export/proofread', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ text: previewHtml })
       });
       const data = await res.json();

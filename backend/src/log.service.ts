@@ -7,6 +7,7 @@ import { NetworkMapService } from './network-map.service';
 import { Attack } from './entities/attack.entity';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as geoip from 'geoip-lite';
 
 // ─── Correlation Time Window ─────────────────────────────────────────────────
 const CORRELATION_WINDOW_MS = 5000;
@@ -299,8 +300,11 @@ export class LogService implements OnModuleInit {
       const srcIp    = data.src_ip || data.srcip || data.source_ip || '0.0.0.0';
       const attackTs = data.timestamp ? new Date(data.timestamp).getTime() : Date.now();
 
+      const destIp = data.dest_ip || data.dst_ip || data.dstip || '10.101.118.184';
+
       this.saveAndBroadcast({
         timestamp: attackTs, time: this.formatTime(new Date(attackTs).toISOString()), ip: srcIp,
+        destIp: destIp,
         type: data.type || `${source} Alert`,
         severity: data.severity || 'medium',
         detail: data.detail || data.message || `Event from ${source}`,
@@ -320,6 +324,15 @@ export class LogService implements OnModuleInit {
   // ─── Save to DB + Broadcast via WebSocket ─────────────────────────────────
     private async saveAndBroadcast(payload: any) {
     try {
+      const geo = geoip.lookup(payload.ip);
+      if (geo) {
+        payload.latitude = geo.ll[0];
+        payload.longitude = geo.ll[1];
+        if (!payload.country || payload.country === 'Unknown') {
+           payload.country = geo.country; // optional fallback
+        }
+      }
+
       // --- LOG REDUCTION: Aggregation & Thresholding ---
       const aggKey = `${payload.ip}-${payload.type}`;
       const now = Date.now();
@@ -350,11 +363,14 @@ export class LogService implements OnModuleInit {
         detail:        payload.detail,
         mitigation:    payload.mitigation,
         country:       payload.country,
+        latitude:      payload.latitude,
+        longitude:     payload.longitude,
         clientVersion: payload.clientVersion,
         mitreCode:     payload.mitreCode,
         threatScore:   payload.threatScore,
         sessionId:     payload.sessionId,
         timestampMs:   payload.timestamp,
+        destIp:        payload.destIp,
         hitCount:      1, // Initial count
       }) as Attack;
 
@@ -437,7 +453,7 @@ export class LogService implements OnModuleInit {
         });
 
         stream.on('end', () => {
-          const lines = data.split('\\n');
+          const lines = data.split('\n');
           for (const line of lines) {
             if (line.trim()) {
               this.processSyslogMessage(line.trim(), '127.0.0.1', sourceName);
@@ -457,129 +473,67 @@ export class LogService implements OnModuleInit {
     }
   }
 
-  private processSyslogMessage(logString: string, sourceIp: string, sourceName: string = 'syslog') {
+  private async processSyslogMessage(logString: string, sourceIp: string, sourceName: string = 'syslog') {
     try {
-      const lower = logString.toLowerCase();
-      
-      // 1. FILTERING: คัดกรองเฉพาะ Log ที่มีความรุนแรง เพื่อลดภาระระบบ
-      let severity = 'info';
-      
-      if (lower.includes('crit') || lower.includes('fatal') || lower.includes('alert')) {
-        severity = 'critical';
-      } else if (lower.includes('error') || lower.includes('fail') || lower.includes('deny') || lower.includes('block') || lower.includes('drop')) {
-        severity = 'high';
-      } else if (lower.includes('warn') || lower.includes('timeout')) {
-        severity = 'medium';
+      // 1. EXTRACT ALL IPs to check against Network Map (LAN)
+      const ipRegex = /\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g;
+      const ips: string[] = logString.match(ipRegex) || [];
+      if (sourceIp && !ips.includes(sourceIp)) ips.push(sourceIp);
+
+      let isLanRelated = false;
+      for (const ip of ips) {
+        if (ip !== '127.0.0.1' && ip !== '0.0.0.0' && this.networkMapService.isInLan(ip)) {
+          isLanRelated = true;
+          break;
+        }
       }
 
-      // ถ้าเป็นแค่ info (การเชื่อมต่อปกติ) ให้ข้ามไปเลย ไม่ต้องบันทึกลงฐานข้อมูล
-      // [TEMPORARY DISABLED FOR TESTING]
-      /*
-      if (severity === 'info') {
+      // Drop log if it's not related to our LAN
+      if (!isLanRelated) {
         return;
       }
-      */
 
-      // 2. EXTRACT IP: ดึง IP จริงออกมาจากข้อความ Log
-      let realIp = sourceIp;
-      
-      const srcIpMatch = logString.match(/(?:srcip|src_ip|client_ip|client|c-ip|source)[=:]\s*"?([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})"?/i);
-      if (srcIpMatch && srcIpMatch[1]) {
-         realIp = srcIpMatch[1];
-      } else {
-         const ipRegex = /\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g;
-         const ips = logString.match(ipRegex);
-         if (ips) {
-            for (const ip of ips) {
-                if (ip !== '127.0.0.1' && ip !== '0.0.0.0') {
-                    realIp = ip;
-                    break;
-                }
-            }
-            if (realIp === sourceIp && ips.length > 0) realIp = ips[0];
-         }
-      }
-
-      // ตัดข้อความที่ยาวเกินไป
-      const detail = logString.length > 300 ? logString.substring(0, 300) + '...' : logString;
-
-      // 3. SMART CLASSIFICATION & MITRE MAPPING
-      let attackType = 'Suspicious Activity';
-      let mitreCode = 'Unknown';
-      let threatScore = severity === 'critical' ? 90 : severity === 'high' ? 70 : 40;
-
-      const msgMatch = logString.match(/msg="([^"]+)"/i);
-      const attackMatch = logString.match(/attack="([^"]+)"/i);
-      const typeMatch = logString.match(/type="?([a-zA-Z0-9_]+)"?/i);
-      const subtypeMatch = logString.match(/subtype="?([a-zA-Z0-9_]+)"?/i);
-      const actionMatch = logString.match(/action="?([a-zA-Z0-9_]+)"?/i);
-
-      if (attackMatch && attackMatch[1]) {
-         attackType = attackMatch[1];
-      } else if (msgMatch && msgMatch[1]) {
-         attackType = msgMatch[1];
-      } else {
-         if (typeMatch && typeMatch[1] === 'traffic' && actionMatch && actionMatch[1] === 'deny') {
-             attackType = 'Firewall Rule Violation';
-         } else if (subtypeMatch && subtypeMatch[1] === 'ips') {
-             attackType = 'Intrusion Prevention Alert';
-         } else if (subtypeMatch && subtypeMatch[1] === 'webfilter') {
-             attackType = 'Web Filter Violation';
-         } else if (sourceName === 'reproxy') {
-             if (lower.includes(' 404 ')) attackType = 'Resource Not Found (404)';
-             else if (lower.includes(' 403 ')) attackType = 'Access Forbidden (403)';
-             else if (lower.includes(' 500 ') || lower.includes(' 502 ') || lower.includes(' 503 ')) attackType = 'Web Server Error';
-             else attackType = 'HTTP Traffic Anomaly';
-         }
-      }
-
-      if (lower.includes('sql') || lower.includes('select ') || lower.includes('union ') || lower.includes('%27') || lower.includes('sleep(')) {
-         attackType = 'SQL Injection (SQLi)';
-         mitreCode = 'T1190';
-         threatScore = Math.max(threatScore, 85);
-      } else if (lower.includes('xss') || lower.includes('<script>') || lower.includes('alert(') || lower.includes('%3cscript')) {
-         attackType = 'Cross-Site Scripting (XSS)';
-         mitreCode = 'T1189';
-         threatScore = Math.max(threatScore, 75);
-      } else if (lower.includes('dirb') || lower.includes('nmap') || lower.includes('nikto') || lower.includes('zmap') || lower.includes('scan')) {
-         attackType = 'Network / Vulnerability Scanning';
-         mitreCode = 'T1595';
-         threatScore = Math.max(threatScore, 50);
-      } else if (lower.includes('login') || lower.includes('auth') || lower.includes('brute') || lower.includes('password') || lower.includes('credential')) {
-         attackType = 'Authentication Brute Force';
-         mitreCode = 'T1110';
-         threatScore = Math.max(threatScore, 80);
-      } else if (lower.includes('cmd=') || lower.includes('wget ') || lower.includes('curl ') || lower.includes('bash ') || lower.includes('exec(')) {
-         attackType = 'Command Injection (RCE)';
-         mitreCode = 'T1059';
-         threatScore = Math.max(threatScore, 95);
-      } else if (lower.includes('traversal') || lower.includes('../') || lower.includes('..%2f') || lower.includes('etc/passwd')) {
-         attackType = 'Path Traversal / LFI';
-         mitreCode = 'T1190';
-         threatScore = Math.max(threatScore, 80);
-      } else if (lower.includes('ddos') || lower.includes('flood')) {
-         attackType = 'Denial of Service (DoS)';
-         mitreCode = 'T1498';
-         threatScore = Math.max(threatScore, 85);
-      }
-
-      if (attackType.length > 0) {
-          attackType = attackType.charAt(0).toUpperCase() + attackType.slice(1);
-      }
+      // 2. FORWARD TO DETECTION ENGINE
+      const axios = require('axios');
+      let aiSource = 'unknown';
+      if (sourceName === 'forti') aiSource = 'firewall';
+      if (sourceName === 'reproxy') aiSource = 'nginx';
 
       const payload = {
-        source: sourceName.toLowerCase(),
-        src_ip: realIp,
-        message: detail,
-        timestamp: new Date().toISOString(),
-        type: attackType,
-        severity: severity,
-        mitre: mitreCode,
-        score: threatScore,
-        raw_log: logString
+        source_type: aiSource,
+        logs: [logString]
       };
+
+      try {
+        const response = await axios.post('http://detection-engine:8100/api/v1/ingest', payload, { timeout: 3000 });
+        const data = response.data;
+        
+        if (data && data.new_detections && data.new_detections.length > 0) {
+          for (const det of data.new_detections) {
+            // Transform DetectionEngine output to Backend Attack Entity format
+            const dstIpMatch = logString.match(/dstip=([\d\.]+)/);
+            const dstIp = dstIpMatch ? dstIpMatch[1] : '10.101.118.184';
+
+            const attackPayload = {
+              source: aiSource,
+              src_ip: (det.source_ips && det.source_ips.length > 0) ? det.source_ips[0] : sourceIp,
+              dst_ip: dstIp,
+              message: det.attack_type + (det.ioc ? ` [IOC: ${det.ioc.join(',')}]` : ''),
+              timestamp: new Date().toISOString(),
+              type: det.attack_type || 'AI Detection',
+              severity: det.risk_score > 80 ? 'critical' : (det.risk_score > 60 ? 'high' : 'medium'),
+              mitre: 'T1190', // Default fallback
+              score: Math.round(det.risk_score) || 50,
+              raw_log: logString
+            };
+            this.ingestLog([attackPayload]);
+          }
+        }
+      } catch (aiErr) {
+        this.logger.error(`[DetectionEngine] Failed to reach AI: ${aiErr.message}`);
+        // Fallback or ignore
+      }
       
-      this.ingestLog([payload]);
     } catch (e) {
       this.logger.error(`Error processing syslog from ${sourceName}: ${e.message}`);
     }

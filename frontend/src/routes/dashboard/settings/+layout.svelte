@@ -6,7 +6,7 @@
     { id: 'profile', label: 'My Profile', icon: 'ti-user', roles: ['admin', 'analyst', 'guest'] },
     { id: 'users', label: 'User Access Control', icon: 'ti-users', roles: ['admin'] },
     { id: 'config', label: 'System Config', icon: 'ti-settings', roles: ['admin'] },
-    { id: 'integrations', label: 'Integrations', icon: 'ti-plug', roles: ['admin'] },
+    { id: 'integrations', label: 'Integrations', icon: 'ti-plug', roles: ['admin', 'analyst', 'guest'] },
     { id: 'api-history', label: 'API History', icon: 'ti-history', roles: ['admin'] },
     { id: 'report-history', label: 'Report History', icon: 'ti-file-report', roles: ['admin', 'analyst', 'guest'] },
     { id: 'audit-trail', label: 'Audit Trail', icon: 'ti-clipboard-list', roles: ['admin'] },

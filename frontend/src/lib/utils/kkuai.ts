@@ -23,7 +23,7 @@ export async function callKKUAI(
 ): Promise<string> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   
-  const response = await fetch(`/api/admin/integrations/ai-proxy/chat/completions`, {
+  const response = await fetch(`/api/settings/integrations/ai-proxy/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

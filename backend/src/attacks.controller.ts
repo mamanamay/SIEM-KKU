@@ -1,4 +1,6 @@
-import { Controller, Patch, Post, Param, Body, HttpException, HttpStatus, Get, Headers, Delete, Query } from '@nestjs/common';
+import { Controller, Patch, Post, Param, Body, HttpException, HttpStatus, Get, Headers, Delete, Query, UseGuards, Req } from '@nestjs/common';
+import { AuthGuard } from './auth.guard';
+import { AiService } from './ai.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { Attack } from './entities/attack.entity';
@@ -35,7 +37,8 @@ export class AttacksController {
     @InjectRepository(Attack)
     private attackRepository: Repository<Attack>,
     private eventsGateway: EventsGateway,
-    private logService: LogService
+    private logService: LogService,
+    private aiService: AiService
   ) {}
 
   // ── IP Map Registration (from proxy.js) ───────────────────────────────────
@@ -249,6 +252,7 @@ export class AttacksController {
 
   // ── AI Daily Briefing ─────────────────────────────────────────────────────
   @Post('ai-briefing')
+  @UseGuards(AuthGuard)
   async aiBriefing(
     @Body() body: {
       total: number; critical: number; high: number; medium: number;
@@ -259,9 +263,9 @@ export class AttacksController {
       topOrganizations?: Array<{org: string; count: number}>;
       date: string;
     },
-    @Headers('x-gemini-key') headerKey?: string
+    @Req() req: any
   ) {
-    const apiKey = headerKey || process.env.GEMINI_API_KEY;
+    
     const generateRuleBasedBriefing = () => {
       const topType = body.topTypes?.[0]?.type || 'SSH Brute Force';
       const topCountry = body.topCountries?.[0]?.country || 'Unknown';
@@ -301,10 +305,6 @@ export class AttacksController {
       };
     };
 
-    if (!apiKey || apiKey === 'your-gemini-api-key-here') {
-      return generateRuleBasedBriefing();
-    }
-
     const topTypesStr = (body.topTypes || []).slice(0,5).map(t => `${t.type}(${t.count})`).join(', ');
     const topCountriesStr = (body.topCountries || []).slice(0,5).map(c => `${c.country}(${c.count})`).join(', ');
     const topIPsStr = (body.topIPs || []).slice(0,3).map(i => `${i.ip}(${i.count})`).join(', ');
@@ -331,20 +331,11 @@ export class AttacksController {
 สร้าง JSON วิเคราะห์ข้อมูลข้างต้นอย่างสมจริง ห้ามมีข้อความอื่นนอกเหนือจาก JSON.`;
 
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        signal: AbortSignal.timeout(15000),
-      } as any);
-      
-      const data = await res.json() as any;
-      if (data.error) throw new Error(data.error.message);
-      
-      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const resText = await this.aiService.callUnifiedAI(req.user.sub, [{ role: 'user', content: prompt }], 1024, 0.4);
+      let text = resText.trim();
       text = text.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
       const parsed = JSON.parse(text);
-      parsed.mode = 'gemini';
+      parsed.mode = 'ai';
       return parsed;
     } catch (e) {
       console.error('[AI Briefing] Gemini call failed:', e);
@@ -354,6 +345,7 @@ export class AttacksController {
 
   // ── AI Full Report Generator (Rule-based) ─────────────────────────────────
   @Post('ai-full-report')
+  @UseGuards(AuthGuard)
   async aiFullReport(
     @Body() body: {
       language: string;
@@ -368,11 +360,11 @@ export class AttacksController {
       };
       stats: any;
     },
-    @Headers('x-gemini-key') headerKey?: string
+    @Req() req: any
   ) {
     const { language, targetIp, customPrompt, sections, stats } = body;
     const isTh = language === 'th';
-    const apiKey = headerKey || process.env.GEMINI_API_KEY;
+    
 
     // Helper to generate the Rule-based report
     const generateRuleBasedReport = () => {
@@ -432,9 +424,6 @@ export class AttacksController {
     };
 
     // If no API key, use fallback
-    if (!apiKey || apiKey === 'your-gemini-api-key-here') {
-      return generateRuleBasedReport();
-    }
 
     // Tier 1: Gemini Deep Analysis
     const requestedSections = [];
@@ -463,25 +452,10 @@ Attack Statistics Context:
 Ensure the report sounds highly professional, detailed, and incorporates MITRE ATT&CK framework references where appropriate in the Threat Analysis section. Make it read like a polished executive report.`;
 
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        signal: AbortSignal.timeout(20000), // longer timeout for full report
-      } as any);
-      
-      const data = await res.json() as any;
-      if (data.error) {
-        console.error('[AI Full Report] Gemini API Error:', data.error.message);
-        return generateRuleBasedReport(); // Fallback on error
-      }
-
-      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) {
-        // Strip markdown HTML blocks if Gemini still adds them
-        text = text.replace(/^```html\n/m, '').replace(/```$/m, '').trim();
-        return { reportHtml: text, mode: 'gemini' };
-      }
+      const resText = await this.aiService.callUnifiedAI(req.user.sub, [{ role: 'user', content: prompt }], 2048, 0.4);
+      let text = resText.trim();
+      text = text.replace(/^\`\`\`html\n/m, '').replace(/\`\`\`$/m, '').trim();
+      return { reportHtml: text, mode: 'ai' };
     } catch (e) {
       console.error('[AI Full Report] Gemini call failed:', e);
       return generateRuleBasedReport(); // Fallback on timeout or exception
@@ -492,9 +466,9 @@ Ensure the report sounds highly professional, detailed, and incorporates MITRE A
   @Post('auto-triage')
   async autoTriage(
     @Body() body: { events: any[] },
-    @Headers('x-gemini-key') headerKey?: string
+    @Req() req: any
   ) {
-    const apiKey = headerKey || process.env.GEMINI_API_KEY;
+    
     const events = body.events || [];
     
     // 1. Prepare data (only look at recent critical/high events or group by IP)
@@ -529,9 +503,6 @@ Ensure the report sounds highly professional, detailed, and incorporates MITRE A
     if (!events.length) return { triage: null, mode: 'rule-based' };
 
     // Use Fallback if no API key
-    if (!apiKey || apiKey === 'your-gemini-api-key-here') {
-      return generateRuleBasedTriage();
-    }
 
     // Tier 1: Gemini Analysis
     // We send a summarized payload to save tokens and speed up response
@@ -559,23 +530,12 @@ Rules:
 }`;
 
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        signal: AbortSignal.timeout(10000), // Fast timeout for triage
-      } as any);
-      
-      const data = await res.json() as any;
-      if (data.error) throw new Error(data.error.message);
-
-      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) {
-        text = text.replace(/^```json\n?/m, '').replace(/```$/m, '').trim();
-        const parsed = JSON.parse(text);
-        if (parsed.actionRecommended === false) return { triage: null, mode: 'gemini' };
-        return { triage: parsed, mode: 'gemini' };
-      }
+      const resText = await this.aiService.callUnifiedAI(req.user.sub, [{ role: 'user', content: prompt }], 500, 0.1);
+      let text = resText.trim();
+      text = text.replace(/^\`\`\`json\n?/m, '').replace(/\`\`\`$/m, '').trim();
+      const parsed = JSON.parse(text);
+      if (parsed.actionRecommended === false) return { triage: null, mode: 'ai' };
+      return { triage: parsed, mode: 'ai' };
     } catch (e) {
       console.error('[Auto-Triage] Gemini call failed:', e);
       return generateRuleBasedTriage(); // Fallback to Rule-based on failure
@@ -586,9 +546,9 @@ Rules:
   @Post('nl-search')
   async nlSearch(
     @Body() body: { query: string },
-    @Headers('x-gemini-key') headerKey?: string
+    @Req() req: any
   ) {
-    const apiKey = headerKey || process.env.GEMINI_API_KEY;
+    
     const query = body.query || '';
 
     // Rule-based fallback parser
@@ -621,10 +581,6 @@ Rules:
       return { filters, mode: 'rule-based' };
     };
 
-    if (!apiKey || apiKey === 'your-gemini-api-key-here') {
-      return parseWithRegex(query);
-    }
-
     const prompt = `You are a SIEM Natural Language Search intent parser.
 User query: "${query}"
 
@@ -638,21 +594,10 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
 }`;
 
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        signal: AbortSignal.timeout(10000),
-      } as any);
-      
-      const data = await res.json() as any;
-      if (data.error) throw new Error(data.error.message);
-
-      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) {
-        text = text.replace(/^```json\n?/m, '').replace(/```$/m, '').trim();
-        return { filters: JSON.parse(text), mode: 'gemini' };
-      }
+      const resText = await this.aiService.callUnifiedAI(req.user.sub, [{ role: 'user', content: prompt }], 500, 0.1);
+      let text = resText.trim();
+      text = text.replace(/^\`\`\`json\n?/m, '').replace(/\`\`\`$/m, '').trim();
+      return { filters: JSON.parse(text), mode: 'ai' };
     } catch (e) {
       console.error('[NL-Search] Gemini call failed:', e);
       return parseWithRegex(query); // Fallback on timeout/failure
@@ -661,9 +606,9 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
 
   // ── AI Event Analysis (On-Demand) ─────────────────────────────────────────
   @Post('analyze-event')
-  async analyzeEvent(@Body() event: any, @Headers('x-gemini-key') headerKey?: string) {
+  async analyzeEvent(@Body() event: any, @Req() req: any) {
     const payloadText = event.payload || event.detail || 'ไม่พบ payload';
-    const apiKey = headerKey || process.env.GEMINI_API_KEY;
+    
 
     const generateRuleBasedAnalysis = () => {
       let intent = 'พยายามแสกนช่องโหว่ หรือเดารหัสผ่านเพื่อเข้าสู่ระบบ';
@@ -694,10 +639,6 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
       };
     };
 
-    if (!apiKey || apiKey === 'your-gemini-api-key-here') {
-      return generateRuleBasedAnalysis();
-    }
-
     const prompt = `คุณคือผู้เชี่ยวชาญ Cyber Security (SOC Analyst อาวุโส)
 กรุณาวิเคราะห์ Log เหตุการณ์นี้สั้นๆ เป็นภาษาไทย แบบมืออาชีพและเข้าใจง่าย
 
@@ -714,22 +655,8 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
 `;
 
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        signal: AbortSignal.timeout(15000),
-      } as any);
-      
-      const data = await res.json() as any;
-      
-      if (data.error) {
-        console.error('[AI Analysis] Gemini API Error:', data.error.message);
-        return generateRuleBasedAnalysis(); // Fallback on API Error
-      }
-
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) return { analysis: text, mode: 'gemini' };
+      const resText = await this.aiService.callUnifiedAI(req.user.sub, [{ role: 'user', content: prompt }], 800, 0.3);
+      return { analysis: resText.trim(), mode: 'ai' };
     } catch (e) {
       console.error('[Analyze Event] Gemini call failed:', e);
       return generateRuleBasedAnalysis(); // Fallback on timeout/failure

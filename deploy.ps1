@@ -20,9 +20,8 @@ $includeItems = @(
     ".env",
     "backend/.env",
     "frontend",
-    "honeypots",
     "nginx",
-    "tools",
+    "detection-engine",
     "docker-compose.yml",
     ".dockerignore",
     ".env.example",
@@ -39,6 +38,7 @@ $excludePatterns = @(
     "frontend/build", 
     "frontend/.svelte-kit",
     "backend/dist",
+    "detection-engine/__pycache__",
     "*.log"
 )
 
@@ -73,14 +73,14 @@ Write-Host "      (You will be prompted for SSH password again)" -ForegroundColo
 # Define remote script as a simple string to avoid PowerShell parsing errors on older systems
 $remoteScript = "set -e;"
 $remoteScript += " echo '  -> Extracting files...';"
-$remoteScript += " mkdir -p ~/honeypot-siem;"
-$remoteScript += " tar -xzf ~/deploy.tar.gz -C ~/honeypot-siem;"
+$remoteScript += " mkdir -p ~/siem_kku;"
+$remoteScript += " tar -xzf ~/deploy.tar.gz -C ~/siem_kku;"
 $remoteScript += " rm ~/deploy.tar.gz;"
-$remoteScript += " cd ~/honeypot-siem;"
-$remoteScript += " if [ ! -f .env ]; then cp .env.example .env; cp backend/.env.example backend/.env; echo '  [WARNING] .env created from template. Edit .env and backend/.env then run: cd ~/honeypot-siem && bash nginx/generate-ssl.sh && docker compose up -d --build'; exit 0; fi;"
+$remoteScript += " cd ~/siem_kku;"
+$remoteScript += " if [ ! -f .env ]; then cp .env.example .env; cp backend/.env.example backend/.env; echo '  [WARNING] .env created from template. Edit .env and backend/.env then run: cd ~/siem_kku && bash nginx/generate-ssl.sh && docker compose up -d --build'; exit 0; fi;"
 $remoteScript += " chmod +x nginx/generate-ssl.sh;"
 $remoteScript += " bash nginx/generate-ssl.sh;"
-$remoteScript += " mkdir -p logs/siem logs/webtrap logs/cowrie honeypots/cowrie/var/lib/cowrie;"
+$remoteScript += " mkdir -p logs/siem;"
 $remoteScript += " docker compose build --no-cache;"
 $remoteScript += " docker compose up -d;"
 $remoteScript += " docker compose ps"
@@ -97,7 +97,5 @@ Write-Host "==================================================" -ForegroundColor
 Write-Host "  [OK] DEPLOYMENT COMPLETE!                       " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "  Dashboard : https://$ServerIP" -ForegroundColor Green
-Write-Host "  SSH Trap  : ${ServerIP}:2222" -ForegroundColor Green
-Write-Host "  WebTrap   : http://${ServerIP}:8081" -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host ""

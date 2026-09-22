@@ -5,6 +5,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { eventsStore } from '../../../stores/events';
+  import type { AiBriefingContext } from '../../../lib/ReportEngine/types';
   
   import AiSecuritySituation from '../../../lib/components/ai-analyst/AiSecuritySituation.svelte';
   import AiInvestigationPriority from '../../../lib/components/ai-analyst/AiInvestigationPriority.svelte';
@@ -29,24 +30,46 @@
   let topOrganizations = [];
   let loading = true;
 
+  // Derived stats (built inside generateBriefing)
+  let briefingStats = { total: 0, critical: 0, high: 0, medium: 0, low: 0, uniqueIPs: 0 };
+  let topTypes: { type: string; count: number }[] = [];
+  let topCountries: { country: string; count: number }[] = [];
+
+  // Reactive aiContext for ExportBtn — always up-to-date
+  $: aiContext = {
+    aiSummary,
+    riskLevel,
+    confidence,
+    generatedAt,
+    dataRange,
+    priorities,
+    recommendations,
+    campaigns,
+    topOrganizations,
+    ...briefingStats,
+    topTypes,
+    topCountries,
+  } satisfies AiBriefingContext;
+
   async function generateBriefing() {
     loading = true;
     const now = new Date();
     generatedAt = now.toLocaleString();
     
     const total = events.length;
-    let critical = 0, high = 0, medium = 0;
-    const ips = new Set();
-    const countries = new Set();
-    const typeCount = {};
-    const countryCount = {};
-    const ipCount = {};
-    const orgCount = {};
+    let critical = 0, high = 0, medium = 0, low = 0;
+    const ips = new Set<string>();
+    const countries = new Set<string>();
+    const typeCount: Record<string, number> = {};
+    const countryCount: Record<string, number> = {};
+    const ipCount: Record<string, number> = {};
+    const orgCount: Record<string, number> = {};
     
     events.forEach(e => {
       if (e.severity === 'critical') critical++;
-      if (e.severity === 'high') high++;
-      if (e.severity === 'medium') medium++;
+      else if (e.severity === 'high') high++;
+      else if (e.severity === 'medium') medium++;
+      else low++;
       ips.add(e.ip);
       const c = e.country || 'Unknown';
       countries.add(c);
@@ -61,19 +84,26 @@
       }
     });
 
-    const topTypes = Object.entries(typeCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,3).map(x => ({type: x[0], count: x[1]}));
-    const topCountries = Object.entries(countryCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,3).map(x => ({country: x[0], count: x[1]}));
+    const _topTypes = Object.entries(typeCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,5).map(x => ({type: x[0], count: x[1] as number}));
+    const _topCountries = Object.entries(countryCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,3).map(x => ({country: x[0], count: x[1] as number}));
     const topIPs = Object.entries(ipCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,5).map(x => ({ip: x[0], count: x[1]}));
-    topOrganizations = Object.entries(orgCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,5).map(x => ({org: x[0], count: x[1], percentage: (Number(x[1]) / total) * 100}));
+    topOrganizations = Object.entries(orgCount).sort((a:any,b:any) => b[1]-a[1]).slice(0,5).map(x => ({org: x[0], count: Number(x[1]), percentage: (Number(x[1]) / total) * 100}));
+
+    topTypes = _topTypes;
+    topCountries = _topCountries;
+    briefingStats = { total, critical, high, medium, low, uniqueIPs: ips.size };
 
     try {
       const res = await fetch('/api/attacks/ai-briefing', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({
           total, critical, high, medium,
           uniqueIPs: ips.size, uniqueCountries: countries.size,
-          topTypes, topCountries, topIPs, topOrganizations,
+          topTypes: _topTypes, topCountries: _topCountries, topIPs, topOrganizations,
           date: now.toLocaleDateString()
         })
       });
@@ -95,7 +125,6 @@
   }
 
   onMount(() => {
-    // Generate right away based on current events
     generateBriefing();
   });
 </script>
@@ -104,7 +133,11 @@
   <div style="max-width: 1400px; margin: 0 auto; width: 100%;">
     <PageHeader title="AI Daily Briefing" description="Automated daily security summary and actionable intelligence." icon="ti-brain">
       <div slot="actions">
-        <ExportBtn config={{ pageType: 'ai-daily', reportTitle: 'AI Daily Security Report', supportedFormats: ['pdf', 'html'], aiEnabled: true, csvEnabled: false, allowExecOnly: true, sections: [] }} data={events} />
+        <ExportBtn
+          config={{ pageType: 'ai-briefing', reportTitle: 'AI Daily Security Briefing', supportedFormats: ['pdf', 'html'], aiEnabled: true, csvEnabled: false, allowExecOnly: true, sections: [] }}
+          data={events}
+          {aiContext}
+        />
       </div>
     </PageHeader>
   </div>
@@ -150,50 +183,11 @@
     overflow: hidden;
   }
   
-  .header-container {
-    padding: 12px 24px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border);
-  }
-  
-  .title-bg {
-    display: inline-block;
-    background: #d1d5db; /* Gray background for title like in image */
-    padding: 4px 12px;
-    border-radius: 4px;
-  }
-  
-  :global([data-theme="dark"]) .title-bg {
-    background: #374151;
-  }
-  
-  .page-title {
-    font-size: 18px;
-    font-weight: 700;
-    margin: 0;
-    color: var(--text-primary);
-  }
-  
-  :global([data-theme="dark"]) .page-title {
-    color: #f9fafb;
-  }
-  
   .content-scroll {
     flex: 1;
     overflow-y: auto;
     padding: 24px;
     background: var(--bg-primary);
-  }
-  
-  .action-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-  }
-  
-  .spacer {
-    flex: 1;
   }
   
   .ai-dashboard-grid {
@@ -210,22 +204,5 @@
   
   .grid-half {
     grid-column: span 1;
-  }
-  
-  .copilot-card {
-    background: #ffffff;
-    border-radius: 8px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    height: 100%;
-  }
-  .card-header {
-    padding: 16px;
-    border-bottom: 1px solid #f1f5f9;
-  }
-  .card-header h3 {
-    margin: 0;
-    font-size: 1rem;
-    color: var(--text-primary);
   }
 </style>

@@ -9,12 +9,12 @@
     isAnalyzing = true;
     errorMsg = '';
     try {
-      const geminiKey = localStorage.getItem('cfg_gemini_key') || '';
+      const token = localStorage.getItem('token') || '';
       const res = await fetch('/api/attacks/analyze-event', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-gemini-key': geminiKey
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(event)
       });

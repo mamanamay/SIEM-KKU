@@ -21,8 +21,7 @@ export class NetworkMapService {
 
   private loadSubnets() {
     try {
-      const basePath = process.cwd().endsWith('backend') ? process.cwd() : path.join(process.cwd(), 'backend');
-      const dataFilePath = path.resolve(basePath, '../frontend/src/lib/data/ip_records.json');
+      const dataFilePath = path.join(process.cwd(), 'src/ip_records.json');
       
       if (fs.existsSync(dataFilePath)) {
         const rawData = fs.readFileSync(dataFilePath, 'utf-8');
@@ -49,6 +48,16 @@ export class NetworkMapService {
     }
     
     return fallbackCountry || 'Unknown';
+  }
+
+  public isInLan(ip: string): boolean {
+    if (!ip) return false;
+    for (const subnet of this.subnets) {
+      if (this.isIpInSubnet(ip, subnet['Net-Address'], subnet.Mask)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private isIpInSubnet(ip: string, subnetIp: string, mask: number): boolean {

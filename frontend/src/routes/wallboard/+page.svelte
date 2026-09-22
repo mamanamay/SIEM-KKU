@@ -60,16 +60,34 @@
   // Top IPs
   $: sourceIPs = events.reduce((acc, e) => {
     const ip = e.ip || e.sourceIp || 'Unknown';
-    if (!acc[ip]) acc[ip] = { count: 0, severity: e.severity, type: e.type, events: [], country: e.country || 'Unknown' };
+    if (!acc[ip]) acc[ip] = { count: 0, severity: e.severity, type: e.type, events: [], country: e.country || 'Unknown', latitude: e.latitude, longitude: e.longitude };
     acc[ip].count++;
     acc[ip].events.push(e);
+    if (!acc[ip].latitude && e.latitude) acc[ip].latitude = e.latitude;
+    if (!acc[ip].longitude && e.longitude) acc[ip].longitude = e.longitude;
     if (e.severity === 'critical') acc[ip].severity = 'critical';
     return acc;
   }, {});
   $: topAttackers = Object.entries(sourceIPs).map(([ip, data]: any) => ({ ip, ...data })).sort((a,b) => b.count - a.count).slice(0, 8);
   
-  // Custom simple IP to X,Y hash to map them across the WorldMap dimensions (0-950, 0-620)
-  function getPosFromCountry(country: string, ip: string) {
+  // Convert real latitude/longitude to map X,Y percentages using Web Mercator projection
+  function getPosFromLatLng(lat: number, lng: number, country: string, ip: string) {
+    if (lat !== undefined && lng !== undefined && lat !== null && lng !== null) {
+       // Web Mercator approximation mapped to 0-100%
+       const x = (lng + 180) / 360 * 100;
+       const latRad = lat * Math.PI / 180;
+       const mercN = Math.log(Math.tan((Math.PI / 4) + (latRad / 2)));
+       const y = (1 - (mercN / Math.PI)) / 2 * 100;
+       
+       // Fine-tuning the projection to fit the SVG map viewBox (0-950, 0-620)
+       // The SVG map might not be a perfect Web Mercator. 
+       // Adjusted scaling for better visual alignment:
+       const adjustedX = x * 0.98 + 1; // minor padding
+       const adjustedY = y * 1.05 - 5; // shift up a bit due to map cropping
+       return { x: adjustedX, y: adjustedY };
+    }
+
+    // Fallback if no lat/lng available
     const c = (country || '').toLowerCase();
     const jitterX = (ip.charCodeAt(ip.length-1) % 4) - 2; // small random spread
     const jitterY = (ip.charCodeAt(ip.length-2) % 4) - 2;
@@ -81,13 +99,13 @@
     if (c.includes('germany') || c === 'de') return { x: 49 + jitterX, y: 28 + jitterY };
     if (c.includes('thailand') || c === 'th' || c.includes('local')) return { x: 76 + jitterX, y: 45 + jitterY };
 
-    // Fallback if country is unknown: pseudo-random but avoiding deep oceans (x < 25)
+    // Pseudo-random but avoiding deep oceans (x < 25)
     let hash = 0;
     for (let i = 0; i < ip.length; i++) hash = Math.imul(31, hash) + ip.charCodeAt(i) | 0;
     hash = Math.abs(hash);
     return {
-      x: 28 + (hash % 50), // x: 28 to 78
-      y: 20 + ((hash >> 8) % 40) // y: 20 to 60
+      x: 28 + (hash % 50),
+      y: 20 + ((hash >> 8) % 40)
     };
   }
 </script>
@@ -170,7 +188,7 @@
 
           <!-- Active Attack Nodes and Arcs -->
           {#each topAttackers as attacker (attacker.ip)}
-            {@const pos = getPosFromCountry(attacker.country, attacker.ip)}
+            {@const pos = getPosFromLatLng(attacker.latitude, attacker.longitude, attacker.country, attacker.ip)}
             {@const hqX = 77}
             {@const hqY = 44}
             {@const controlX = (hqX - pos.x) / 2}
@@ -187,11 +205,17 @@
 
             <!-- Attack Arc to HQ -->
             <svg class="attack-arc" preserveAspectRatio="none" style="position: absolute; top:0; left:0; width: 100%; height: 100%; pointer-events:none; z-index:10; overflow:visible;">
-              <path d="M {pos.x}% {pos.y}% Q {(pos.x + hqX)/2}% {(pos.y + hqY)/2 - 15}% {hqX}% {hqY}%" 
+              <path id="arc-{attacker.ip.replace(/\./g, '-')}" d="M {pos.x}% {pos.y}% Q {(pos.x + hqX)/2}% {(pos.y + hqY)/2 - 15}% {hqX}% {hqY}%" 
                     stroke="var(--color-{attacker.severity})" 
                     stroke-width="1.5" 
                     fill="none"
                     class="anim-arc" />
+              <!-- Moving Projectile -->
+              <circle r="3" fill="var(--color-{attacker.severity})" filter="drop-shadow(0 0 5px var(--color-{attacker.severity}))">
+                <animateMotion dur="{1 + (attacker.count % 3)}s" repeatCount="indefinite">
+                  <mpath href="#arc-{attacker.ip.replace(/\./g, '-')}" />
+                </animateMotion>
+              </circle>
             </svg>
           {/each}
         </div>
@@ -273,17 +297,16 @@
                on:keydown={(e) => e.key === 'Enter' && navigateToSoar(event)}
                title="Click to Investigate in SOAR">
              <span class="t-time">[{new Date(event.time || event.createdAt).toISOString()}]</span>
-             <span class="t-fac">daemon.alert</span>
+             <span class="t-fac">{event.source || 'syslog'}.alert</span>
              <span class="t-ip" style="display:flex; align-items:center; gap:8px;">{event.ip || event.sourceIp} <OrgBadge organization={event.organization} country={event.country} /></span>
-             <span class="t-type">[{event.type.replace(/ /g, '_').toUpperCase()}]</span>
+             <span class="t-type" style="width: 250px;">[{event.type ? event.type.replace(/ /g, '_').toUpperCase() : 'UNKNOWN_ATTACK'}]</span>
+             <span class="t-mitre" style="width: 80px; color: var(--color-medium); font-weight: bold;">{event.mitreCode || 'T0000'}</span>
              <span class="t-msg">
-               {#if event.description || event.message}
-                 {event.description || event.message}
-               {:else if event.payload && Object.keys(event.payload).length > 0}
-                 {JSON.stringify(event.payload).substring(0, 150)}...
-               {:else}
-                 ACTION: {event.status || 'DETECTED'} | PROTOCOL: {event.protocol || 'TCP'} | PORT: {event.port || event.destPort || 'ANY'} | PROCESS: WAITING_FOR_SOAR_ANALYSIS
-               {/if}
+                 <span style="color: #fff;">DETAIL:</span> {event.detail || event.description || event.message || 'Suspicious Activity Detected'} 
+                 {#if event.mitigation}
+                   <span style="color: var(--color-info); margin-left: 10px;">| <span style="color: #fff;">RECOMMEND:</span> {event.mitigation}</span>
+                 {/if}
+                 <span style="color: var(--text-dim); margin-left: 10px;">| SCORE: {event.threatScore || 50}</span>
              </span>
           </div>
         {/each}

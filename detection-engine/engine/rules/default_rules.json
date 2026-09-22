@@ -13,6 +13,19 @@
     "cve": []
   },
   {
+    "rule_id": "FW-SQLI-001",
+    "name": "SQL Injection Logged by Firewall",
+    "severity": "HIGH",
+    "enabled": true,
+    "version": "1.0",
+    "pattern": "(?i)(SELECT.*FROM|SQL Injection Attack detected)",
+    "target_field": "raw_log_reference",
+    "mitre": [
+      "T1190"
+    ],
+    "cve": []
+  },
+  {
     "rule_id": "WEB-XSS-001",
     "name": "Cross-Site Scripting (XSS)",
     "severity": "MEDIUM",

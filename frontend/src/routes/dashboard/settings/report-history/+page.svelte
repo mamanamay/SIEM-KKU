@@ -1,12 +1,15 @@
 <script>
   import { onMount } from 'svelte';
   import { showNotification } from '../../../../stores/notificationStore';
+  import ConfirmModal from '$lib/components/ConfirmModal.svelte';
   import { roleStore, usernameStore } from '../../../../stores/events';
   
   let reports = [];
   let loading = true;
   let previewHtml = null;
   let previewId = null;
+  let selectedFilter = 'All';
+  $: filteredReports = reports.filter(r => selectedFilter === 'All' || (r.title && r.title.includes(selectedFilter)));
   
   async function loadReports() {
     loading = true;
@@ -26,8 +29,6 @@
     loadReports();
   });
 
-  let selectedFilter = 'All';
-  $: filteredReports = reports.filter(r => selectedFilter === 'All' || (r.title && r.title.includes(selectedFilter)));
 
   
   let reportToDelete = null;
@@ -147,24 +148,7 @@
   </div>
 </div>
 
-{#if reportToDelete}
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="modal-backdrop" on:click={() => reportToDelete = null}>
-    <div class="modal-content" style="max-width: 400px; height: auto;" on:click|stopPropagation>
-      <div class="modal-header" style="border-bottom: none; padding-bottom: 0;">
-        <h3 style="color: var(--text-primary);"><i class="ti ti-alert-triangle" style="color: #ef4444; font-size: 24px;"></i> Delete Report</h3>
-      </div>
-      <div class="modal-body" style="padding: 16px 24px; font-size: 15px; color: var(--text-secondary);">
-        Are you sure you want to delete the report <strong>{reportToDelete.title}</strong>? This action cannot be undone.
-      </div>
-      <div class="modal-header" style="justify-content: flex-end; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border); border-bottom: none; background: var(--bg-primary);">
-        <button class="btn-sm" on:click={() => reportToDelete = null}>Cancel</button>
-        <button class="btn-primary" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;" on:click={confirmDelete}>Yes, Delete</button>
-      </div>
-    </div>
-  </div>
-{/if}
+<ConfirmModal visible={!!reportToDelete} title='ยืนยันการลบรายงาน' message={`คุณแน่ใจหรือไม่ว่าต้องการลบรายงาน "${reportToDelete?.title}"? การกระทำนี้ไม่สามารถกู้คืนได้`} icon='ti-alert-triangle' confirmColor='#ef4444' iconColor='#ef4444' confirmText='ลบข้อมูล' on:confirm={confirmDelete} on:cancel={() => reportToDelete = null} />
 
 {#if previewHtml}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -224,4 +208,6 @@
     .close-btn:hover { background: rgba(0,0,0,0.05); color: var(--text-primary); }
     .modal-body { flex: 1; overflow: auto; padding: 24px; background: #ffffff; color: #000000; }
 </style>
+
+
 

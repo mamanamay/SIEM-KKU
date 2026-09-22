@@ -1,6 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { showNotification } from '../../../../stores/notificationStore';
+    import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 
     let apiConfig = {
         aiApiUrl: '',
@@ -85,6 +86,7 @@
             });
             if (res.ok) {
                 showNotification('success', 'Success', 'Connection successful');
+                await handleSave(); // Auto-save on successful test
             } else {
                 showNotification('error', 'Error', 'Connection failed');
             }
@@ -203,7 +205,7 @@
                     {/if}
                 {/if}
                 <div class="card-actions">
-                    <button type="button" class="btn-secondary" on:click={() => promptConfirm('Test AI Connection', 'Are you sure you want to test the connection to the AI provider?', 'ti-plug', () => testConnection('/api/settings/integrations/test-ai'))}>Test AI Connection</button>
+                    <button type="button" class="btn-secondary" on:click={() => promptConfirm('ทดสอบการเชื่อมต่อ AI', 'คุณต้องการทดสอบการเชื่อมต่อกับผู้ให้บริการ AI หรือไม่?', 'ti-plug', () => testConnection('/api/settings/integrations/test-ai'))}>Test AI Connection</button>
                 </div>
             </div>
 
@@ -215,7 +217,7 @@
                     <input type="text" id="slackUrl" bind:value={apiConfig.slackUrl} class="input-field" placeholder="https://hooks.slack.com/services/..." />
                 </div>
                 <div class="card-actions">
-                    <button type="button" class="btn-secondary" on:click={() => promptConfirm('Test Slack', 'Are you sure you want to send a test message to Slack?', 'ti-brand-slack', () => testConnection('/api/settings/integrations/test-slack'))}>Test Slack Connection</button>
+                    <button type="button" class="btn-secondary" on:click={() => promptConfirm('ทดสอบ Slack', 'คุณต้องการส่งข้อความทดสอบไปยัง Slack หรือไม่?', 'ti-brand-slack', () => testConnection('/api/settings/integrations/test-slack'))}>Test Slack Connection</button>
                 </div>
             </div>
 
@@ -227,17 +229,19 @@
                     <input type="text" id="teamsUrl" bind:value={apiConfig.teamsUrl} class="input-field" placeholder="https://outlook.office.com/webhook/..." />
                 </div>
                 <div class="card-actions">
-                    <button type="button" class="btn-secondary" on:click={() => promptConfirm('Test Teams', 'Are you sure you want to send a test message to Microsoft Teams?', 'ti-brand-teams', () => testConnection('/api/settings/integrations/test-teams'))}>Test Teams Connection</button>
+                    <button type="button" class="btn-secondary" on:click={() => promptConfirm('ทดสอบ Teams', 'คุณต้องการส่งข้อความทดสอบไปยัง Microsoft Teams หรือไม่?', 'ti-brand-teams', () => testConnection('/api/settings/integrations/test-teams'))}>Test Teams Connection</button>
                 </div>
             </div>
         </div>
 
         <div class="actions">
-            <button on:click={() => promptConfirm('Save Integrations', 'Are you sure you want to save all integration settings?', 'ti-device-floppy', handleSave)} disabled={saving} class="btn-primary">
+            <button on:click={() => promptConfirm('บันทึกการตั้งค่า', 'คุณต้องการบันทึกการตั้งค่าการเชื่อมต่อทั้งหมดหรือไม่?', 'ti-device-floppy', handleSave)} disabled={saving} class="btn-primary">
                 {saving ? 'Saving...' : 'Save Integrations'}
             </button>
         </div>
     {/if}
+
+    <ConfirmModal bind:visible={showConfirmModal} title={confirmTitle} message={confirmMessage} icon={confirmIcon} on:confirm={executeConfirmAction} on:cancel={() => showConfirmModal = false} />
 </div>
 
 <style>

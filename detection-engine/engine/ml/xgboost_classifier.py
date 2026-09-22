@@ -1,24 +1,49 @@
-﻿import os
-import random
+import os
+import xgboost as xgb
+import numpy as np
 
-class MockXGBoostClassifier:
+class RealXGBoostClassifier:
     def __init__(self, model_version='1.0.0'):
         self.version = model_version
-        self.classes = ['BENIGN', 'PORT_SCAN', 'BRUTE_FORCE', 'SQL_INJECTION', 'XSS', 'PATH_TRAVERSAL']
+        self.classes = ['BENIGN', 'BRUTE_FORCE', 'PATH_TRAVERSAL', 'PORT_SCAN', 'SQL_INJECTION', 'XSS']
+        self.model_path = os.path.join(os.path.dirname(__file__), 'models', 'xgb_model.json')
+        self.model = None
+        self.feature_names = ['request_count_5m', 'failed_logins', 'unique_ports']
+        
+        self.load_model()
+
+    def load_model(self):
+        if os.path.exists(self.model_path):
+            self.model = xgb.XGBClassifier()
+            self.model.load_model(self.model_path)
+            print(f"Loaded XGBoost model from {self.model_path}")
+        else:
+            print(f"Warning: XGBoost model not found at {self.model_path}. Using fallback dummy logic.")
+            self.model = None
 
     def predict(self, features: dict) -> dict:
         request_count = features.get('request_count_5m', 0)
         failed_logins = features.get('failed_logins', 0)
+        unique_ports = features.get('unique_ports', 0)
         
-        probs = {c: 0.01 for c in self.classes}
-        probs['BENIGN'] = 0.95
-        
-        if failed_logins > 3:
-            probs['BRUTE_FORCE'] = 0.88
-            probs['BENIGN'] = 0.05
-        elif request_count > 50:
-            probs['PORT_SCAN'] = 0.92
-            probs['BENIGN'] = 0.02
+        if self.model is not None:
+            X = np.array([[request_count, failed_logins, unique_ports]])
+            
+            probs_raw = self.model.predict_proba(X)[0]
+            
+            # Map probabilities to classes
+            probs = {self.classes[i]: float(probs_raw[i]) for i in range(len(self.classes))}
+        else:
+            # Fallback logic
+            probs = {c: 0.01 for c in self.classes}
+            probs['BENIGN'] = 0.95
+            
+            if failed_logins > 3:
+                probs['BRUTE_FORCE'] = 0.88
+                probs['BENIGN'] = 0.05
+            elif request_count > 50:
+                probs['PORT_SCAN'] = 0.92
+                probs['BENIGN'] = 0.02
         
         sorted_classes = sorted(probs.items(), key=lambda x: x[1], reverse=True)
         top_pred = sorted_classes[0]

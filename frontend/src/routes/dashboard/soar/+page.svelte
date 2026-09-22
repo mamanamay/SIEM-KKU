@@ -56,8 +56,6 @@
       return e.ip === searchQuery;
     }
     
-    if (!isProxyOrFirewall(e)) return false;
-    
     const matchSearch = (e.ip || '').toLowerCase().includes(searchQuery.toLowerCase()) || (e.type || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchSeverity = severityFilter === 'all' ? true : e.severity === severityFilter;
     
@@ -112,21 +110,24 @@
     
     aiGeneratingBrief = true;
     try {
-      const prompt = `?????????????????????????????????????????? (???????)
-Event Data: ${JSON.stringify(selectedEvent)}
-
-????????????????????????????:
-1. [?????????????? Log] - ????????????????????????? Log (???? IP, ????, ??????, ???????????????????????)
-2. [??????????????????????] - ????????????????????????????????? ???????????????????????? (???????????????????????)
-3. [????????????????] - ??????????????? SOC Analyst ??????????? SIEM ???
-???????????? ??? <ul> ??? <li> ??????? markdown codeblocks`;
-
-      const res = await callKKUAI('', [
-        { role: 'system', content: 'You are an elite SOC Analyst. Provide response formatted with HTML tags.' },
-        { role: 'user', content: prompt }
-      ]);
-      aiExplanation = res;
-      selectedEvent.aiAnalysis = res;
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/attacks/analyze-event', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify(selectedEvent)
+      });
+      
+      if (!res.ok) throw new Error('API request failed');
+      const data = await res.json();
+      
+      // The backend returns { analysis: string, mode: string }
+      // Sometimes it returns raw text if it doesn't wrap it in json? Let's check backend endpoint.
+      // Wait, backend analyze-event returns { analysis, mode } for rule-based, and for AI it returns { analysis: text, mode: 'ai' }.
+      aiExplanation = data.analysis;
+      selectedEvent.aiAnalysis = data.analysis;
     } catch (e: any) {
       alert("AI Workflow Generation failed: " + e.message);
     } finally {
@@ -240,7 +241,7 @@ Event Data: ${JSON.stringify(selectedEvent)}
 </script>
 
 <div style="display:flex;flex-direction:column;height:100%;gap:16px;">
-  <PageHeader title="Incident & SOAR" description="Centralized Incident Response, Correlation, and SOC Playbooks." icon="ti-tool" />
+  <PageHeader title="Deep Incident" description="Centralized Incident Response, Correlation, and SOC Playbooks." icon="ti-tool" />
   
   <div class="soar-layout">
     <!-- COL 1: Incident Queue -->
@@ -248,7 +249,7 @@ Event Data: ${JSON.stringify(selectedEvent)}
       <div class="list-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <div style="font-size: 16px; font-weight: 700;">Incident Queue</div>
-          <div style="font-size: 12px; color: var(--text-muted);">{exactMatchMode ? 'Targeted Search' : 'Firewall & Proxy'} ({filteredEvents.length})</div>
+          <div style="font-size: 12px; color: var(--text-muted);">{exactMatchMode ? 'Targeted Search' : 'All Sources'} ({filteredEvents.length})</div>
         </div>
         <button class="btn-live-toggle {isLive ? 'live' : 'paused'}" on:click={toggleLive} title={isLive ? 'Pause Live Updates' : 'Resume Live Updates'}>
           <i class="ti {isLive ? 'ti-player-play' : 'ti-player-pause'}"></i>

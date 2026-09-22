@@ -33,31 +33,18 @@ tar --exclude='node_modules' \
     --exclude='.git' \
     --exclude='frontend/node_modules' \
     --exclude='backend/node_modules' \
-    --exclude='webtrap/node_modules' \
     --exclude='.env' \
     --exclude='backend/.env' \
     --exclude='frontend/build' \
     --exclude='frontend/.svelte-kit' \
     --exclude='backend/dist' \
     --exclude='siem-logs' \
-    --exclude='webtrap-logs' \
-    --exclude='cowrie-config/var/log/cowrie/*.json.*' \
-    --exclude='cowrie-config/var/log/cowrie/*.log' \
+    --exclude='detection-engine/__pycache__' \
+    --exclude='trash' \
     --exclude='nginx/certs/*.pem' \
     --exclude='nginx/certs/*.key' \
     --exclude='nginx/certs/*.crt' \
-    --exclude='check_divs.js' \
-    --exclude='fix_divs.js' \
-    --exclude='fix_text_2.js' \
-    --exclude='update_analytics.js' \
-    --exclude='update_ds.js' \
-    --exclude='test_db.js' \
-    --exclude='extract.py' \
-    --exclude='proxy.js' \
-    --exclude='simulate_attack.ps1' \
-    --exclude='start_proxy.ps1' \
     --exclude='CLAUDE.md' \
-    --exclude='docker-compose.dev.yml' \
     -czf deploy.tar.gz .
 
 echo "  ✅ Packed → deploy.tar.gz"
@@ -73,10 +60,10 @@ echo "      (You will be prompted for SSH password again)"
 ssh ${USERNAME}@${SERVER_IP} << 'REMOTE'
   set -e
   echo "  → Extracting files..."
-  mkdir -p ~/honeypot-siem
-  tar -xzf ~/deploy.tar.gz -C ~/honeypot-siem
+  mkdir -p ~/siem_kku
+  tar -xzf ~/deploy.tar.gz -C ~/siem_kku
   rm ~/deploy.tar.gz
-  cd ~/honeypot-siem
+  cd ~/siem_kku
 
   echo "  → Setting up .env..."
   if [ ! -f .env ]; then
@@ -84,10 +71,10 @@ ssh ${USERNAME}@${SERVER_IP} << 'REMOTE'
     cp backend/.env.example backend/.env
     echo ""
     echo "  ⚠️  .env created from template. Please edit .env and backend/.env before continuing:"
-    echo "      nano ~/honeypot-siem/.env"
-    echo "      nano ~/honeypot-siem/backend/.env"
+    echo "      nano ~/siem_kku/.env"
+    echo "      nano ~/siem_kku/backend/.env"
     echo ""
-    echo "  After editing, run: cd ~/honeypot-siem && bash nginx/generate-ssl.sh && docker compose up -d --build"
+    echo "  After editing, run: cd ~/siem_kku && bash nginx/generate-ssl.sh && docker compose up -d --build"
     exit 0
   fi
 
@@ -96,7 +83,7 @@ ssh ${USERNAME}@${SERVER_IP} << 'REMOTE'
   bash nginx/generate-ssl.sh
 
   echo "  → Creating required log directories..."
-  mkdir -p logs/siem logs/webtrap logs/cowrie honeypots/cowrie/var/lib/cowrie
+  mkdir -p logs/siem
 
   echo "  → Starting Docker containers..."
   docker compose up -d --build
@@ -113,7 +100,5 @@ echo "╔═══════════════════════�
 echo "║  ✅ DEPLOYMENT COMPLETE!                         ║"
 echo "╠══════════════════════════════════════════════════╣"
 echo "║  Dashboard : https://${SERVER_IP}               "
-echo "║  SSH Trap  : ${SERVER_IP}:2222                  "
-echo "║  WebTrap   : http://${SERVER_IP}:8081           "
 echo "╚══════════════════════════════════════════════════╝"
 echo ""

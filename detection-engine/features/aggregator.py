@@ -37,7 +37,7 @@ class FeatureAggregator:
             
         unique_ports = set(e.destination_port for e in events if e.destination_port)
         unique_targets = set(e.destination_ip for e in events)
-        failed_logins = sum(1 for e in events if e.action == "FAILURE" or (e.status_code and e.status_code == 401))
+        failed_logins = sum(1 for e in events if e.action == "FAILURE" or (e.status_code and e.status_code in [401, 403]) or (e.action in ["deny", "blocked", "drop"] and e.destination_port == 22))
         
         return {
             "request_count_5m": len(events),

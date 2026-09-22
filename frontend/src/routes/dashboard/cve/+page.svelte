@@ -46,11 +46,18 @@
     }] : mappedCVEs;
 
   let cveSimilarityEntries: any[] = [];
-  onMount(() => {
+  onMount(async () => {
     try {
-      const stored = localStorage.getItem('kkusiem_cve_similarity');
-      if (stored) cveSimilarityEntries = JSON.parse(stored);
-    } catch {}
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/cve/history', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        cveSimilarityEntries = await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to load CVE history', e);
+    }
     
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -79,7 +86,9 @@
 
     if (id.startsWith('CVE-')) {
       try {
-        const res = await fetch(`https://cveawg.mitre.org/api/cve/${id}`);
+        const res = await fetch(`/api/cve/${id}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
         if (!res.ok) throw new Error('Not found in database.');
         const data = await res.json();
         
@@ -178,6 +187,31 @@
         }
 
         aiBriefing = { ...aiBriefing, aiSummary: thSummary, mitigation: thMitigations };
+
+        // Save history to backend
+        try {
+          const saveRes = await fetch('/api/cve/history', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+              cveId: aiBriefing.cveId,
+              description: desc,
+              severity: aiBriefing.severity,
+              cvssScore: aiBriefing.cvss,
+              aiSummary: thSummary
+            })
+          });
+          if (saveRes.ok) {
+            const newHistory = await saveRes.json();
+            // prepend to list
+            cveSimilarityEntries = [newHistory, ...cveSimilarityEntries.filter(h => h.cveId !== newHistory.cveId)].slice(0, 50);
+          }
+        } catch (err) {
+          console.error('Failed to save CVE history', err);
+        }
 
       } catch (err: any) {
         errorMsg = 'Could not find relevant data for this CVE ID in the MITRE database.';
@@ -385,6 +419,25 @@
       {:else}
         <div style="font-size:12px; color:var(--text-secondary); text-align: center; padding: 10px;">
           No CVEs mapped from recent attacks.
+        </div>
+      {/each}
+    </div>
+
+    <div class="trending-card" style="margin-top:20px;">
+      <div class="trending-title" style="color: #00d4ff;"><i class="ti ti-history"></i> Recent CVE Searches</div>
+      {#each cveSimilarityEntries as history}
+        <div class="trend-item" on:click={() => searchVulnerability(history.cveId)}>
+          <div class="t-head">
+            <span class="t-name" style="font-family: monospace;">{history.cveId}</span>
+            <span class="t-score {history.severity?.toLowerCase()}">{history.cvssScore?.toFixed(1) || '0.0'}</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            {history.aiSummary?.substring(0, 50)}...
+          </div>
+        </div>
+      {:else}
+        <div style="font-size:12px; color:var(--text-secondary); text-align: center; padding: 10px;">
+          No search history found.
         </div>
       {/each}
     </div>

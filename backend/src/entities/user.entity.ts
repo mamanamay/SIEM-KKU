@@ -47,4 +47,7 @@ export class User {
 
   @Column({ nullable: true, default: null, type: 'text' })
   backupCodesJson: string | null;
+
+  @Column({ nullable: true, type: 'text' })
+  apiConfigJson: string;
 }

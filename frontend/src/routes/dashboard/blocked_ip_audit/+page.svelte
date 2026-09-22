@@ -64,19 +64,6 @@
   }
 
   import PageHeader from '../../../lib/components/PageHeader.svelte';
-  import ExportBtn from '../../../lib/components/ExportBtn.svelte';
-
-  $: fullExportData = (blockedList || []).map(b => ({
-    "IP Address": b.ip,
-    "Blocked At": b.blockedAt ? new Date(b.blockedAt).toLocaleString('en-GB') : (b.time || b.timeStr),
-    "Reason": b.reason || b.type || '-',
-    "Source": b.source || 'Firewall',
-    "Status": 'Blocked',
-    "Country": b.country || 'Unknown',
-    "Threat Score": b.threatScore || 90,
-    "Block Duration": b.duration || 'Permanent',
-    "Targeted Port": b.port || 'Any'
-  }));
 
   // ── Manual Block ──────────────────────────────────────────────────────────
   let manualBlockIp = '';
@@ -122,11 +109,7 @@
 
 <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:2rem">
 
-  <PageHeader title="Blocked IP Audit" description="Review and manage historically blocked external IPs." icon="ti-ban">
-    <div slot="actions">
-      <ExportBtn config={{ pageType: 'blocked-ip', reportTitle: 'Blocked IP Audit Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={fullExportData} />
-    </div>
-  </PageHeader>
+  <PageHeader title="Blocked IP Audit" description="Review and manage historically blocked external IPs." icon="ti-ban" />
 
   <!-- ── Manual Block Form (Admin only) ────────────────────────────── -->
   {#if $roleStore === 'admin'}
@@ -176,7 +159,6 @@
 
   <!-- Table Card -->
   <div class="ds-card" style="padding:0;overflow:hidden">
-    <p class="table-note">* Real-time blocked IP list from Firewall/WAF.</p>
     <div class="ds-table-wrap">
       <table class="ds-table">
         <thead>

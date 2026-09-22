@@ -2,8 +2,8 @@ import type { PageExportSchema } from "./types";
 
 export const PAGE_EXPORT_SCHEMAS: Record<string, PageExportSchema> = {
   hunting: {
-    pageTitle: "Threat Hunting",
-    pageTitleEn: "Threat Hunting",
+    pageTitle: "Incident Security Report",
+    pageTitleEn: "Incident Security Report",
     allowExecOnly: false,
     fieldGroups: [
       {
@@ -11,7 +11,9 @@ export const PAGE_EXPORT_SCHEMAS: Record<string, PageExportSchema> = {
         fields: [
           { key: "id", label: "Event ID", labelEn: "Event ID", defaultSelected: true, readOnly: true },
           { key: "createdAt", label: "เวลา", labelEn: "Timestamp", defaultSelected: true, readOnly: true },
-          { key: "ip", label: "Source IP", labelEn: "Source IP", defaultSelected: true, readOnly: true },
+          { key: "ip", label: "Source IP", labelEn: "Source IP (Attacker)", defaultSelected: true, readOnly: true },
+          { key: "destIp", label: "IP เครื่องเป้าหมาย", labelEn: "Target Honeypot IP", defaultSelected: true, readOnly: true },
+          { key: "honeypotPort", label: "Port เป้าหมาย", labelEn: "Target Port", defaultSelected: true, readOnly: true },
           { key: "type", label: "ประเภทการโจมตี", labelEn: "Attack Type", defaultSelected: true, readOnly: true },
           { key: "severity", label: "ระดับความรุนแรง", labelEn: "Severity", defaultSelected: true, readOnly: true },
           { key: "status", label: "สถานะ", labelEn: "Status", defaultSelected: true }
@@ -21,21 +23,30 @@ export const PAGE_EXPORT_SCHEMAS: Record<string, PageExportSchema> = {
         group: "เครือข่าย", groupEn: "Network",
         fields: [
           { key: "country", label: "ประเทศต้นทาง", labelEn: "Source Country", defaultSelected: true },
-          { key: "threatScore", label: "Threat Score", labelEn: "Threat Score", defaultSelected: false }
+          { key: "organization", label: "หน่วยงาน/องค์กร", labelEn: "Organization", defaultSelected: true },
+          { key: "threatScore", label: "Threat Score", labelEn: "Threat Score", defaultSelected: true }
         ]
       },
       {
         group: "การโจมตี", groupEn: "Attack",
         fields: [
-          { key: "mitreCode", label: "MITRE ATT&CK", labelEn: "MITRE ATT&CK Technique", defaultSelected: false }
+          { key: "mitreCode", label: "MITRE ATT&CK", labelEn: "MITRE ATT&CK Technique", defaultSelected: true },
+          { key: "hitCount", label: "จำนวนครั้ง", labelEn: "Hit Count", defaultSelected: true }
         ]
       },
       {
-        group: "หลักฐาน", groupEn: "Evidence",
+        group: "ตัวชี้วัด IOC", groupEn: "IOC",
+        fields: [
+          { key: "clientVersion", label: "User Agent", labelEn: "User Agent / Client Version", defaultSelected: true, readOnly: true },
+          { key: "sessionId", label: "Session ID", labelEn: "Session ID", defaultSelected: false, readOnly: true }
+        ]
+      },
+      {
+        group: "ผลกระทบและหลักฐาน", groupEn: "Evidence",
         fields: [
           { key: "detail", label: "Payload / รายละเอียด", labelEn: "Payload / Event Detail", defaultSelected: false, readOnly: true },
-          { key: "clientVersion", label: "User Agent", labelEn: "User Agent", defaultSelected: false, readOnly: true },
-          { key: "aiAnalysis", label: "AI Analysis", labelEn: "System AI Analysis", defaultSelected: false, readOnly: true },
+          { key: "aiAnalysis", label: "AI Analysis", labelEn: "System AI Analysis", defaultSelected: true, readOnly: true },
+          { key: "mitigation", label: "คำแนะนำแก้ไข", labelEn: "Mitigation Advice", defaultSelected: true, readOnly: true },
           { key: "notes", label: "บันทึก Analyst", labelEn: "Analyst Notes", defaultSelected: false },
           { key: "assignee", label: "ผู้รับผิดชอบ", labelEn: "Assigned To", defaultSelected: false }
         ]
@@ -83,25 +94,52 @@ export const PAGE_EXPORT_SCHEMAS: Record<string, PageExportSchema> = {
     ]
   },
   "ai-briefing": {
-    pageTitle: "AI Daily Briefing",
+    pageTitle: "รายงานสรุปสถานการณ์ความมั่นคงปลอดภัยประจำวัน",
     pageTitleEn: "AI Daily Security Briefing",
     allowExecOnly: true,
     fieldGroups: [
       {
-        group: "ข้อมูลหลัก", groupEn: "Overview",
+        group: "สรุปสถานการณ์โดย AI", groupEn: "AI Situation Summary",
         fields: [
-          { key: "createdAt", label: "เวลา", labelEn: "Timestamp", defaultSelected: true, readOnly: true },
-          { key: "ip", label: "Source IP", labelEn: "Source IP", defaultSelected: true, readOnly: true },
-          { key: "type", label: "ประเภทการโจมตี", labelEn: "Attack Type", defaultSelected: true, readOnly: true },
-          { key: "severity", label: "ระดับความรุนแรง", labelEn: "Severity", defaultSelected: true, readOnly: true },
-          { key: "country", label: "ประเทศต้นทาง", labelEn: "Source Country", defaultSelected: true },
-          { key: "threatScore", label: "Threat Score", labelEn: "Threat Score", defaultSelected: false }
+          { key: "aiSummary", label: "สรุปสถานการณ์", labelEn: "AI Situation Summary", defaultSelected: true, readOnly: true },
+          { key: "riskLevel", label: "ระดับความเสี่ยง", labelEn: "Overall Risk Level", defaultSelected: true, readOnly: true },
+          { key: "confidence", label: "ความเชื่อมั่น AI", labelEn: "AI Confidence", defaultSelected: true, readOnly: true }
         ]
       },
       {
-        group: "AI Analysis", groupEn: "AI Analysis",
+        group: "สถิติการโจมตี", groupEn: "Attack Statistics",
         fields: [
-          { key: "aiAnalysis", label: "AI Assessment", labelEn: "AI Assessment", defaultSelected: true, readOnly: true }
+          { key: "total", label: "เหตุการณ์ทั้งหมด", labelEn: "Total Events", defaultSelected: true, readOnly: true },
+          { key: "critical", label: "ระดับวิกฤต", labelEn: "Critical", defaultSelected: true, readOnly: true },
+          { key: "high", label: "ระดับสูง", labelEn: "High", defaultSelected: true, readOnly: true },
+          { key: "topTypes", label: "ประเภทภัยคุกคาม Top 5", labelEn: "Top 5 Threat Types", defaultSelected: true, readOnly: true },
+          { key: "topCountries", label: "ประเทศต้นทาง Top 3", labelEn: "Top 3 Source Countries", defaultSelected: true, readOnly: true }
+        ]
+      },
+      {
+        group: "หน่วยงานที่ถูกโจมตี", groupEn: "Targeted Organizations",
+        fields: [
+          { key: "topOrganizations", label: "หน่วยงานที่ถูกโจมตีสูงสุด", labelEn: "Most Targeted Organizations", defaultSelected: true, readOnly: true }
+        ]
+      },
+      {
+        group: "เป้าหมายที่ต้องสืบสวน", groupEn: "Investigation Priorities",
+        fields: [
+          { key: "priorities", label: "ลำดับความสำคัญในการสืบสวน", labelEn: "Investigation Priorities", defaultSelected: true, readOnly: true }
+        ]
+      },
+      {
+        group: "รูปแบบการโจมตีที่สัมพันธ์กัน", groupEn: "Attack Campaigns",
+        fields: [
+          { key: "campaigns", label: "กลุ่มการโจมตี (Campaign)", labelEn: "Correlated Attack Campaigns", defaultSelected: true, readOnly: true }
+        ]
+      },
+      {
+        group: "มาตรการที่แนะนำ", groupEn: "Recommended Actions",
+        fields: [
+          { key: "immediate", label: "มาตรการเร่งด่วน", labelEn: "Immediate Actions", defaultSelected: true, readOnly: true },
+          { key: "investigation", label: "มาตรการสืบสวน", labelEn: "Investigation Actions", defaultSelected: true, readOnly: true },
+          { key: "preventive", label: "มาตรการป้องกัน", labelEn: "Preventive Actions", defaultSelected: true, readOnly: true }
         ]
       }
     ]

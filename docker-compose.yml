@@ -7,12 +7,6 @@ version: '3.8'
 # Run: cp .env.example .env → edit .env → docker compose up -d --build
 #
 # ─── Log Ingestion Architecture ─────────────────────────────
-# ทุก Honeypot ยิง Log ผ่าน HTTP POST ตรงเข้า Backend
-# ไม่จำเป็นต้องแชร์ไฟล์ (shared volume) ระหว่าง Container อีกต่อไป
-#
-#  [Cowrie]  ──HTTP POST──▶ backend:5000/api/ingest/cowrie
-#  [WebTrap] ──HTTP POST──▶ backend:5000/api/ingest/webtrap
-#  [Wazuh]   ──HTTP POST──▶ backend:5000/api/wazuh  (เดิม, ยังใช้ได้)
 #  [อื่นๆ]   ──HTTP POST──▶ backend:5000/api/ingest/<source>
 # ============================================================
 
@@ -21,11 +15,11 @@ services:
   # ── 1. Reverse Proxy & SSL ──────────────────────────────────
   nginx:
     image: nginx:1.25-alpine
-    container_name: honeypot_nginx
+    container_name: siem_nginx
     restart: unless-stopped
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
+      - "18080:80"
+      - "18443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
@@ -38,7 +32,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: honeypot_frontend
+    container_name: siem_frontend
     restart: unless-stopped
     environment:
       - NODE_ENV=production
@@ -53,7 +47,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: honeypot_backend
+    container_name: siemt_backend
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -66,12 +60,10 @@ services:
       - SSO_CALLBACK_URL=${SSO_CALLBACK_URL}
       - SSO_WEB_URL=${SSO_WEB_URL}
       - SSO_API_URL=${SSO_API_URL}
-      # (Optional) ตั้ง API Key นี้เพื่อป้องกันคนภายนอกยิง Log ปลอมเข้ามา
       - INGEST_API_KEY=${INGEST_API_KEY:-}
     expose:
       - "5000"
     volumes:
-      # siem-logs: เก็บ blocked_ips.json / isolated_ports.json (ยังคงใช้อยู่)
       - siem_logs:/app/siem-logs
       - /var/log/firewall:/var/log/firewall:ro
       - /var/log/revproxy:/var/log/revproxy:ro
@@ -82,7 +74,7 @@ services:
   # ── 4. Database (PostgreSQL 16) ──────────────────────────────
   postgres:
     image: postgres:16-alpine
-    container_name: honeypot_postgres
+    container_name: siem_postgres
     restart: unless-stopped
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
@@ -96,65 +88,25 @@ services:
   # ── 5. Cache / Message Broker (Redis 7) ──────────────────────
   redis:
     image: redis:7-alpine
-    container_name: honeypot_redis
+    container_name: siem_redis
     restart: unless-stopped
     expose:
       - "6379"
 
-  # ── 6. SSH/Telnet Honeypot (Cowrie) ─────────────────────────
-  # Log วิ่งผ่าน [output_http] ใน cowrie.cfg → backend:5000/api/ingest/cowrie
-  cowrie:
-    image: cowrie/cowrie:latest
-    container_name: cowrie-honeypot
-    restart: always
-    ports:
-      - "${COWRIE_SSH_PORT:-2222}:2222"
-    volumes:
-      - ./honeypots/cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
-      - ./honeypots/cowrie/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
-      # เก็บ filesystem ปลอมไว้เพื่อให้ Attacker เดิน path ได้
-      - ./honeypots/cowrie/var/lib/cowrie:/cowrie/cowrie-git/var/lib/cowrie
-    depends_on:
-      - backend
-
-  # ── 7. Web Vulnerability Honeypot (WebTrap) ──────────────────
-  # Log วิ่งผ่าน fetch() ใน server.js → backend:5000/api/ingest/webtrap
-  webtrap:
+  # ── 6. Detection Engine (AI/ML) ──────────────────────────────
+  detection-engine:
     build:
-      context: ./honeypots/webtrap
+      context: ./detection-engine
       dockerfile: Dockerfile
-    container_name: webtrap_honeypot
-    restart: always
-    ports:
-      - "${WEBTRAP_HTTP_PORT:-8081}:8080"
+    container_name: siem_detection_engine
+    restart: unless-stopped
+    expose:
+      - "8100"
     environment:
-      - BACKEND_URL=http://backend:5000
-      - INGEST_API_KEY=${INGEST_API_KEY:-}
-    volumes:
-      - ./nginx/certs:/certs:ro
+      - NODE_ENV=production
     depends_on:
-      - backend
-
-  # ── 8. Attack Simulator (สำหรับ Demo / Testing เท่านั้น) ───────────────────
-  # เปิดใช้งาน:  docker compose --profile attacker up -d
-  # หยุด:        docker compose --profile attacker down
-  # ยิงชุดเดียว: docker compose run --rm attacker
-  attacker:
-    build:
-      context: ./tools/attacker
-      dockerfile: Dockerfile
-    container_name: attack_simulator
-    profiles: ["attacker"]   # ← ไม่ start โดยอัตโนมัติ ต้อง --profile attacker
-    restart: "no"
-    environment:
-      - BACKEND_URL=http://backend:5000
-      - INGEST_API_KEY=${INGEST_API_KEY:-}
-      - ATTACKER_MODE=${ATTACKER_MODE:-AUTO}
-      - BURST_COUNT=${BURST_COUNT:-30}
-      - MIN_DELAY_MS=${MIN_DELAY_MS:-2000}
-      - MAX_DELAY_MS=${MAX_DELAY_MS:-8000}
-    depends_on:
-      - backend
+      - postgres
+      - redis
 
 volumes:
   pgdata:

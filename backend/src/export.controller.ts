@@ -81,7 +81,8 @@ export class ExportController {
 
   // ── AI VALIDATE REPORT ────────────────────────────────────────────────────
   @Post("validate")
-  async validateReport(@Body() body: any) {
+  @UseGuards(AuthGuard)
+  async validateReport(@Body() body: any, @Request() req: any) {
     const { content, reportData } = body;
     const issues: any[] = [];
 
@@ -120,7 +121,7 @@ export class ExportController {
     // 2. Language check — call AI if possible
     let aiResult: any = null;
     try {
-      aiResult = await this.aiService.validateReportContent(content || "", reportData);
+      aiResult = await this.aiService.validateReportContent(req.user.sub, content || "", reportData);
       if (aiResult?.issues) {
         issues.push(...aiResult.issues);
       }
@@ -195,19 +196,21 @@ export class ExportController {
 
   // ── AI GENERATE NARRATIVE ────────────────────────────────────────────────
   @Post("ai-generate")
-  async aiGenerateReport(@Body() body: any) {
+  @UseGuards(AuthGuard)
+  async aiGenerateReport(@Body() body: any, @Request() req: any) {
     const { events, reportType, language } = body;
     if (!events || !Array.isArray(events)) throw new HttpException("Invalid events data", HttpStatus.BAD_REQUEST);
-    const result = await this.aiService.generateReportNarrative(events, reportType, language);
+    const result = await this.aiService.generateReportNarrative(req.user.sub, events, reportType, language);
     return result;
   }
 
   // ── AI PROOFREAD ─────────────────────────────────────────────────────────
   @Post("proofread")
-  async proofreadReport(@Body() body: any) {
+  @UseGuards(AuthGuard)
+  async proofreadReport(@Body() body: any, @Request() req: any) {
     const { text } = body;
     if (!text) throw new HttpException("No text provided", HttpStatus.BAD_REQUEST);
-    const result = await this.aiService.proofreadReport(text);
+    const result = await this.aiService.proofreadReport(req.user.sub, text);
     return result;
   }
 

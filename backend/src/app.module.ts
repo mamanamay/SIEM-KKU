@@ -29,6 +29,7 @@ import { CryptoService } from './crypto.service';
 import { TotpService } from './totp.service';
 import { User } from './entities/user.entity';
 import { Attack } from './entities/attack.entity';
+import { CveHistory } from './entities/cve-history.entity';
 import { LoginSession } from './entities/login-session.entity';
 import { ApiLog } from './entities/api-log.entity';
 import { SeedService } from './seed.service';
@@ -47,7 +48,7 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Production: PostgreSQL ─────────────────────────────────────────
       type: 'postgres',
       url: DATABASE_URL,
-      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery],
+      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory],
       synchronize: true, // กลับมาเปิด Auto-sync เพราะไม่มี Migrations
       ssl: process.env.DB_SSL === 'true'
         ? { rejectUnauthorized: false }
@@ -57,7 +58,7 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Development: SQLite (fallback เมื่อรัน local โดยไม่มี .env) ──
       type: 'sqlite',
       database: 'database.sqlite',
-      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery],
+      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory],
       synchronize: true,
     };
 
@@ -68,7 +69,7 @@ const typeOrmConfig: any = DATABASE_URL
       limit: 100, // 100 requests per minute
     }]),
     TypeOrmModule.forRoot(typeOrmConfig),
-    TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery]),
+    TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory]),
     ApiLogModule,
   ],
   // WazuhController — Legacy compatibility shim (ยังคง /api/wazuh ไว้เพื่อ backward compat)

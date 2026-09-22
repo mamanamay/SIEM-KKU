@@ -35,6 +35,12 @@ export class Attack {
   @Column({ nullable: true })
   mitreCode: string;
 
+  @Column({ type: 'float', nullable: true })
+  latitude: number;
+
+  @Column({ type: 'float', nullable: true })
+  longitude: number;
+
   @Column({ type: 'int', default: 50 })
   threatScore: number;
 
@@ -44,6 +50,13 @@ export class Attack {
   @Column({ nullable: true })
   sessionId: string;
 
+  // Target honeypot IP and port that was attacked
+  @Column({ nullable: true })
+  destIp: string;
+
+  @Column({ type: 'int', nullable: true })
+  honeypotPort: number;
+
   @Column({ type: 'bigint', nullable: true })
   @Index()
   timestampMs: number;
@@ -52,14 +65,13 @@ export class Attack {
   @Column({ type: 'text', nullable: true })
   aiAnalysis: string;
 
-    @Column({ nullable: true })
+  @Column({ nullable: true })
   assignee: string;
 
-  @Column({ type: "text", nullable: true })
+  @Column({ type: 'text', nullable: true })
   notes: string;
 
   @CreateDateColumn()
   @Index()
   createdAt: Date;
 }
-

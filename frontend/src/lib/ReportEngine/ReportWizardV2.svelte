@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { globalReportStore, closeReportWizard } from '../../stores/globalReportStore';
+  import { globalReportStore, closeReportWizard, AI_BRIEFING_SECTIONS } from '../../stores/globalReportStore';
   import { getPageSchema, getDefaultSelectedFields, UNIFIED_FIELD_GROUPS, ALL_GROUP_KEYS, deriveFieldsFromGroups } from './exportSchemas';
   import {
     generateExecutiveSummaryHtml,
     generateTechnicalDetailsHtml,
-    generateCsvContent
+    generateAiBriefingHtml,
+    generateCsvContent,
+    generateIncidentDeepDiveHtml
   } from './ReportTemplates';
   import { callKKUAI } from '../utils/kkuai';
   
@@ -15,6 +17,7 @@
   // Subscription to store
   $: session = $globalReportStore;
   $: schema = getPageSchema(session.sourcePage);
+  $: isAiBriefing = session.sourcePage === 'ai-briefing';
 
   // Users for dropdown
   let activeUsers: { username: string; role: string }[] = [];
@@ -27,6 +30,8 @@
   let aiChatInput = '';
   let showValidationModal = false;
   let showChatModal = false;
+  let isLiveEditMode = false;
+  let previewIframe: HTMLIFrameElement;
 
   // Search in Step 2
   let ipSearch = '';
@@ -36,6 +41,31 @@
     s.ip.toLowerCase().includes(ipSearch.toLowerCase()) ||
     s.primaryType.toLowerCase().includes(ipSearch.toLowerCase())
   );
+
+  // --- Live Edit Handlers ---
+  function toggleLiveEdit() {
+    isLiveEditMode = !isLiveEditMode;
+    if (previewIframe && previewIframe.contentDocument) {
+      previewIframe.contentDocument.body.contentEditable = isLiveEditMode ? 'true' : 'false';
+      if (isLiveEditMode) {
+        previewIframe.contentDocument.body.style.border = '2px dashed #3b82f6';
+        previewIframe.contentDocument.body.style.padding = '8px';
+        showNotification('Edit Mode Enabled', 'สามารถคลิกและพิมพ์แก้ไขข้อความในรายงานได้โดยตรง', 'info');
+      } else {
+        previewIframe.contentDocument.body.style.border = 'none';
+        previewIframe.contentDocument.body.style.padding = '0';
+        syncLiveEditToSession();
+        showNotification('Edit Mode Disabled', 'บันทึกการแก้ไขเรียบร้อยแล้ว', 'success');
+      }
+    }
+  }
+
+  function syncLiveEditToSession() {
+    if (previewIframe && previewIframe.contentDocument) {
+       const newHtml = '<!DOCTYPE html>\n' + previewIframe.contentDocument.documentElement.outerHTML;
+       globalReportStore.update(s => ({ ...s, previewHtml: newHtml }));
+    }
+  }
 
   onMount(async () => {
     try {
@@ -58,10 +88,15 @@
       }
     }
     if (session.currentStep === 2) {
-      if (session.selectedIPs.length === 0) {
+      if (!isAiBriefing && session.selectedIPs.length === 0) {
         showNotification('Warning', 'คุณยังไม่ได้เลือก IP ใดๆ (ข้อมูลอาจว่างเปล่า)', 'warning');
       }
       generatePreview();
+    }
+    if (session.currentStep === 3) {
+      if (isLiveEditMode) {
+        syncLiveEditToSession(); // save edits before leaving step 3
+      }
     }
     if (session.currentStep < 4) {
       globalReportStore.update(s => ({ ...s, currentStep: s.currentStep + 1 }));
@@ -111,8 +146,28 @@
     globalReportStore.update(s => ({ ...s, selectedGroups: newGroups, selectedFields: newFields }));
   }
 
-  function isGroupSelected(groupKey: string): boolean {
-    return (session.selectedGroups || ALL_GROUP_KEYS).includes(groupKey);
+  function isGroupSelected(groupKey: string, currentSession: typeof session): boolean {
+    return (currentSession.selectedGroups || ALL_GROUP_KEYS).includes(groupKey);
+  }
+
+  // --- AI Briefing Section Toggles (Step 2) ---
+  function toggleSection(sectionName: string) {
+    const sections = new Set(session.selectedSections ?? AI_BRIEFING_SECTIONS);
+    if (sections.has(sectionName)) sections.delete(sectionName);
+    else sections.add(sectionName);
+    globalReportStore.update(s => ({ ...s, selectedSections: Array.from(sections) }));
+  }
+
+  function isSectionSelected(sectionName: string, currentSession: typeof session): boolean {
+    return (currentSession.selectedSections ?? AI_BRIEFING_SECTIONS).includes(sectionName);
+  }
+
+  function selectAllSections() {
+    globalReportStore.update(s => ({ ...s, selectedSections: [...AI_BRIEFING_SECTIONS] }));
+  }
+
+  function clearAllSections() {
+    globalReportStore.update(s => ({ ...s, selectedSections: [] }));
   }
 
   // --- CVE Similarity Analysis ---
@@ -145,12 +200,18 @@
   // --- Step 3 Actions (Preview & AI) ---
   function generatePreview() {
     let html = '';
-    if (session.reportType === 'executive') {
+    if (isAiBriefing) {
+      html = generateAiBriefingHtml(session);
+    } else if (session.reportType === 'incident') {
+      html = generateIncidentDeepDiveHtml(session);
+    } else if (session.reportType === 'executive') {
       html = generateExecutiveSummaryHtml(session);
     } else {
       html = generateTechnicalDetailsHtml(session);
     }
     globalReportStore.update(s => ({ ...s, previewHtml: html }));
+    // Note: Live edit state should be reset on fresh preview generation
+    isLiveEditMode = false;
   }
 
   function updatePreviewManual() {
@@ -166,20 +227,15 @@
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
         body: JSON.stringify({
           content: session.previewHtml,
-          reportData: {
-            statedEventCount: session.dataset.length,
-            actualEventCount: session.dataset.length,
-            events: session.dataset.filter(e => session.selectedIPs.includes(e.ip || e['IP Address']))
-          }
+          schemaType: session.sourcePage
         })
       });
-      
-      const result = await res.json();
-      globalReportStore.update(s => ({ ...s, validationResult: result }));
-      
+      if (res.ok) {
+        const data = await res.json();
+        globalReportStore.update(s => ({ ...s, validationResult: data }));
+      }
     } catch (e) {
-      console.error(e);
-      showNotification('Error', 'AI Validation Failed', 'error');
+      console.error('Validation failed', e);
     } finally {
       validationLoading = false;
     }
@@ -388,9 +444,10 @@
             <div class="form-group">
               <label>Report Type</label>
               <select bind:value={session.reportType} disabled={schema.allowExecOnly} on:change={() => {
-                if (session.reportType === 'executive') globalReportStore.update(s => ({ ...s, fileFormat: 'pdf' }));
+                if (session.reportType === 'executive' || session.reportType === 'incident') globalReportStore.update(s => ({ ...s, fileFormat: 'pdf' }));
               }}>
                 <option value="executive">Executive Summary</option>
+                <option value="incident">Incident Deep Dive (Single Target)</option>
                 <option value="technical" disabled={schema.allowExecOnly}>Technical Details</option>
               </select>
               {#if schema.allowExecOnly}
@@ -454,18 +511,54 @@
       {#if session.currentStep === 2}
         <div class="step-content">
           <div class="split-layout">
-              <div class="fields-section">
+            <div class="fields-section">
+              {#if isAiBriefing}
+                <!-- ── AI BRIEFING: Section Toggles ── -->
+                <div class="step-header-note">
+                  <i class="ti ti-brain"></i>
+                  <div>
+                    <strong>AI Daily Briefing Report</strong> — รายงานนี้ใช้ข้อมูลจาก AI โดยตรง เลือกส่วนที่ต้องการรวมในรายงาน
+                  </div>
+                </div>
+                <div class="ai-sections-grid">
+                  {#each AI_BRIEFING_SECTIONS as sectionName}
+                    <label class="section-toggle-row" class:active={isSectionSelected(sectionName, session)}>
+                      <input
+                        type="checkbox"
+                        checked={isSectionSelected(sectionName, session)}
+                        on:change={() => toggleSection(sectionName)}
+                      />
+                      <div class="section-toggle-info">
+                        <span class="section-name">{sectionName}</span>
+                        <span class="section-badge ai-badge">AI Data</span>
+                      </div>
+                    </label>
+                  {/each}
+                </div>
+                <div class="section-actions">
+                  <button class="btn-sm" on:click={selectAllSections}>Select All</button>
+                  <button class="btn-sm btn-outline" on:click={clearAllSections}>Clear All</button>
+                  <span style="font-size:0.8rem;color:#64748b;margin-left:auto">
+                    {(session.selectedSections ?? AI_BRIEFING_SECTIONS).length} / {AI_BRIEFING_SECTIONS.length} sections selected
+                  </span>
+                </div>
+                <div style="margin-top:12px;padding:10px 12px;background:#f0f9ff;border-radius:6px;font-size:0.8rem;color:#1e40af;border:1px solid #bfdbfe;">
+                  <strong>ℹ️</strong> AI Briefing Report จะออกได้เฉพาะ Executive Summary เท่านั้น — ข้อมูลมาจาก Gemini AI ที่ประมวลผลล่าสุด
+                </div>
+
+              {:else}
+                <!-- ── HUNTING / OTHER: Original Field Selection ── -->
                 <h3>Select Data Groups</h3>
                 <p style="font-size:0.85rem;color:#64748b;margin-bottom:16px;">
                   เลือกชุดข้อมูลที่จะนำออกในรายงาน - เปิด/ปิดตามความต้องการ
                 </p>
                 {#each schema.fieldGroups as group}
                   {@const groupKey = group.groupEn}
-                  <div class="group-toggle-row" class:active={isGroupSelected(groupKey)}>
+                  <div class="group-toggle-row" class:active={isGroupSelected(groupKey, session)}>
                     <label class="group-toggle-label">
                       <input
                         type="checkbox"
-                        checked={isGroupSelected(groupKey)}
+                        checked={isGroupSelected(groupKey, session)}
                         on:change={() => toggleGroup(groupKey)}
                       />
                       <div class="group-info">
@@ -475,27 +568,29 @@
                     </label>
                   </div>
                 {/each}
-  
+    
                 {#if session.reportType === 'technical'}
-                <div class="group-toggle-row" class:active={session.includeRawLogs}>
-                  <label class="group-toggle-label">
-                    <input
-                      type="checkbox"
-                      bind:checked={session.includeRawLogs}
-                    />
-                    <div class="group-info">
-                      <span class="group-name">Raw Log Snippets</span>
-                      <span class="group-fields">Payload · Event Detail · (Technical Details only)</span>
-                    </div>
-                  </label>
+                  <div class="group-toggle-row" class:active={session.includeRawLogs}>
+                    <label class="group-toggle-label">
+                      <input
+                        type="checkbox"
+                        bind:checked={session.includeRawLogs}
+                      />
+                      <div class="group-info">
+                        <span class="group-name">Raw Log Snippets</span>
+                        <span class="group-fields">Payload · Event Detail · (Technical Details only)</span>
+                      </div>
+                    </label>
+                  </div>
+                {/if}
+
+                <div style="margin-top:12px;padding:10px 12px;background:#f0f9ff;border-radius:6px;font-size:0.8rem;color:#1e40af;border:1px solid #bfdbfe;">
+                  <strong>ℹ️</strong> ข้อมูล Evidence (IP, Timestamp, Event ID) จะถูกแสดงเสมอ — AI ไม่สามารถแก้ไขได้
                 </div>
               {/if}
-
-              <div style="margin-top:12px;padding:10px 12px;background:#f0f9ff;border-radius:6px;font-size:0.8rem;color:#1e40af;border:1px solid #bfdbfe;">
-                <strong>ℹ️</strong> ข้อมูล Evidence (IP, Timestamp, Event ID) จะถูกแสดงเสมอ — AI ไม่สามารถแก้ไขได้
-              </div>
             </div>
 
+            <!-- ── IP SELECTION (Visible for both AI Briefing and Hunting) ── -->
             <div class="ips-section">
               <h3>Select IPs / Targets</h3>
               <div class="search-bar">
@@ -538,6 +633,9 @@
           <div class="preview-header">
             <h3>Preview & Validation</h3>
             <div class="preview-actions">
+              <button class="btn {isLiveEditMode ? 'btn-success' : 'btn-outline'}" on:click={toggleLiveEdit}>
+                📝 {isLiveEditMode ? 'Save Edits & Exit Mode' : 'Live Edit Mode'}
+              </button>
               <button class="btn btn-warning" on:click={runAiValidation} disabled={validationLoading}>
                 {validationLoading ? 'Checking...' : '🤖 AI Check Report'}
               </button>
@@ -586,7 +684,7 @@
               </div>
             {/if}
             <div class="preview-frame-container">
-              <iframe title="Preview" srcdoc={session.previewHtml} class="preview-frame"></iframe>
+              <iframe bind:this={previewIframe} title="Preview" srcdoc={session.previewHtml} class="preview-frame"></iframe>
             </div>
           </div>
 
@@ -802,6 +900,20 @@
   .group-info { display: flex; flex-direction: column; gap: 2px; }
   .group-name { font-weight: 600; font-size: 0.9rem; color: #1e293b; }
   .group-fields { font-size: 0.75rem; color: #94a3b8; }
+
+  /* AI Briefing Step 2 Toggles */
+  .step-header-note { display: flex; gap: 12px; align-items: center; padding: 12px 16px; background: linear-gradient(to right, #f3e8ff, #f8fafc); border: 1px solid #e9d5ff; border-radius: 8px; margin-bottom: 20px; color: #6b21a8; font-size: 0.9rem; }
+  .step-header-note i { font-size: 1.5rem; color: #9333ea; }
+  .ai-sections-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .section-toggle-row { padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 8px; transition: all 0.2s; display: flex; align-items: center; gap: 12px; cursor: pointer; }
+  .section-toggle-row:hover { border-color: #cbd5e1; background: #f8fafc; }
+  .section-toggle-row.active { border-color: #8b5cf6; background: #f5f3ff; }
+  .section-toggle-row input { accent-color: #7c3aed; width: 16px; height: 16px; cursor: pointer; }
+  .section-toggle-info { display: flex; justify-content: space-between; align-items: center; flex: 1; }
+  .section-name { font-weight: 600; font-size: 0.95rem; color: #1e293b; }
+  .section-badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 700; }
+  .ai-badge { background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; }
+  .section-actions { display: flex; gap: 8px; align-items: center; padding: 12px 0; border-top: 1px dashed #e2e8f0; border-bottom: 1px dashed #e2e8f0; margin-bottom: 16px; }
 
   .split-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; flex: 1; min-height: 0; }
   .fields-section { overflow-y: auto; padding-right: 16px; border-right: 1px solid #e2e8f0; }

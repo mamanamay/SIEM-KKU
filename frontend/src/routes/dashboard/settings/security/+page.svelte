@@ -1,6 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { showNotification } from '../../../../stores/notificationStore';
+    import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 
     let user = { totpEnabled: false };
     let loading = true;
@@ -15,6 +16,25 @@
     let setupBackupCodes = [];
     let totpCode = '';
     let verifyingTotp = false;
+    
+    let showConfirmModal = false;
+    let confirmTitle = '';
+    let confirmMessage = '';
+    let confirmIcon = 'ti-question-mark';
+    let confirmAction = null;
+
+    function promptConfirm(title, message, icon, actionFn) {
+        confirmTitle = title;
+        confirmMessage = message;
+        confirmIcon = icon;
+        confirmAction = actionFn;
+        showConfirmModal = true;
+    }
+
+    function executeConfirmAction() {
+        showConfirmModal = false;
+        if (confirmAction) confirmAction();
+    }
 
     onMount(async () => {
         try {
@@ -38,27 +58,6 @@
     });
 
     async function changePassword() {
-        if (!currentPassword || !newPassword || !confirmPassword) {
-            showNotification('warning', 'Warning', 'Please fill all password fields');
-            return;
-        }
-        if (newPassword !== confirmPassword) {
-            showNotification('error', 'Error', 'รหัสผ่านใหม่ไม่ตรงกัน');
-            return;
-        }
-        if (newPassword.length < 12) {
-            showNotification('error', 'Error', 'รหัสผ่านใหม่ต้องมีความยาวขั้นต่ำ 12 ตัวอักษร');
-            return;
-        }
-        if (user && user.username && newPassword.toLowerCase().includes(user.username.toLowerCase())) {
-            showNotification('error', 'Error', 'รหัสผ่านใหม่ต้องไม่ใกล้เคียงกับชื่อผู้ใช้งาน (username) มากเกินไป');
-            return;
-        }
-        if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-            showNotification('error', 'Error', 'รหัสผ่านใหม่ต้องประกอบด้วยตัวพิมพ์ใหญ่ พิมพ์เล็ก และตัวเลข');
-            return;
-        }
-
         changingPassword = true;
         try {
             const token = localStorage.getItem('token');
@@ -70,77 +69,86 @@
                 },
                 body: JSON.stringify({ currentPassword, newPassword })
             });
-
+            
             if (res.ok) {
-                showNotification('success', 'Success', 'Password changed successfully');
+                showNotification('success', 'สำเร็จ', 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว');
                 currentPassword = '';
                 newPassword = '';
                 confirmPassword = '';
             } else {
-                const errorData = await res.json().catch(() => ({}));
-                showNotification('error', 'Error', errorData.message || 'Failed to change password');
+                const data = await res.json();
+                showNotification('error', 'ผิดพลาด', data.message || 'รหัสผ่านปัจจุบันไม่ถูกต้อง');
             }
         } catch (error) {
             console.error('Error changing password:', error);
-            showNotification('error', 'Error', 'Error changing password');
+            showNotification('error', 'ผิดพลาด', 'ข้อผิดพลาดเครือข่าย');
         } finally {
             changingPassword = false;
         }
+    }
+    
+    function requestChangePassword() {
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            showNotification('warning', 'คำเตือน', 'กรุณากรอกข้อมูลรหัสผ่านให้ครบถ้วน');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            showNotification('error', 'ผิดพลาด', 'รหัสผ่านใหม่ไม่ตรงกัน');
+            return;
+        }
+        if (newPassword.length < 12) {
+            showNotification('error', 'ผิดพลาด', 'รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 12 ตัวอักษร');
+            return;
+        }
+        promptConfirm('เปลี่ยนรหัสผ่าน', 'คุณต้องการยืนยันการเปลี่ยนรหัสผ่านใช่หรือไม่?', 'ti-lock', changePassword);
     }
 
     async function setup2FA() {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('/api/auth/me/2fa/setup', {
+            const res = await fetch('/api/auth/2fa/setup', {
                 method: 'POST',
-                headers: {
-                    'Authorization': token ? `Bearer ${token}` : ''
-                }
+                headers: { 'Authorization': token ? `Bearer ${token}` : '' }
             });
+            
             if (res.ok) {
                 const data = await res.json();
-                setupQrUrl = data.qrCodeUrl || data.qrUrl;
+                setupQrUrl = data.qrCodeUrl;
                 setupSecret = data.secret;
-                setupBackupCodes = data.backupCodes || [];
+                setupBackupCodes = data.backupCodes;
             } else {
-                showNotification('error', 'Error', 'Failed to start 2FA setup');
+                showNotification('error', 'ผิดพลาด', 'ไม่สามารถสร้างตั้งค่า 2FA ได้');
             }
         } catch (error) {
             console.error('Error setting up 2FA:', error);
-            showNotification('error', 'Error', 'Error setting up 2FA');
+            showNotification('error', 'ผิดพลาด', 'ข้อผิดพลาดเครือข่าย');
         }
     }
 
     async function confirm2FA() {
-        if (!totpCode) {
-            showNotification('warning', 'Warning', 'Please enter verification code');
-            return;
-        }
-
         verifyingTotp = true;
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('/api/auth/me/2fa/confirm', {
+            const res = await fetch('/api/auth/2fa/verify', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': token ? `Bearer ${token}` : ''
                 },
-                body: JSON.stringify({ code: totpCode, secret: setupSecret })
+                body: JSON.stringify({ code: totpCode })
             });
-
+            
             if (res.ok) {
-                showNotification('success', 'Success', '2FA enabled successfully');
+                showNotification('success', 'สำเร็จ', 'เปิดใช้งาน 2FA สำเร็จ');
                 user.totpEnabled = true;
                 setupQrUrl = '';
-                setupSecret = '';
                 totpCode = '';
             } else {
-                showNotification('error', 'Error', 'Invalid verification code');
+                showNotification('error', 'ผิดพลาด', 'รหัส Verification Code ไม่ถูกต้อง');
             }
         } catch (error) {
-            console.error('Error confirming 2FA:', error);
-            showNotification('error', 'Error', 'Error confirming 2FA');
+            console.error('Error verifying 2FA:', error);
+            showNotification('error', 'ผิดพลาด', 'ข้อผิดพลาดเครือข่าย');
         } finally {
             verifyingTotp = false;
         }
@@ -181,7 +189,7 @@
                     <input type="password" id="confirmPassword" bind:value={confirmPassword} class="input-field" />
                 </div>
                 <div class="card-actions">
-                    <button type="button" class="btn-primary" on:click={changePassword} disabled={changingPassword}>
+                    <button type="button" class="btn-primary" on:click={requestChangePassword} disabled={changingPassword}>
                         {changingPassword ? 'Updating...' : 'Update Password'}
                     </button>
                 </div>
@@ -193,11 +201,11 @@
                 
                 {#if user.totpEnabled}
                     <div class="status-success">
-                        ✓ Two-Factor Authentication is currently enabled.
+                        <i class="ti ti-shield-check"></i> Two-Factor Authentication is currently enabled.
                     </div>
                 {:else}
                     <div class="status-warning">
-                        ⚠ Two-Factor Authentication is not enabled.
+                        <i class="ti ti-shield-x"></i> Two-Factor Authentication is not enabled.
                     </div>
                     
                     {#if !setupQrUrl}
@@ -206,7 +214,7 @@
                         </div>
                     {:else}
                         <div class="setup-container">
-                            <p>สแกน QR code หรือกรอกรหัส Setup Key ด้านล่างนี้ในแอป Authenticator ของคุณ (เช่น Google Authenticator, Microsoft Authenticator):</p>
+                            <p>สแกน QR code หรือป้อน Setup Key ด้านล่างนี้ในแอป Authenticator ของคุณ (เช่น Google Authenticator, Microsoft Authenticator):</p>
                             <div class="qr-section" style="display: flex; gap: 24px; align-items: center; margin-bottom: 24px;">
                                 <div class="qr-code">
                                     <img src={setupQrUrl} alt="2FA QR Code" />
@@ -219,7 +227,7 @@
                             
                             <div class="backup-codes" style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 24px;">
                                 <h4 style="margin: 0 0 12px 0; color: #ca8a04;"><i class="ti ti-alert-triangle"></i> รหัสสำรอง (Backup Codes)</h4>
-                                <p style="font-size: 13px; color: var(--text-secondary); margin-top: 0;">กรุณาจดจำหรือบันทึกรหัสทั้ง 10 ชุดนี้ไว้ในที่ปลอดภัย กั้นลืมในกรณีที่คุณไม่สามารถเข้าถึงแอป Authenticator ได้</p>
+                                <p style="font-size: 13px; color: var(--text-secondary); margin-top: 0;">โปรดเก็บรหัสสำรองเหล่านี้ไว้ในที่ปลอดภัย คุณสามารถใช้รหัสนี้เข้าสู่ระบบได้ในกรณีที่คุณไม่สามารถเข้าถึงแอป Authenticator ได้</p>
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-family: monospace; font-size: 14px;">
                                     {#each setupBackupCodes as code}
                                         <div style="background: var(--bg-secondary); padding: 6px 12px; border-radius: 4px; text-align: center;">{code}</div>
@@ -228,7 +236,7 @@
                             </div>
                             <div class="form-group">
                                 <label for="totpCode">Verification Code</label>
-                                <input type="text" id="totpCode" bind:value={totpCode} class="input-field" placeholder="กรอกรหัส 6 หลัก (123456)" maxlength="6" />
+                                <input type="text" id="totpCode" bind:value={totpCode} class="input-field" placeholder="ป้อนรหัส 6 หลัก (123456)" maxlength="6" />
                             </div>
                             <div class="card-actions">
                                 <button type="button" class="btn-primary" on:click={confirm2FA} disabled={verifyingTotp}>
@@ -242,6 +250,8 @@
             </div>
         </div>
     {/if}
+
+    <ConfirmModal bind:visible={showConfirmModal} title={confirmTitle} message={confirmMessage} icon={confirmIcon} on:confirm={executeConfirmAction} on:cancel={() => showConfirmModal = false} />
 </div>
 
 <style>

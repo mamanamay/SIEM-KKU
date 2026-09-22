@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from typing import List, Dict, Any
 
 from schemas.event import UnifiedSecurityEvent
@@ -9,8 +9,8 @@ from parsers.server_parser import ServerParser
 from core.deduplication import Deduplicator
 from features.aggregator import FeatureAggregator
 from engine.rules.manager import RuleManager
-from engine.ml.xgboost_classifier import MockXGBoostClassifier
-from engine.ml.isolation_forest import MockIsolationForest
+from engine.ml.xgboost_classifier import RealXGBoostClassifier
+from engine.ml.isolation_forest import RealIsolationForest
 from engine.ml.clustering import UnknownAttackClusterer
 from engine.behavioral.profiler import BehavioralProfiler
 from engine.correlation.correlator import CorrelationEngine
@@ -34,8 +34,8 @@ sv_parser = ServerParser()
 dedup = Deduplicator()
 aggregator = FeatureAggregator(window_minutes=5)
 rule_engine = RuleManager()
-xgb_model = MockXGBoostClassifier()
-iso_forest = MockIsolationForest()
+xgb_model = RealXGBoostClassifier()
+iso_forest = RealIsolationForest()
 behavioral_profiler = BehavioralProfiler()
 correlator = CorrelationEngine()
 ioc_engine = ThreatIntelEngine()
@@ -56,6 +56,7 @@ async def ingest_logs(payload: Dict[str, Any]):
         
     processed, dropped = 0, 0
     
+    initial_detections_count = len(detections)
     for raw_log in raw_logs:
         try:
             if source_type == "firewall": event = fw_parser.parse(raw_log)
@@ -107,7 +108,8 @@ async def ingest_logs(payload: Dict[str, Any]):
         "processed": processed, 
         "dropped": dropped, 
         "detections_found": len(detections),
-        "new_clusters": new_cluster, "new_detections": detections[-processed:] if processed > 0 else []
+        "new_clusters": new_cluster, 
+        "new_detections": detections[initial_detections_count:]
     }
 
 @app.get("/api/v1/debug/detections")

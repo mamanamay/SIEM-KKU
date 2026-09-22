@@ -12,11 +12,10 @@
   const dispatch = createEventDispatcher();
 
   async function checkTriage() {
-    if (!events || events.length === 0 || isChecking) return;
+    if (events.length === 0) return;
     
     isChecking = true;
     try {
-      const geminiKey = localStorage.getItem('cfg_gemini_key') || '';
       // Send the last 50 events to avoid huge payloads
       const recentEvents = [...events].reverse().slice(0, 50);
 
@@ -24,8 +23,7 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'x-gemini-key': geminiKey
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({ events: recentEvents })
       });

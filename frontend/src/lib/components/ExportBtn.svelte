@@ -1,16 +1,17 @@
 <script lang="ts">
   import { openReportWizard } from '../../stores/globalReportStore';
-  import type { ReportConfig } from '../ReportEngine/types';
+  import type { ReportConfig, AiBriefingContext } from '../ReportEngine/types';
   
   export let filters: any = {};
   export let config: ReportConfig;
   export let data: any[] = [];
   export let columns: string[] = [];
+  export let aiContext: AiBriefingContext | null = null;
   
   function handleOpen() {
     // Snapshot the data when Export is clicked to freeze incoming logs
     const snapshotData = [...data];
-    openReportWizard(config, filters, snapshotData, columns);
+    openReportWizard(config, filters, snapshotData, columns, aiContext);
   }
 </script>
 

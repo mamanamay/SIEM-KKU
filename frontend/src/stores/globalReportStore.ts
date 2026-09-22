@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import type { ReportConfig, ReportDataModel, ExportSession, IpSummary } from "../lib/ReportEngine/types";
+import type { ReportConfig, ReportDataModel, ExportSession, IpSummary, AiBriefingContext } from "../lib/ReportEngine/types";
 import { getDefaultSelectedFields, deriveIpSummaries, generateReportId, ALL_GROUP_KEYS, deriveFieldsFromGroups } from "../lib/ReportEngine/exportSchemas";
 
 // ── Legacy state (kept for backward compat) ───────────────────────────────────
@@ -11,6 +11,18 @@ interface GlobalReportState {
   step: number;
   language: "th" | "en";
 }
+
+// All AI Briefing sections available in Step 2
+export const AI_BRIEFING_SECTIONS = [
+  'AI Situation Summary',
+  'Attack Statistics',
+  'Threat Landscape',
+  'Targeted Organizations',
+  'Investigation Priorities',
+  'Attack Campaigns',
+  'Recommended Actions',
+  'Org Risk Assessment',
+];
 
 // ── New Export Session ────────────────────────────────────────────────────────
 function createInitialSession(): ExportSession {
@@ -45,6 +57,8 @@ function createInitialSession(): ExportSession {
     dataset: [],
     config: null,
     currentStep: 1,
+    aiContext: null,
+    selectedSections: [...AI_BRIEFING_SECTIONS],
     // legacy
     dataModel: null,
     filters: {},
@@ -59,7 +73,8 @@ export function openReportWizard(
   config: ReportConfig,
   filters: any,
   data: any[] = [],
-  columns: string[] = []
+  columns: string[] = [],
+  aiContext: AiBriefingContext | null = null
 ) {
   const exportedBy =
     typeof localStorage !== "undefined"
@@ -75,9 +90,12 @@ export function openReportWizard(
   const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(now); endOfDay.setHours(23, 59, 59, 999);
 
+  // Pre-fill executiveSummary from AI context if available
+  const initialExecutiveSummary = aiContext?.aiSummary || "";
+
   globalReportStore.set({
     isOpen: true,
-    reportType: config.allowExecOnly ? "executive" : "executive", // default executive; user can change in Step 1
+    reportType: "executive", // default executive; user can change in Step 1 (unless allowExecOnly)
     reportTitle: config.reportTitle,
     reportId,
     reportVersion: "v1.0",
@@ -98,7 +116,7 @@ export function openReportWizard(
     allIpSummaries: ipSummaries,
     previewHtml: "",
     aiContent: null,
-    manualEdits: { executiveSummary: "", recommendations: "" },
+    manualEdits: { executiveSummary: initialExecutiveSummary, recommendations: "" },
     revisionHistory: [],
     validationResult: null,
     cveSimilarityResults: [],
@@ -109,6 +127,8 @@ export function openReportWizard(
     dataset: data,
     config,
     currentStep: 1,
+    aiContext,
+    selectedSections: [...AI_BRIEFING_SECTIONS],
     // legacy compat
     dataModel: {
       dataset: data,

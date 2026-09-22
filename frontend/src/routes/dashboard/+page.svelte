@@ -89,28 +89,18 @@
   $: facultyRanking = (() => {
     const m: Record<string, { name: string; count: number }> = {};
     events.forEach(e => {
-      const fac = getFacultyForIP(e.ip);
-      if (fac) {
-        if (!m[fac.code]) m[fac.code] = { name: fac.name, count: 0 };
-        m[fac.code].count++;
+      // Use destIp for Faculty Ranking since it's the target. If not available, fallback to ip
+      const targetIp = e.destIp || '10.101.118.184'; // Default to honeypot IP if target is missing
+      const fac = getFacultyForIP(targetIp);
+      if (fac && fac.code !== 'UNK') {
+        m[fac.code] = m[fac.code] || { name: fac.name, count: 0 };
+        m[fac.code].count += 1;
       }
     });
     return Object.entries(m).map(([code, v]) => ({ code, ...v }))
       .sort((a, b) => b.count - a.count).slice(0, 7);
   })();
   $: facMax = facultyRanking[0]?.count || 1;
-
-  // ─── Country Ranking (real e.country field from backend) ─────────────────────
-  $: countryRanking = (() => {
-    const m: Record<string, number> = {};
-    events.forEach(e => {
-      const c = e.country;
-      if (c && c !== 'Local Network') m[c] = (m[c] || 0) + 1;
-    });
-    return Object.entries(m).map(([country, count]) => ({ country, count }))
-      .sort((a, b) => b.count - a.count).slice(0, 7);
-  })();
-  $: cntMax = countryRanking[0]?.count || 1;
 
   // ─── Last event timestamp ─────────────────────────────────────────────────────
   $: lastEventLabel = events.length > 0
@@ -409,11 +399,8 @@
             <span class="t-sev" style="color:{sevColor(e.severity)};border-color:{sevColor(e.severity)}44;background:{sevColor(e.severity)}18;">
               {(e.severity||'info').toUpperCase()}
             </span>
-            <span class="t-ip">{e.ip}</span>
+            <span class="t-ip">Target: {e.destIp || '10.101.118.184'}</span>
             <span class="t-type">{e.type||'Unknown'}</span>
-            {#if e.country && e.country !== 'Local Network'}
-              <span class="t-country">{e.country}</span>
-            {/if}
             <span class="t-dot">·</span>
           </span>
         {/each}
@@ -491,28 +478,7 @@
       </div>
     </div>
 
-    <!-- Country Ranking -->
-    <div class="card">
-      <div class="card-hdr">
-        <span class="card-title"><i class="ti ti-world ci green-c"></i> Top Attack Origins</span>
-      </div>
-      <div class="rank-body">
-        {#if countryRanking.length === 0}
-          <div class="empty"><i class="ti ti-info-circle"></i> No country data yet</div>
-        {:else}
-          {#each countryRanking as c, i}
-            <div class="rank-row">
-              <span class="rnum" class:top3={i < 3}>{i+1}</span>
-              <div class="rinfo">
-                <span class="rname">{c.country}</span>
-                <div class="rbar-bg"><div class="rbar" style="width:{(c.count/cntMax)*100}%;background:{i===0?'#ef4444':i===1?'#f97316':i===2?'#f59e0b':'#10b981'}"></div></div>
-              </div>
-              <span class="rcnt">{c.count}</span>
-            </div>
-          {/each}
-        {/if}
-      </div>
-    </div>
+
 
     <!-- Recent Critical Events -->
     <div class="card">
@@ -526,10 +492,7 @@
             <div class="ev-accent"></div>
             <div class="ev-content">
               <div class="ev-row1">
-                <span class="ev-ip"><i class="ti ti-map-pin"></i> {e.ip}</span>
-                {#if e.country && e.country !== 'Local Network'}
-                  <span class="ev-country">{e.country}</span>
-                {/if}
+                <span class="ev-ip"><i class="ti ti-target"></i> Target: {e.destIp || '10.101.118.184'}</span>
               </div>
               <div class="ev-row2">
                 <span class="ev-type">{e.type}</span>
@@ -708,18 +671,14 @@
   }
 
   /* ─── 3-column row ───────────────────────────────────────────────────────── */
+  /* ✨ 2-column row (Faculty + Recent Events) ✨ */
   .row3 {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 2fr;
     gap: 14px;
   }
   @media (max-width: 1024px) {
-    .row3 { grid-template-columns: 1fr 1fr; }
-    .row3 > .card:last-child { grid-column: span 2; }
-  }
-  @media (max-width: 640px) {
     .row3 { grid-template-columns: 1fr; }
-    .row3 > .card:last-child { grid-column: span 1; }
   }
 
 

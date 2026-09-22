@@ -1,4 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { SystemConfig } from './entities/system-config.entity';
+import { User } from './entities/user.entity';
 
 /**
  * AiService — Dual-mode Threat Analysis Engine
@@ -19,6 +23,55 @@ export class AiService {
   private readonly geminiUrl =
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
+  constructor(
+    @InjectRepository(SystemConfig)
+    private configRepo: Repository<SystemConfig>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>
+  ) {}
+
+  /**
+   * Calls the unified AI proxy configured in SystemConfig
+   * Uses OpenAI-compatible API format (e.g. Typhoon, Llama).
+   */
+  async callUnifiedAI(userId: number, messages: any[], maxTokens = 2048, temperature = 0.3): Promise<string> {
+    if (!userId) {
+        throw new Error('User context missing for AI call.');
+    }
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user || !user.apiConfigJson) {
+      throw new Error('AI API configuration is missing. Please configure it in Settings > Integrations.');
+    }
+    const apiConfig = JSON.parse(user.apiConfigJson);
+    if (!apiConfig.aiApiUrl || !apiConfig.aiKey || !apiConfig.aiModel) {
+      throw new Error('Incomplete AI configuration (URL, Key, or Model missing).');
+    }
+
+    const response = await fetch(apiConfig.aiApiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiConfig.aiKey}`
+      },
+      body: JSON.stringify({
+        model: apiConfig.aiModel,
+        messages,
+        max_tokens: maxTokens,
+        temperature
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as any).message || `AI API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
+
+  private analysisCache = new Map<string, { result: string; timestamp: number }>();
+
   // Rate limit: track last analysis time per IP
   private readonly lastAnalyzed = new Map<string, number>();
   private readonly RATE_LIMIT_MS = 60_000; // 1 call per IP per minute
@@ -38,58 +91,25 @@ export class AiService {
       }
     }
 
-    // Try Gemini first (if key available), fallback to rule-based
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (apiKey && apiKey !== 'your-gemini-api-key-here') {
-      const geminiResult = await this.analyzeWithGemini(alert, apiKey);
-      if (geminiResult) return geminiResult;
-    }
-
-    // Rule-based fallback (always works)
-    return this.analyzeWithRules(alert);
-  }
-
-  // ─── Mode 2: Gemini API ──────────────────────────────────────────────────
-  private async analyzeWithGemini(alert: any, apiKey: string): Promise<string | null> {
-    const prompt = `คุณคือ SOC Analyst ของมหาวิทยาลัยขอนแก่น วิเคราะห์ภัยคุกคามนี้เป็นภาษาไทย กระชับ 3 ประโยค
+    try {
+      const prompt = `คุณคือ SOC Analyst ของมหาวิทยาลัยขอนแก่น วิเคราะห์ภัยคุกคามนี้เป็นภาษาไทย กระชับ 3 ประโยค
 
 ข้อมูล: ประเภท=${alert.type} | IP=${alert.ip}(${alert.country}) | ${alert.detail} | MITRE=${alert.mitreCode} | Score=${alert.threatScore}/100
 
 ตอบ 3 ส่วน: 1)เกิดอะไรขึ้น 2)ความเสี่ยง 3)ต้องทำอะไรทันที`.trim();
 
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
-
-      const res = await fetch(`${this.geminiUrl}?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 250, temperature: 0.2 },
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        this.logger.warn(`Gemini API returned ${res.status} — falling back to rule engine`);
-        return null;
+      // We use user ID 1 (Admin) for background tasks since there is no web request context
+      const aiResponse = await this.callUnifiedAI(1, [{ role: 'user', content: prompt }], 250, 0.2);
+      if (aiResponse) {
+        this.logger.log(`🤖 [AI Proxy] Analyzed: ${alert.type} for ${alert.ip}`);
+        return `[AI Analysis]\n${aiResponse.trim()}`;
       }
-
-      const json: any = await res.json();
-      const text = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-      if (text) {
-        this.logger.log(`🤖 [Gemini] Analyzed: ${alert.type} for ${alert.ip}`);
-        return `[Gemini AI]\n${text}`;
-      }
-      return null;
     } catch (e: any) {
-      if (e?.name !== 'AbortError') {
-        this.logger.warn(`Gemini call failed: ${e?.message} — using rule engine`);
-      }
-      return null;
+      this.logger.warn(`AI Proxy call failed: ${e?.message} — using rule engine`);
     }
+
+    // Rule-based fallback (always works)
+    return this.analyzeWithRules(alert);
   }
 
   // ─── Mode 1: Rule-based Engine ───────────────────────────────────────────
@@ -173,16 +193,54 @@ export class AiService {
   }
 
   // === New Report Engine Methods ===
-  async validateReportContent(content: string, reportData: any): Promise<{valid: boolean, feedback: string, improvements: string[]}> {
-    return { valid: true, feedback: "Content looks good.", improvements: [] };
+  async validateReportContent(userId: number, content: string, reportData: any): Promise<{valid: boolean, feedback: string, improvements: string[]}> {
+    try {
+      const messages = [
+        { role: 'system', content: 'You are a strict Cyber Security Editor. Review the HTML report content provided by the user. Output ONLY valid JSON matching this schema: {"valid": boolean, "feedback": "string explaining issues or saying looks good", "improvements": ["array", "of", "suggestions"]}' },
+        { role: 'user', content: `Review this report content:\n\n${content}` }
+      ];
+      const res = await this.callUnifiedAI(userId, messages);
+      const jsonMatch = res.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      return { valid: true, feedback: "Parsed response was not JSON. " + res, improvements: [] };
+    } catch (e: any) {
+      this.logger.error("AI Validation Error: " + e.message);
+      return { valid: true, feedback: "AI Validation unavailable: " + e.message, improvements: [] };
+    }
   }
 
-  async generateReportNarrative(events: any[], reportType: string, language: string): Promise<string> {
-    return "This is an auto-generated narrative for the report based on " + events.length + " events.";
+  async generateReportNarrative(userId: number, events: any[], reportType: string, language: string): Promise<string> {
+    try {
+      const sampleEvents = events.slice(0, 50);
+      const messages = [
+        { role: 'system', content: `You are an expert SOC Analyst. Write a detailed, professional narrative summary (1-2 paragraphs) for a ${reportType} report based on the provided event data. Output strictly in ${language === 'th' ? 'Thai' : 'English'}. No markdown formatting, just plain text.` },
+        { role: 'user', content: `Here is a sample of the events:\n\n${JSON.stringify(sampleEvents)}` }
+      ];
+      return await this.callUnifiedAI(userId, messages, 1024, 0.5);
+    } catch (e: any) {
+      this.logger.error("AI Narrative Error: " + e.message);
+      return "Unable to generate narrative due to AI error: " + e.message;
+    }
   }
 
-  async proofreadReport(text: string): Promise<{original: string, proofread: string, changes: string[]}> {
-    return { original: text, proofread: text, changes: [] };
+  async proofreadReport(userId: number, text: string): Promise<{original: string, proofread: string, changes: string[]}> {
+    try {
+      const messages = [
+        { role: 'system', content: 'You are a professional proofreader. Fix any grammatical errors and improve the tone of the provided text. Output ONLY valid JSON: {"original": "...", "proofread": "...", "changes": ["fixed x", "improved y"]}' },
+        { role: 'user', content: `Proofread this text:\n\n${text}` }
+      ];
+      const res = await this.callUnifiedAI(userId, messages);
+      const jsonMatch = res.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      return { original: text, proofread: text, changes: [] };
+    } catch (e: any) {
+      this.logger.error("AI Proofread Error: " + e.message);
+      return { original: text, proofread: text, changes: [] };
+    }
   }
 
 }

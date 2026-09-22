@@ -18,6 +18,7 @@ class RuleManager:
                     # Compile regex for speed
                     r["_compiled_pattern"] = re.compile(r.get("pattern", ""))
                     self.rules.append(r)
+            print(f"Loaded {len(self.rules)} rules")
         except Exception as e:
             print(f"Failed to load rules: {e}")
 
@@ -30,14 +31,18 @@ class RuleManager:
             field = rule.get("target_field")
             val = getattr(event, field, None)
             
+            print(f"Evaluating rule {rule['name']} against field {field} with value: {val}")
+            
             if val and isinstance(val, str):
                 if rule["_compiled_pattern"].search(val):
+                    print(f"MATCH! Rule: {rule['name']}")
                     return {
                         "rule_id": rule["rule_id"],
                         "rule_name": rule["name"],
                         "matched_field": field,
-                        "matched_value": val, # In production, truncate or mask sensitive data
+                        "matched_value": val,
                         "confidence": 0.95,
                         "severity": rule["severity"]
                     }
+        print("No rules matched")
         return None
