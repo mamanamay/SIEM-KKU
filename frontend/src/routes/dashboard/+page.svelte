@@ -3,7 +3,7 @@
   import { onDestroy } from 'svelte';
   import { eventsStore, connectionState } from '../../stores/events';
   import { formatEventTime } from '../../lib/formatTime';
-  import { getFacultyForIP } from '../../stores/faculties';
+  import { getFacultyForIP, isInternalIP } from '../../stores/faculties';
   import { themeStore } from '../../stores/theme';
 
   // ─── Attack entity field reference (from backend/src/entities/attack.entity.ts)
@@ -19,7 +19,18 @@
 
   // ─── Raw Events ──────────────────────────────────────────────────────────────
   let events: any[] = [];
-  const unsub = eventsStore.subscribe(v => { events = v; });
+  const unsub = eventsStore.subscribe(v => { events = v.filter(e => isInternalIP(e.ip) || isInternalIP(e.destIp)); });
+
+  let showModal = false;
+  let selectedIncident = null;
+
+  function openIncident(e) {
+    if (e.id || e.incident_id) {
+      window.location.href = `/dashboard/soar?id=${e.id || e.incident_id}`;
+    } else {
+      window.location.href = `/dashboard/soar?ip=${e.ip}&time=${e.time || e.createdAt}`;
+    }
+  }
 
   // ─── Chart Instances ─────────────────────────────────────────────────────────
   let timelineChart: any;
@@ -90,7 +101,7 @@
     const m: Record<string, { name: string; count: number }> = {};
     events.forEach(e => {
       // Use destIp for Faculty Ranking since it's the target. If not available, fallback to ip
-      const targetIp = e.destIp || '10.101.118.184'; // Default to honeypot IP if target is missing
+      const targetIp = e.destIp || '10.101.104.234'; // Default to honeypot IP if target is missing
       const fac = getFacultyForIP(targetIp);
       if (fac && fac.code !== 'UNK') {
         m[fac.code] = m[fac.code] || { name: fac.name, count: 0 };
@@ -399,7 +410,7 @@
             <span class="t-sev" style="color:{sevColor(e.severity)};border-color:{sevColor(e.severity)}44;background:{sevColor(e.severity)}18;">
               {(e.severity||'info').toUpperCase()}
             </span>
-            <span class="t-ip">Target: {e.destIp || '10.101.118.184'}</span>
+            <span class="t-ip">Target: {e.destIp || '10.101.104.234'}</span>
             <span class="t-type">{e.type||'Unknown'}</span>
             <span class="t-dot">·</span>
           </span>
@@ -488,11 +499,12 @@
       </div>
       <div class="events-body">
         {#each criticalEvents.slice(0, 6) as e}
-          <div class="ev-item">
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <div class="ev-item" on:click={() => openIncident(e)} style="cursor:pointer;">
             <div class="ev-accent"></div>
             <div class="ev-content">
               <div class="ev-row1">
-                <span class="ev-ip"><i class="ti ti-target"></i> Target: {e.destIp || '10.101.118.184'}</span>
+                <span class="ev-ip"><i class="ti ti-target"></i> Target: {e.destIp || '10.101.104.234'}</span>
               </div>
               <div class="ev-row2">
                 <span class="ev-type">{e.type}</span>

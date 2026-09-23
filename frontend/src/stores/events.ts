@@ -2,13 +2,31 @@ import { writable } from 'svelte/store';
 import { io, Socket } from 'socket.io-client';
 import { getFacultyForIP } from './faculties';
 
-// Guard: typeof localStorage alone doesn't work in Node.js 22+ (localStorage exists but throws).
-// typeof window === 'undefined' is the reliable SSR check.
-const initialEvents = typeof window !== 'undefined'
-  ? (() => { try { return JSON.parse(localStorage.getItem('cachedEvents') || '[]') || []; } catch { return []; } })()
-  : [];
-// Note: the initial_data socket event will overwrite this shortly after connect anyway.
 
+export function enrichEventWithCVE(e: any) {
+  if (e.incident_id) {
+    e.id = e.incident_id;
+    e.ip = e.entities?.source_ip || '';
+    e.destIp = e.entities?.target || '';
+    e.type = e.attack_type || '';
+    e.severity = (e.severity || '').toLowerCase();
+    e.createdAt = e.detected_at;
+    e.timeStr = e.detected_at;
+    e.payload = JSON.stringify(e);
+  }
+  
+  const fac = getFacultyForIP(e.ip);
+  if (fac) {
+    e.organization = fac.name;
+  }
+  return e;
+}
+
+const mockIncidents = [];
+
+const initialEvents = typeof window !== 'undefined'
+  ? mockIncidents.map(enrichEventWithCVE)
+  : [];
 
 export const eventsStore      = writable<any[]>(initialEvents);
 export const socketStore      = writable<Socket | null>(null);
@@ -18,16 +36,9 @@ export const connectionState  = writable<boolean>(false);
 export const latestAttackStore = writable<any>(null);
 export const isHistoricalMode = writable<boolean>(false);
 export const selectedDateStore = writable<string>(new Date().toISOString().split('T')[0]);
+export const systemHealthStore = writable<any>(null);
 
 let socket: Socket | null = null;
-
-export function enrichEventWithCVE(e: any) {
-  const fac = getFacultyForIP(e.ip);
-  if (fac) {
-    e.organization = fac.name;
-  }
-  return e;
-}
 
 export function initSocket() {
   const token = localStorage.getItem('token');
@@ -73,13 +84,19 @@ export function initSocket() {
     // Only set initial data if not in historical mode
     isHistoricalMode.subscribe(historical => {
       if (!historical) {
-        const enriched = data.map(enrichEventWithCVE);
-        eventsStore.set(enriched);
+        // Merge mock data for demonstration
+        const combined = [...data];
+        const enriched = combined.map(enrichEventWithCVE);
+        eventsStore.set(enriched.slice(0, 1000));
         if (typeof localStorage !== 'undefined') {
           localStorage.setItem('cachedEvents', JSON.stringify(enriched));
         }
       }
     })();
+  });
+
+  socket.on('system_health', (data: any) => {
+    systemHealthStore.set(data);
   });
 
   socket.on('new_attack', (data: any) => {

@@ -1,62 +1,99 @@
-﻿from datetime import datetime
+from datetime import datetime
 import uuid
-from schemas.detection import DetectionResult
 
-class DetectionFusionEngine:
+from schemas.detection import IncidentObject, AttackSession, DetectionEvidence, AIAnalysis, RecommendedAction
+
+class AIAnalystEngine:
+    """
+    Layer 6: SOC Copilot Engine.
+    Takes the structured evidence and generates a narrative and final IncidentObject.
+    """
     def __init__(self):
         pass
         
-    def fuse(self, event, features, rule_match, xgb_result, iso_result, behavioral_result, correlations) -> DetectionResult:
-        source_ip = event.source_ip
-        confidence = 0.0
-        risk = 0.0
-        attack_type = 'UNKNOWN'
-        severity = 'LOW'
+    def generate_incident(self, session: AttackSession, evidence: DetectionEvidence) -> IncidentObject:
+        incident_id = f"INC-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
         
-        if rule_match:
-            confidence = max(confidence, rule_match.get('confidence', 0.9))
-            attack_type = rule_match.get('rule_name')
-            severity = rule_match.get('severity', 'HIGH')
+        # Calculate Risk and Severity
+        risk_score = 0.0
+        attack_type = "Unknown Anomaly"
+        
+        xgb = evidence.xgboost
+        logllm = evidence.logllm_semantic
+        iso = evidence.isolation_forest
+        
+        if xgb and xgb.predicted_class != 'BENIGN':
+            risk_score = max(risk_score, xgb.probability * 100)
+            attack_type = xgb.predicted_class
             
-        if xgb_result and xgb_result.get('probability', 0) > 0.8 and xgb_result.get('predicted_attack') != 'BENIGN':
-            confidence = max(confidence, xgb_result.get('probability'))
-            attack_type = xgb_result.get('predicted_attack')
-            severity = 'HIGH'
+        if logllm and logllm.risk_level in ['High', 'Critical']:
+            risk_score = max(risk_score, 85.0)
+            if attack_type == "Unknown Anomaly":
+                attack_type = logllm.pattern_matched
+                
+        if iso and iso.is_anomaly:
+            risk_score = max(risk_score, iso.anomaly_score * 100)
             
-        anomaly = iso_result.get('anomaly_score', 0) if iso_result else 0
-        deviation = behavioral_result.get('deviation_score', 0) if behavioral_result else 0
+        severity = "LOW"
+        if risk_score > 90:
+            severity = "CRITICAL"
+        elif risk_score > 70:
+            severity = "HIGH"
+        elif risk_score > 40:
+            severity = "MEDIUM"
+            
+        # Generate Storyline (Mock SLM behavior)
+        src = session.attack_path[0] if len(session.attack_path) > 0 else "Unknown"
+        target = session.attack_path[2] if len(session.attack_path) > 2 else "Unknown"
         
-        # Risk is increased if there are correlations (e.g. repeated/escalating attacks)
-        correlation_penalty = 0.15 if len(correlations) > 0 else 0
+        summary = f"พบพฤติกรรมน่าสงสัยจาก {src} มีเป้าหมายที่ {target} ตรวจพบเป็น {attack_type}"
+        storyline = (
+            f"จากข้อมูล Session {session.session_id}, เริ่มต้นเวลา {session.first_seen} "
+            f"เครื่อง {src} มีการเข้าถึงเป้าหมาย {target} รวม {session.total_events} ครั้ง "
+        )
+        if logllm:
+            storyline += f"LogLLM พบรูปแบบ '{logllm.pattern_matched}' ซึ่งมีความเสี่ยงระดับ {logllm.risk_level}. "
+        if xgb and xgb.predicted_class != 'BENIGN':
+            storyline += f"XGBoost จัดกลุ่มพฤติกรรมเป็น '{xgb.predicted_class}' ด้วยความมั่นใจ {xgb.probability*100:.1f}%. "
+            
+        ai_analysis = AIAnalysis(
+            summary=summary,
+            storyline=storyline,
+            confidence_percentage=risk_score
+        )
         
-        risk = (confidence * 0.5) + (anomaly * 0.2) + (deviation * 0.2) + correlation_penalty
-        risk = min(risk, 1.0)
-        
-        risk_percentage = round(risk * 100, 2)
-        conf_percentage = round(confidence * 100, 2)
-        
-        # Merge iso and behavioral into behavior_analysis
-        behavior_analysis = {
-            "anomaly_score": anomaly,
-            "deviation_score": deviation,
-            "baseline_status": behavioral_result.get('status') if behavioral_result else "UNKNOWN"
+        # Recommendations
+        recs = [
+            RecommendedAction(
+                action_type="INVESTIGATE_HOST",
+                description=f"ตรวจสอบประวัติการใช้งานและล็อกอินของเครื่อง {src}",
+                is_automated=False
+            )
+        ]
+        if severity in ["HIGH", "CRITICAL"]:
+            recs.append(
+                RecommendedAction(
+                    action_type="ISOLATE_HOST",
+                    description=f"ตัดการเชื่อมต่อ {src} ออกจากเครือข่ายภายในชั่วคราว",
+                    is_automated=False
+                )
+            )
+            
+        entities = {
+            "source_ip": src,
+            "target": target,
+            "department": "Internal_Network"
         }
         
-        det_id = f"ATT-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4]}"
-        
-        return DetectionResult(
-            detection_id=det_id,
-            event_ids=[event.event_id],
-            source_ips=[source_ip],
-            destination_ips=[event.destination_ip],
-            attack_type=attack_type,
+        return IncidentObject(
+            incident_id=incident_id,
             severity=severity,
-            detection_confidence=conf_percentage,
-            risk_score=risk_percentage,
-            anomaly_score=anomaly,
-            rule_matches=[rule_match] if rule_match else [],
-            model_predictions=[xgb_result] if xgb_result else [],
-            behavior_analysis=behavior_analysis,
-            correlations=correlations,
-            detected_at=datetime.utcnow().isoformat()
+            attack_type=attack_type,
+            risk_score=risk_score,
+            detected_at=datetime.utcnow().isoformat(),
+            entities=entities,
+            ai_analysis=ai_analysis,
+            detection_evidence=evidence,
+            attack_session=session,
+            recommended_actions=recs
         )

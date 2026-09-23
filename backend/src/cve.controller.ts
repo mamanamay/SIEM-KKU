@@ -37,9 +37,16 @@ export class CVEController {
     return await this.cveHistoryRepo.save(history);
   }
 
+  @Post('history/delete')
+  async deleteHistory(@Body() body: { ids: string[] }) {
+    if (!body.ids || !Array.isArray(body.ids)) throw new HttpException('Missing ids array', HttpStatus.BAD_REQUEST);
+    return await this.cveHistoryRepo.createQueryBuilder().delete().from(CveHistory).where("cveId IN (:...ids)", { ids: body.ids }).execute();
+  }
+
   @Get(':id')
   async getCVE(@Param('id') id: string) {
     if (id === 'history') return; // Prevent clash
+    if (id === 'history/delete') return; // Prevent clash
     try {
       // Proxy to MITRE to bypass CORS
       const mitreRes = await axios.get(`https://cveawg.mitre.org/api/cve/${id}`, { timeout: 5000 });

@@ -1,13 +1,13 @@
 import uuid
-from datetime import datetime
-from schemas.event import UnifiedSecurityEvent
 import re
+from datetime import datetime
+from schemas.event import NormalizedEvent
 
 class ServerParser:
-    def __init__(self, version="1.0"):
+    def __init__(self, version="2.0"):
         self.version = version
 
-    def parse(self, raw_log: str) -> UnifiedSecurityEvent:
+    def parse(self, raw_log: str) -> NormalizedEvent:
         event_id = f"SYS-{uuid.uuid4().hex[:8]}"
         
         parsed_log = {}
@@ -17,16 +17,15 @@ class ServerParser:
                 parsed_log['source_ip'] = ip_match.group(0)
         elif isinstance(raw_log, dict):
             parsed_log = raw_log
+            raw_log = str(raw_log)
             
-        return UnifiedSecurityEvent(
+        return NormalizedEvent(
             event_id=event_id,
             timestamp=datetime.utcnow(),
-            source_ip=parsed_log.get("source_ip", "127.0.0.1"),
-            destination_ip="127.0.0.1",
+            source_type="server",
+            src_ip=parsed_log.get("source_ip", "127.0.0.1"),
+            dst_ip="127.0.0.1",
             protocol="LOCAL",
-            log_source="server_auth",
-            event_type="authentication",
             action=parsed_log.get("action", "FAILURE"),
-            raw_log_reference=str(raw_log),
-            parser_version=self.version
+            raw_log=str(raw_log)
         )

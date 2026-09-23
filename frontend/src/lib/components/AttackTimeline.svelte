@@ -1,98 +1,76 @@
 <script lang="ts">
-  import { eventsStore } from '../../stores/events';
   import { formatEventTime } from '../formatTime';
 
-  export let ip: string = '';
+  export let event: any; // The IncidentObject
 
-  // Filter events for this specific IP and sort them by newest first
-  $: filteredEvents = $eventsStore.filter(e => e.ip === ip).sort((a, b) => {
-    const tsA = a.timestampMs || new Date(a.createdAt || Date.now()).getTime();
-    const tsB = b.timestampMs || new Date(b.createdAt || Date.now()).getTime();
-    return tsB - tsA;
-  });
-
-  $: timelineEvents = filteredEvents.slice(0, 30);
+  $: timelineEvents = event?.attack_session?.timeline || [];
+  $: totalEvents = event?.attack_session?.total_events || timelineEvents.length;
+  $: firstSeen = event?.attack_session?.first_seen || '';
 </script>
 
-{#if filteredEvents.length > 0}
-<div class="timeline-card">
-  <div class="timeline-header">
-    <div class="timeline-title">
-      <i class="ti ti-timeline"></i>
-      Attack Kill-Chain
-      <span class="timeline-count">{filteredEvents.length} events</span>
-    </div>
+{#if timelineEvents.length > 0}
+<div class="timeline-wrapper">
+  <div class="timeline-stats">
+    <span class="badge"><i class="ti ti-activity"></i> {totalEvents} รายการ (Events)</span>
+    {#if firstSeen}
+      <span class="text-muted" style="font-size:11px;">เริ่มเมื่อ: {formatEventTime(firstSeen)}</span>
+    {/if}
   </div>
 
-  <!-- Vertical Scroll Timeline -->
-  <div class="timeline-scroll">
+  <div class="timeline-scroll custom-scrollbar">
     <div class="timeline-track">
       {#each timelineEvents as e, i}
-      {@const color = e.severity==='critical'?'var(--red)':e.severity==='high'?'var(--orange)':e.severity==='medium'?'var(--yellow)':'var(--blue)'}
       <div class="timeline-node" style="--idx:{i};">
-        <!-- Vertical Line connecting nodes -->
         {#if i !== timelineEvents.length - 1}
           <div class="tnode-line"></div>
         {/if}
         
-        <!-- Dot -->
-        <div class="tnode-dot" style="background:{color}; box-shadow:0 0 8px {color}66;"></div>
+        <div class="tnode-dot"></div>
         
-        <!-- Content Card -->
         <div class="tnode-card">
-          <div class="tnode-time">{(formatEventTime(e.timeStr || e.time || e.createdAt))}</div>
-          <div class="tnode-type" style="color:{color}">{e.type}</div>
+          <div class="tnode-time">{(formatEventTime(e.timestamp))}</div>
+          <div class="tnode-type">{e.source} : {e.action}</div>
           <div class="tnode-detail">{e.detail || ''}</div>
         </div>
       </div>
       {/each}
     </div>
   </div>
-
-  <div class="timeline-summary">
-    <span>First seen: <strong>{formatEventTime(timelineEvents[timelineEvents.length-1]?.timeStr || timelineEvents[timelineEvents.length-1]?.createdAt)}</strong></span>
-    <span>🔴 <strong style="color:var(--red)">{filteredEvents.filter(e=>e.severity==='critical').length}</strong></span>
-    <span>🟠 <strong style="color:var(--orange)">{filteredEvents.filter(e=>e.severity==='high').length}</strong></span>
-  </div>
 </div>
 {/if}
 
 <style>
-  .timeline-card {
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-    margin: 16px 0;
+  .timeline-wrapper {
     display: flex;
     flex-direction: column;
-    max-height: 400px;
+    max-height: 500px;
   }
-  .timeline-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-secondary);
+  
+  .timeline-stats {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
   }
-  .timeline-title {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 13px; font-weight: 700; color: var(--text-primary);
-    text-transform: uppercase; letter-spacing: 0.05em;
-  }
-  .timeline-title i { color: var(--cyan); font-size: 18px; }
-  .timeline-count {
-    font-size: 10px; color: var(--cyan);
-    background: rgba(0, 240, 255, 0.1);
-    border: 1px solid rgba(0, 240, 255, 0.3);
-    padding: 2px 8px; border-radius: 10px;
+  
+  .badge {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
   }
 
   .timeline-scroll {
     overflow-y: auto; overflow-x: hidden;
     padding: 16px;
     flex: 1;
-    scrollbar-width: thin;
   }
+  
+  .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
   .timeline-track {
     position: relative;
     display: flex;
@@ -123,6 +101,8 @@
     width: 10px; height: 10px;
     border-radius: 50%;
     border: 2px solid var(--bg-panel);
+    background: var(--cyan);
+    box-shadow: 0 0 8px rgba(0,255,255,0.4);
     z-index: 2;
     margin-top: 4px;
     flex-shrink: 0;
@@ -143,7 +123,7 @@
   }
 
   .tnode-time { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 4px; }
-  .tnode-type { font-size: 12px; font-weight: 700; line-height: 1.2; text-shadow: 0 0 8px currentColor; }
+  .tnode-type { font-size: 12px; font-weight: 700; line-height: 1.2; text-shadow: 0 0 8px currentColor; color: var(--text-primary); text-transform: uppercase;}
   .tnode-detail { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
 
   .timeline-summary {

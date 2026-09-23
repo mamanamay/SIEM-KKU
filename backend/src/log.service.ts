@@ -1,3 +1,4 @@
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -300,12 +301,12 @@ export class LogService implements OnModuleInit {
       const srcIp    = data.src_ip || data.srcip || data.source_ip || '0.0.0.0';
       const attackTs = data.timestamp ? new Date(data.timestamp).getTime() : Date.now();
 
-      const destIp = data.dest_ip || data.dst_ip || data.dstip || '10.101.118.184';
+      const destIp = data.dest_ip || data.dst_ip || data.dstip || '10.101.104.234';
 
       this.saveAndBroadcast({
         timestamp: attackTs, time: this.formatTime(new Date(attackTs).toISOString()), ip: srcIp,
         destIp: destIp,
-        type: data.type || `${source} Alert`,
+        type: (!data.type || data.type === 'UNKNOWN') ? 'Suspicious Activity' : data.type,
         severity: data.severity || 'medium',
         detail: data.detail || data.message || `Event from ${source}`,
         mitigation: data.mitigation || `Review ${source} console`,
@@ -370,7 +371,7 @@ export class LogService implements OnModuleInit {
         threatScore:   payload.threatScore,
         sessionId:     payload.sessionId,
         timestampMs:   payload.timestamp,
-        destIp:        payload.destIp,
+        destIp:        payload.destIp || '10.101.104.234',
         hitCount:      1, // Initial count
       }) as Attack;
 
@@ -505,14 +506,14 @@ export class LogService implements OnModuleInit {
       };
 
       try {
-        const response = await axios.post('http://detection-engine:8100/api/v1/ingest', payload, { timeout: 3000 });
+        const response = await axios.post('http://detection-engine:8100/api/v1/ingest', payload, { timeout: 15000 });
         const data = response.data;
         
         if (data && data.new_detections && data.new_detections.length > 0) {
           for (const det of data.new_detections) {
             // Transform DetectionEngine output to Backend Attack Entity format
             const dstIpMatch = logString.match(/dstip=([\d\.]+)/);
-            const dstIp = dstIpMatch ? dstIpMatch[1] : '10.101.118.184';
+            const dstIp = dstIpMatch ? dstIpMatch[1] : '10.101.104.234';
 
             const attackPayload = {
               source: aiSource,
@@ -538,4 +539,23 @@ export class LogService implements OnModuleInit {
       this.logger.error(`Error processing syslog from ${sourceName}: ${e.message}`);
     }
   }
+
+  // ?? Auto-Prune (Log Rotation) every night at midnight
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async pruneOldLogs() {
+    const retentionDays = 30; // Keep logs for 30 days
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - retentionDays);
+    
+    try {
+      this.logger.log(`[Auto-Prune] Deleting logs older than ${dateLimit.toISOString()}`);
+      const result = await this.attackRepository.delete({
+        createdAt: require('typeorm').LessThan(dateLimit)
+      });
+      this.logger.log(`[Auto-Prune] Successfully deleted ${result.affected} old logs.`);
+    } catch (e) {
+      this.logger.error('[Auto-Prune] Failed to prune logs', e);
+    }
+  }
+
 }

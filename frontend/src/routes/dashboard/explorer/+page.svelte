@@ -11,6 +11,17 @@
   let executionTime = 0;
   let isLiveUpdates = false;
   
+  let showModal = false;
+  let selectedIncident = null;
+  
+  function openIncident(row) {
+    if (row.id || row.incident_id) {
+      window.location.href = `/dashboard/soar?id=${row.id || row.incident_id}`;
+    } else {
+      window.location.href = `/dashboard/soar?ip=${row.ip}&time=${row.time || row.createdAt}`;
+    }
+  }
+  
   $: if(isLiveUpdates && $eventsStore) { performSearch(); }
   
   // Histogram Data
@@ -92,7 +103,7 @@
       </thead>
       <tbody>
         {#each searchResults as row}
-          <tr>
+          <tr on:click={() => openIncident(row)} style="cursor: pointer;">
             <td class="col-time">{new Date(row.time || row.createdAt).toLocaleString('en-GB')}</td>
             <td>
               <span class="badge {row.severity}">{String(row.severity || '').toUpperCase()}</span>
@@ -105,7 +116,7 @@
               <td class="col-type">
                 {row.type}
                 {#if row.cve}
-                  <a href="/dashboard/cve?search={row.cve.id}" target="_blank" class="badge-cve" title="{row.cve.name}">
+                  <a href="/dashboard/cve?search={row.cve.id}" target="_blank" class="badge-cve" title="{row.cve.name}" on:click|stopPropagation>
                     <i class="ti ti-bug"></i> {row.cve.id}
                   </a>
                 {/if}
@@ -128,7 +139,7 @@
 
 <style>
   .explorer-wrap {
-    display: flex; flex-direction: column; height: 100%; background: var(--bg-app); overflow: hidden;
+    display: flex; flex-direction: column; flex: 1; background: var(--bg-app); overflow: hidden;
   }
   
   /* Header & Search */

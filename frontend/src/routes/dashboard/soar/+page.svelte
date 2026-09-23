@@ -6,6 +6,10 @@
   import { onMount } from 'svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import { callKKUAI } from '../../../lib/utils/kkuai';
+  import AttackPathGraph from '../../../lib/components/AttackPathGraph.svelte';
+  import AiAnalysisBlock from '../../../lib/components/AiAnalysisBlock.svelte';
+  import AiEvidenceBlock from '../../../lib/components/AiEvidenceBlock.svelte';
+  import AttackTimeline from '../../../lib/components/AttackTimeline.svelte';
   
   let isLive = true;
   let frozenEvents: any[] = [];
@@ -40,7 +44,17 @@
     const params = new URLSearchParams(window.location.search);
     const ip = params.get('ip');
     const time = params.get('time');
-    if (ip || time) {
+    const id = params.get('id');
+    
+    if (id) {
+      searchQuery = id;
+      exactMatchMode = true;
+      setTimeout(() => {
+        // Try to find the event by ID
+        const found = events.find(e => e.id === id || e.incident_id === id);
+        if (found) selectEvent(found);
+      }, 100);
+    } else if (ip || time) {
       if (ip) searchQuery = ip;
       if (time) searchTime = time;
       exactMatchMode = true;
@@ -52,8 +66,8 @@
 
   $: filteredEvents = events.filter((e: any) => {
     if (exactMatchMode) {
-      // When navigated via direct link, show all events for this IP
-      return e.ip === searchQuery;
+      // When navigated via direct link, show all events for this IP or ID
+      return e.ip === searchQuery || e.id === searchQuery || e.incident_id === searchQuery;
     }
     
     const matchSearch = (e.ip || '').toLowerCase().includes(searchQuery.toLowerCase()) || (e.type || '').toLowerCase().includes(searchQuery.toLowerCase());
@@ -99,6 +113,7 @@
     const url = new URL(window.location.href);
     url.searchParams.delete('ip');
     url.searchParams.delete('time');
+    url.searchParams.delete('id');
     window.history.pushState({}, '', url);
   }
 
@@ -127,7 +142,13 @@
       // Sometimes it returns raw text if it doesn't wrap it in json? Let's check backend endpoint.
       // Wait, backend analyze-event returns { analysis, mode } for rule-based, and for AI it returns { analysis: text, mode: 'ai' }.
       aiExplanation = data.analysis;
-      selectedEvent.aiAnalysis = data.analysis;
+      selectedEvent.ai_analysis = {
+        summary: 'วิเคราะห์จากข้อมูลล่าสุด (On-Demand AI)',
+        storyline: data.analysis,
+        confidence_percentage: data.mode === 'ai' ? 95 : 70
+      };
+      // Force reactivity
+      selectedEvent = { ...selectedEvent };
     } catch (e: any) {
       alert("AI Workflow Generation failed: " + e.message);
     } finally {
@@ -248,10 +269,10 @@
     <div class="col-list">
       <div class="list-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
-          <div style="font-size: 16px; font-weight: 700;">Incident Queue</div>
-          <div style="font-size: 12px; color: var(--text-muted);">{exactMatchMode ? 'Targeted Search' : 'All Sources'} ({filteredEvents.length})</div>
+          <div style="font-size: 16px; font-weight: 700;">คิวการแจ้งเตือน</div>
+          <div style="font-size: 12px; color: var(--text-muted);">{exactMatchMode ? 'การค้นหาเจาะจง' : 'จากทุกแหล่งข้อมูล'} ({filteredEvents.length})</div>
         </div>
-        <button class="btn-live-toggle {isLive ? 'live' : 'paused'}" on:click={toggleLive} title={isLive ? 'Pause Live Updates' : 'Resume Live Updates'}>
+        <button class="btn-live-toggle {isLive ? 'live' : 'paused'}" on:click={toggleLive} title={isLive ? 'หยุดอัปเดตชั่วคราว' : 'เปิดรับข้อมูลแบบ Real-time'}>
           <i class="ti {isLive ? 'ti-player-play' : 'ti-player-pause'}"></i>
         </button>
       </div>
@@ -259,17 +280,17 @@
       <div class="list-filters">
         {#if exactMatchMode}
           <div class="exact-match-banner">
-            <div>Exact Match: {searchQuery}</div>
+            <div>ระบุตัว: {searchQuery}</div>
             <button on:click={clearExactMatch}><i class="ti ti-x"></i></button>
           </div>
         {:else}
-          <input type="text" placeholder="Search IP or Type..." bind:value={searchQuery} />
+          <input type="text" placeholder="ค้นหา IP หรือ รูปแบบ..." bind:value={searchQuery} />
           <input type="date" bind:value={dateFilter} />
           <select bind:value={severityFilter}>
-            <option value="all">All Severities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
+            <option value="all">ทุกระดับความรุนแรง</option>
+            <option value="critical">Critical (วิกฤต)</option>
+            <option value="high">High (สูง)</option>
+            <option value="medium">Medium (ปานกลาง)</option>
           </select>
         {/if}
       </div>
@@ -278,15 +299,15 @@
         {#each filteredEvents as event}
           <div class="q-item" class:selected={selectedEvent === event} on:click={() => selectEvent(event)}>
             <div class="q-header">
-              <span class="q-type" title={event.type}>{event.type.length > 22 ? event.type.substring(0,22)+'...' : event.type}</span>
+              <span class="q-type" title={event.type}>{event.type === "UNKNOWN" ? "Suspicious Activity" : (event.type.length > 22 ? event.type.substring(0,22)+"..." : event.type)}</span>
               <span class="q-sev {event.severity}">{event.severity.toUpperCase()}</span>
             </div>
-            <div class="q-ip"><i class="ti ti-network"></i> {event.ip}</div>
+            <div class="q-ip"><i class="ti ti-network"></i> {event.ip} {#if event.country && event.country !== "Unknown" && event.country !== "UN"}<span style="opacity:0.7; font-size:11px; margin-left:4px;">({event.country})</span>{/if}</div>
             <div class="q-time">{formatEventTime(event.time || event.createdAt)}</div>
           </div>
         {/each}
         {#if filteredEvents.length === 0}
-          <div class="empty-state">No incidents match filters.</div>
+          <div class="empty-state">ไม่พบเหตุการณ์ที่ตรงกับการค้นหา</div>
         {/if}
       </div>
     </div>
@@ -295,30 +316,65 @@
     <div class="col-main custom-scrollbar">
       {#if selectedEvent}
         <!-- Correlation Flow -->
-        <h3 class="panel-title"><i class="ti ti-route"></i> Correlation Flow</h3>
-        <div class="correlation-flow">
-          <div class="flow-node attacker">
-            <div class="fn-icon"><i class="ti ti-spy"></i></div>
-            <div class="fn-title">Attacker IP</div>
-            <div class="fn-val">{selectedEvent.ip} <OrgBadge organization={selectedEvent.organization} country={selectedEvent.country} /></div>
-          </div>
-          <div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>
-          <div class="flow-node origin">
-            <div class="fn-icon"><i class="ti ti-server"></i></div>
-            <div class="fn-title">Sensor / Proxy</div>
-            <div class="fn-val">{selectedEvent.clientVersion || selectedEvent.source || 'Syslog Sensor'}</div>
-          </div>
-          <div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>
-          <div class="flow-node target">
-            <div class="fn-icon"><i class="ti ti-building-community"></i></div>
-            <div class="fn-title">Target IP</div>
-            <div class="fn-val text-muted">Unknown (NAT/Masked)</div>
-          </div>
+        <h3 class="panel-title"><i class="ti ti-route"></i> เส้นทางการโจมตี (Attack Path)</h3>
+        <div style="margin-bottom: 24px;">
+          {#if selectedEvent.attack_session?.attack_path}
+            <AttackPathGraph event={selectedEvent} />
+          {:else}
+            <div class="correlation-flow">
+              <div class="flow-node attacker">
+                <div class="fn-icon"><i class="ti ti-spy"></i></div>
+                <div class="fn-title">IP ผู้โจมตี</div>
+                <div class="fn-val">{selectedEvent.ip} <OrgBadge organization={selectedEvent.organization} country={selectedEvent.country} /></div>
+              </div>
+              <div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>
+              <div class="flow-node origin">
+                <div class="fn-icon"><i class="ti ti-server"></i></div>
+                <div class="fn-title">ระบบที่ตรวจจับ (Sensor)</div>
+                <div class="fn-val">{selectedEvent.clientVersion || selectedEvent.source || 'Syslog Sensor'}</div>
+              </div>
+              <div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>
+              <div class="flow-node target">
+                <div class="fn-icon"><i class="ti ti-building-community"></i></div>
+                <div class="fn-title">IP เป้าหมาย</div>
+                <div class="fn-val text-muted">ไม่ทราบ (ถูกซ่อนโดย NAT)</div>
+              </div>
+            </div>
+          {/if}
         </div>
 
-        
+        <!-- AI Analyst Summary (Moved from Right Col) -->
+        {#if selectedEvent.ai_analysis}
+          <h3 class="panel-title"><i class="ti ti-brain"></i> สรุปเรื่องราวโดย AI (AI Analysis Storyline)</h3>
+          <AiAnalysisBlock event={selectedEvent} />
+        {:else}
+          <h3 class="panel-title"><i class="ti ti-brain"></i> วิเคราะห์โดย AI (AI Investigation)</h3>
+          <div class="ai-section" style="margin-bottom: 24px;">
+            <div style="display:flex; justify-content:flex-start; margin-bottom:12px;">
+              <button class="btn-refresh" on:click={generateAiBriefing} disabled={aiGeneratingBrief}>
+                <i class="ti ti-refresh {aiGeneratingBrief ? 'ti-spin' : ''}"></i> {aiGeneratingBrief ? 'กำลังวิเคราะห์...' : 'เริ่มวิเคราะห์ Log นี้'}
+              </button>
+            </div>
+            <div class="ai-chat-box">
+              {#if aiGeneratingBrief}
+                <div class="chat-bubble ai typing">
+                  <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+                </div>
+              {:else if aiExplanation}
+                <div class="chat-bubble ai">
+                  {@html aiExplanation}
+                </div>
+              {:else}
+                <div class="chat-bubble ai text-muted">
+                  คลิก "เริ่มวิเคราะห์ Log นี้" เพื่อให้ AI ช่วยสรุปเหตุการณ์ (สำหรับ Log เก่าที่ยังไม่ได้วิเคราะห์)
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/if}
+
         <!-- Stages of Attack (Kill Chain) -->
-        <h3 class="panel-title" style="margin-top: 24px;"><i class="ti ti-target"></i> Stages of Attack</h3>
+        <h3 class="panel-title" style="margin-top: 24px;"><i class="ti ti-target"></i> ระยะของการโจมตี (Kill Chain)</h3>
         <div class="kill-chain">
           <div class="kc-step {['Network / Vulnerability Scanning', 'Web Scan'].includes(selectedEvent.type) ? 'active' : 'passed'}">
             <div class="kc-icon"><i class="ti ti-radar"></i></div>
@@ -350,13 +406,13 @@
         <div class="main-bottom">
           <!-- Deep Attack Analysis (Forensic View) -->
           <div class="mb-box flex-2 custom-scrollbar" style="overflow-y: auto;">
-            <div class="box-head" style="margin-bottom: 8px;"><i class="ti ti-microscope"></i> Deep Attack Analysis</div>
+            <div class="box-head" style="margin-bottom: 8px;"><i class="ti ti-microscope"></i> การวิเคราะห์เชิงลึกและโค้ดอันตราย (Deep Analysis)</div>
             
             <div class="forensic-grid">
               <!-- HIGHLIGHT BANNER: Instant Story & MITRE -->
               <div class="story-banner {forensicData ? forensicData.riskColor : 'medium'}">
                 <div class="sb-header">
-                  <div class="sb-title"><i class="ti ti-bolt"></i> Instant Story</div>
+                  <div class="sb-title"><i class="ti ti-bolt"></i> สรุปแบบรวดเร็ว (Instant Story)</div>
                   {#if mitreData}
                     <div class="sb-mitre badge-sev {mitreData.color}">
                       <i class="ti ti-crosshair"></i> MITRE: {mitreData.tactic} ({mitreData.code})
@@ -370,36 +426,36 @@
 
               <!-- Basic Context -->
               <div class="f-row" style="margin-bottom: 16px;">
-                <div class="f-col"><span class="f-label">Timestamp</span><span class="f-val">{new Date(selectedEvent.time || selectedEvent.createdAt).toString()}</span></div>
-                <div class="f-col"><span class="f-label">Event Type</span><span class="f-val" style="font-weight:700;">{selectedEvent.type}</span></div>
-                <div class="f-col"><span class="f-label">Severity</span><span class="badge-sev {selectedEvent.severity}" style="width:fit-content;">{selectedEvent.severity.toUpperCase()}</span></div>
+                <div class="f-col"><span class="f-label">เวลาที่เกิดเหตุ (Timestamp)</span><span class="f-val">{new Date(selectedEvent.time || selectedEvent.createdAt).toString()}</span></div>
+                <div class="f-col"><span class="f-label">ประเภท (Event Type)</span><span class="f-val" style="font-weight:700;">{selectedEvent.type}</span></div>
+                <div class="f-col"><span class="f-label">ความรุนแรง (Severity)</span><span class="badge-sev {selectedEvent.severity}" style="width:fit-content;">{selectedEvent.severity.toUpperCase()}</span></div>
               </div>
 
               {#if forensicData}
                 <div class="forensic-cards">
                   <!-- Attacker & Target -->
                   <div class="f-card">
-                    <div class="f-card-title"><i class="ti ti-shield"></i> Attacker & Target</div>
+                    <div class="f-card-title"><i class="ti ti-shield"></i> ผู้โจมตีและเป้าหมาย (Attacker & Target)</div>
                     <div class="f-card-body">
                       <div class="d-row"><span class="d-label">Source IP:</span> <span class="d-val font-mono">{selectedEvent.ip} <OrgBadge organization={selectedEvent.organization} country={selectedEvent.country} /></span></div>
                       <div class="d-row"><span class="d-label">Target Host:</span> <span class="d-val font-mono" style="color:var(--color-cyan, #22d3ee); font-weight:700;">{forensicData.host}</span></div>
-                      <div class="d-row"><span class="d-label">Status:</span> <span class="d-val">{selectedEvent.status || 'Opened'}</span></div>
+                      <div class="d-row"><span class="d-label">สถานะพอร์ต:</span> <span class="d-val">{selectedEvent.status || 'Opened'}</span></div>
                     </div>
                   </div>
 
                   <!-- Payload & Request -->
                   <div class="f-card">
-                    <div class="f-card-title"><i class="ti ti-bomb"></i> Request & Payload</div>
+                    <div class="f-card-title"><i class="ti ti-bomb"></i> คำสั่งและจุดที่ถูกโจมตี (Request)</div>
                     <div class="f-card-body">
                       <div class="d-row"><span class="d-label">Method:</span> <span class="d-val badge-sev high" style="background:rgba(59,130,246,0.15); color:#3b82f6;">{forensicData.method}</span></div>
-                      <div class="d-row"><span class="d-label">Path:</span> <span class="d-val font-mono" style="word-break: break-all;">{forensicData.request}</span></div>
+                      <div class="d-row"><span class="d-label">Path/File:</span> <span class="d-val font-mono" style="word-break: break-all; color: #f43f5e;">{forensicData.request}</span></div>
                       <div class="d-row"><span class="d-label">User-Agent:</span> <span class="d-val text-muted" style="font-size:11px; word-break:break-all;">{forensicData.userAgent}</span></div>
                     </div>
                   </div>
 
                   <!-- Impact & Outcome -->
                   <div class="f-card">
-                    <div class="f-card-title"><i class="ti ti-chart-bar"></i> Impact & Outcome</div>
+                    <div class="f-card-title"><i class="ti ti-chart-bar"></i> ผลลัพธ์และผลกระทบ (Impact)</div>
                     <div class="f-card-body">
                       <div class="d-row">
                         <span class="d-label">Response:</span> 
@@ -408,108 +464,91 @@
                         </span>
                       </div>
                       <div class="d-row"><span class="d-label">Outcome:</span> <span class="d-val" style="font-weight:600;">{forensicData.outcome}</span></div>
-                      <div class="d-row"><span class="d-label">Transferred:</span> <span class="d-val">{forensicData.bytes} Bytes <span class="text-muted">({forensicData.reqTime})</span></span></div>
+                      <div class="d-row"><span class="d-label">Data Sent:</span> <span class="d-val">{forensicData.bytes} Bytes <span class="text-muted">({forensicData.reqTime})</span></span></div>
                       <div class="d-row" style="margin-top:4px;"><span class="d-label">Assessment:</span> <span class="badge-sev {forensicData.riskColor}">{forensicData.riskLevel}</span></div>
                     </div>
                   </div>
                 </div>
               {:else}
-                <div class="f-row" style="margin-top: 16px;">
-                  <div class="f-col text-muted"><i class="ti ti-info-circle"></i> No advanced forensic data available for this log format.</div>
-                </div>
+                <!-- ซ่อนกรอบ "ไม่มีข้อมูล Forensic" ออกไปเลยตามคำแนะนำ เพื่อความสะอาดตา -->
               {/if}
               
               <!-- Raw Evidence Box -->
-              <div class="raw-evidence-box">
+              <div class="raw-evidence-box" style="margin-top: 16px;">
                 <div class="re-header">
-                  <span class="re-title"><i class="ti ti-code"></i> Raw Log Evidence</span>
+                  <span class="re-title"><i class="ti ti-code"></i> หลักฐานดิบ และโค้ดอันตราย (Raw Log & Payload)</span>
                 </div>
-                <div class="re-body font-mono">
-                  {selectedEvent.detail}
+                <div class="re-body font-mono" style="background:#1e1e1e; color:#d4d4d4; padding:16px; white-space: pre-wrap; word-break: break-all; line-height: 1.5;">
+                  {selectedEvent.detail || selectedEvent.payload || 'ไม่มีข้อมูล Log ดิบ หรือ Payload สำหรับเหตุการณ์นี้'}
                 </div>
               </div>
-
-            </div>
-          </div>
-
-          <!-- Attack Timeline -->
-          <div class="mb-box timeline-box custom-scrollbar">
-            <div class="box-head"><i class="ti ti-history"></i> Attack Timeline ({selectedEvent.ip})</div>
-            <div class="v-timeline">
-              {#each timelineEvents as tEvent}
-                <div class="vt-item" class:active={tEvent === selectedEvent} on:click={() => selectEvent(tEvent)}>
-                  <div class="vt-dot {tEvent.severity}"></div>
-                  <div class="vt-content">
-                    <div class="vt-time">{formatEventTime(tEvent.time || tEvent.createdAt)}</div>
-                    <div class="vt-type">{tEvent.type}</div>
-                  </div>
-                </div>
-              {/each}
             </div>
           </div>
         </div>
       {:else}
         <div class="empty-state" style="margin-top: 100px;">
           <i class="ti ti-hand-click" style="font-size:48px; color:var(--border);"></i>
-          <p>Select an incident from the queue to begin analysis.</p>
+          <p>กรุณาเลือกเหตุการณ์จากคิวเพื่อดูการวิเคราะห์เชิงลึก</p>
         </div>
       {/if}
     </div>
 
     <!-- COL 3: AI & Playbook -->
     <div class="col-ai">
-      <div class="ai-header"><i class="ti ti-brain"></i> AI Analyst & SOAR</div>
+      <div class="ai-header"><i class="ti ti-shield-check"></i> ข้อมูลประกอบและการรับมือ</div>
       
       <div class="ai-body custom-scrollbar">
         {#if selectedEvent}
-          <!-- Playbook Actions -->
-          <div class="playbook-section">
-            <h4 class="section-title">SOC Playbook Actions</h4>
-            <button class="playbook-btn" on:click={() => executePlaybook('Enrich IP Reputation')}>
-              <i class="ti ti-search"></i> Enrich IP Reputation
-            </button>
-            <button class="playbook-btn" on:click={() => executePlaybook('Isolate Endpoint')}>
-              <i class="ti ti-shield-lock"></i> Isolate Target Endpoint
-            </button>
-            <button class="playbook-btn danger" on:click={() => executePlaybook('Block IP at Firewall')}>
-              <i class="ti ti-ban"></i> Block IP at Firewall
-            </button>
-            
-            {#if actionResult}
-              <div class="action-result {isActionRunning ? 'running' : 'done'}">
-                {#if isActionRunning}<i class="ti ti-loader ti-spin"></i>{/if}
-                {actionResult}
+          <!-- Evidence & Playbook Advisory -->
+          <div style="margin-bottom: 24px;">
+            {#if selectedEvent.detection_evidence || selectedEvent.recommended_actions}
+              <AiEvidenceBlock event={selectedEvent} />
+            {:else}
+              <div class="playbook-section">
+                <h4 class="section-title">SOC Playbook Actions</h4>
+                <button class="playbook-btn" on:click={() => executePlaybook('Enrich IP Reputation')}>
+                  <i class="ti ti-search"></i> ตรวจสอบประวัติ IP
+                </button>
+                <button class="playbook-btn" on:click={() => executePlaybook('Isolate Endpoint')}>
+                  <i class="ti ti-shield-lock"></i> แยกเครื่องออกจากระบบ (Isolate)
+                </button>
+                <button class="playbook-btn danger" on:click={() => executePlaybook('Block IP at Firewall')}>
+                  <i class="ti ti-ban"></i> บล็อก IP ที่ Firewall
+                </button>
+                
+                {#if actionResult}
+                  <div class="action-result {isActionRunning ? 'running' : 'done'}">
+                    {#if isActionRunning}<i class="ti ti-loader ti-spin"></i>{/if}
+                    {actionResult}
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>
 
-          <!-- AI Analyst -->
-          <div class="ai-section">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-              <h4 class="section-title" style="margin:0;">AI Investigation</h4>
-              <button class="btn-refresh" on:click={generateAiBriefing} disabled={aiGeneratingBrief}>
-                <i class="ti ti-refresh {aiGeneratingBrief ? 'ti-spin' : ''}"></i> {aiGeneratingBrief ? 'Analyzing...' : 'Analyze Log'}
-              </button>
-            </div>
-            
-            <div class="ai-chat-box">
-              {#if aiGeneratingBrief}
-                <div class="chat-bubble ai typing">
-                  <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-                </div>
-              {:else if aiExplanation}
-                <div class="chat-bubble ai">
-                  {@html aiExplanation}
-                </div>
-              {:else}
-                <div class="chat-bubble ai text-muted">
-                  Click "Analyze Log" to let AI investigate this specific event.
-                </div>
-              {/if}
-            </div>
+          <!-- Attack Timeline Moved Here -->
+          <div class="timeline-box">
+            <h4 class="section-title" style="margin-bottom:12px;">ลำดับเวลา (Timeline: {selectedEvent.ip})</h4>
+            {#if selectedEvent.attack_session?.timeline}
+              <AttackTimeline event={selectedEvent} />
+            {:else}
+              <div class="v-timeline">
+                {#each timelineEvents as tEvent}
+                  <!-- svelte-ignore a11y-click-events-have-key-events -->
+                  <div class="vt-item" class:active={tEvent === selectedEvent} on:click={() => selectEvent(tEvent)}>
+                    <div class="vt-dot {tEvent.severity}"></div>
+                    <div class="vt-content">
+                      <div class="vt-time">{formatEventTime(tEvent.time || tEvent.createdAt)}</div>
+                      <div class="vt-type">{tEvent.type}</div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
           </div>
+
         {:else}
-          <div class="empty-state">Waiting for selection...</div>
+          <div class="empty-state">รอการเลือกเหตุการณ์...</div>
         {/if}
       </div>
     </div>
@@ -518,7 +557,7 @@
 
 <style>
   /* Base Layout */
-  .soar-layout { display: flex; height: 100%; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--bg-panel); color: var(--text-primary); }
+  .soar-layout { display: flex; flex: 1; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--bg-panel); color: var(--text-primary); }
   
   /* Col 1 */
   .col-list { width: 300px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }

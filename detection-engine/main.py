@@ -1,52 +1,38 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from typing import List, Dict, Any
 
-from schemas.event import UnifiedSecurityEvent
-from schemas.detection import DetectionResult
+from schemas.event import NormalizedEvent
+from schemas.detection import IncidentObject, DetectionEvidence, IsolationForestEvidence, XGBoostEvidence, LogLLMEvidence
+
 from parsers.firewall_parser import FirewallParser
 from parsers.nginx_parser import NginxParser
 from parsers.server_parser import ServerParser
-from core.deduplication import Deduplicator
+
+from core.ip_filter import is_internal_ip
 from features.aggregator import FeatureAggregator
-from engine.rules.manager import RuleManager
+
 from engine.ml.xgboost_classifier import RealXGBoostClassifier
 from engine.ml.isolation_forest import RealIsolationForest
-from engine.ml.clustering import UnknownAttackClusterer
-from engine.behavioral.profiler import BehavioralProfiler
-from engine.correlation.correlator import CorrelationEngine
-from engine.correlation.ioc_engine import ThreatIntelEngine
-from fusion.scorer import DetectionFusionEngine
+from engine.ml.logllm_mock import LogLLMMock
+from engine.correlation.session_manager import SessionManager
+from fusion.scorer import AIAnalystEngine
 
-from api.ai_context import router as ai_router
-import api.ai_context as ai_context_module
-from api.feedback import router as feedback_router
-from api.registry import router as registry_router
-
-app = FastAPI(title="KKUSIEM AI Detection Engine", version="5.0.0")
-
-app.include_router(ai_router, prefix="/api/v1/ai", tags=["AI"])
-app.include_router(feedback_router, prefix="/api/v1/feedback", tags=["Feedback"])
-app.include_router(registry_router, prefix="/api/v1/registry", tags=["Registry"])
+app = FastAPI(title="KKUSIEM AI Detection Engine", version="6.0.0")
 
 fw_parser = FirewallParser()
 nx_parser = NginxParser()
 sv_parser = ServerParser()
-dedup = Deduplicator()
+
 aggregator = FeatureAggregator(window_minutes=5)
-rule_engine = RuleManager()
-xgb_model = RealXGBoostClassifier()
 iso_forest = RealIsolationForest()
-behavioral_profiler = BehavioralProfiler()
-correlator = CorrelationEngine()
-ioc_engine = ThreatIntelEngine()
-clusterer = UnknownAttackClusterer()
-fusion = DetectionFusionEngine()
+xgb_model = RealXGBoostClassifier()
+logllm_model = LogLLMMock()
+session_manager = SessionManager()
+ai_analyst = AIAnalystEngine()
 
-ingested_events: List[UnifiedSecurityEvent] = []
-detections: List[Dict[str, Any]] = []
-
-ai_context_module.detections_db = detections
-ai_context_module.ingested_events_db = ingested_events
+# Data stores
+cold_storage: List[NormalizedEvent] = []
+incidents: List[Dict[str, Any]] = []
 
 @app.post("/api/v1/ingest")
 async def ingest_logs(payload: Dict[str, Any]):
@@ -54,65 +40,83 @@ async def ingest_logs(payload: Dict[str, Any]):
     raw_logs = payload.get("logs", [])
     if not raw_logs: return {"status": "success", "processed": 0, "dropped": 0}
         
-    processed, dropped = 0, 0
+    processed, dropped, incidents_created = 0, 0, 0
     
-    initial_detections_count = len(detections)
     for raw_log in raw_logs:
         try:
+            # 1. Parse -> Normalize
             if source_type == "firewall": event = fw_parser.parse(raw_log)
             elif source_type == "nginx": event = nx_parser.parse(raw_log)
             elif source_type == "server": event = sv_parser.parse(raw_log)
             else:
                 dropped += 1; continue
                 
-            if dedup.is_duplicate(event): dropped += 1; continue
+            # 1.5 LAN Ingress Filter (Drop if source is not internal LAN)
+            if not is_internal_ip(event.src_ip):
+                dropped += 1
+                continue
                 
+            # 2. Feature Aggregation
             aggregator.add_event(event)
-            features = aggregator.get_features(event.source_ip)
+            features = aggregator.get_features(event.src_ip)
             
-            rule_match = rule_engine.evaluate(event)
-            xgb_result = xgb_model.predict(features)
+            # 3. AI Screening (Isolation Forest)
             iso_result = iso_forest.predict(features)
-            beh_result = behavioral_profiler.evaluate(event, features)
-            ioc_result = ioc_engine.check_ip(event.source_ip)
             
-            if iso_result.get('is_anomaly') and not rule_match and xgb_result.get('predicted_attack') == 'BENIGN':
-                clusterer.add_anomaly(event, features)
-            
-            candidate_attack_type = rule_match.get('rule_name') if rule_match else xgb_result.get('predicted_attack')
-            candidate_det = {"attack_type": candidate_attack_type, "detection_id": "temp"}
-            
-            correlations = correlator.correlate(event, candidate_det)
-            
-            if rule_match or (xgb_result.get('predicted_attack') != 'BENIGN') or iso_result.get('is_anomaly') or beh_result.get('status') == 'DEVIATED':
-                final_detection = fusion.fuse(event, features, rule_match, xgb_result, iso_result, beh_result, correlations)
+            if not iso_result.get('is_anomaly'):
+                # Normal -> Cold Storage
+                cold_storage.append(event)
+                processed += 1
+                continue
                 
-                if ioc_result['ioc_match']:
-                    final_detection.ioc = ioc_result['tags']
-                    final_detection.risk_score = min(final_detection.risk_score + 15, 100)
-                
-                candidate_det["detection_id"] = final_detection.detection_id
-                detections.append(final_detection.dict())
-                
-            ingested_events.append(event)
+            # 4. Threat Engine (Suspicious Events)
+            xgb_result = xgb_model.predict(features)
+            logllm_result = logllm_model.analyze_sequence(event)
+            
+            evidence = DetectionEvidence(
+                isolation_forest=IsolationForestEvidence(**iso_result) if iso_result else None,
+                xgboost=XGBoostEvidence(**xgb_result) if xgb_result else None,
+                logllm_semantic=LogLLMEvidence(**logllm_result) if logllm_result else None
+            )
+            
+            # 5. WN-PGE (Correlation -> Attack Session)
+            attack_session = session_manager.add_event(event)
+            
+            # 6. SOC Copilot Engine (AI Analyst -> Incident)
+            incident = ai_analyst.generate_incident(attack_session, evidence)
+            
+            # Update incidents list (simplistic approach: append new or update existing based on some logic)
+            # For MVP we just append
+            incidents.append(incident.dict())
+            incidents_created += 1
             processed += 1
             
         except Exception as e:
             dropped += 1
             continue
             
-    new_cluster = clusterer.run_clustering()
-            
     return {
         "status": "success", 
         "processed": processed, 
         "dropped": dropped, 
-        "detections_found": len(detections),
-        "new_clusters": new_cluster, 
-        "new_detections": detections[initial_detections_count:]
+        "incidents_created": incidents_created
     }
 
-@app.get("/api/v1/debug/detections")
-def get_debug_detections():
-    return detections[-10:]
+@app.get("/api/incidents")
+def get_incidents():
+    # Return top 20 incidents
+    return incidents[-20:]
 
+@app.get("/api/incidents/{incident_id}")
+def get_incident_detail(incident_id: str):
+    for inc in incidents:
+        if inc['incident_id'] == incident_id:
+            return inc
+    raise HTTPException(status_code=404, detail="Incident not found")
+
+@app.get("/api/incidents/{incident_id}/timeline")
+def get_incident_timeline(incident_id: str):
+    for inc in incidents:
+        if inc['incident_id'] == incident_id:
+            return inc['attack_session']['timeline']
+    raise HTTPException(status_code=404, detail="Incident not found")

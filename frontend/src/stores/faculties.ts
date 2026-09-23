@@ -41,11 +41,24 @@ for (const r of ipRecordsRaw) {
   });
 }
 
-// Helper to determine if an IP is "internal" (mock logic for demo)
-// In a real system, this would check if IP matches KKU's subnet e.g. 10.x.x.x or 192.168.x.x
+// Helper to determine if an IP is "internal"
 export function isInternalIP(ip: string): boolean {
   if (!ip) return false;
-  return ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.16.') || ip === '127.0.0.1' || ip === '::1';
+  
+  // 1. Check RFC1918 Private IPs and Loopback
+  if (ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.16.') || ip === '127.0.0.1' || ip === '::1') {
+    return true;
+  }
+  
+  // 2. Check KKU Public IPs (202.28.x.x, etc.) from ip_records.json
+  const ipLong = ipToLong(ip);
+  for (const sub of compiledSubnets) {
+    if ((ipLong & sub.maskLong) === (sub.subnetLong & sub.maskLong)) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 // Advanced CIDR hash to map an IP to a faculty based on Longest Prefix Match

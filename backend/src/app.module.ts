@@ -1,3 +1,7 @@
+import { SystemMetric } from './entities/system-metric.entity';
+import { SystemService } from './system.service';
+import { SystemController } from './system.controller';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { SystemConfig } from './entities/system-config.entity';
 import { AuditLog } from './entities/audit-log.entity';
@@ -48,7 +52,7 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Production: PostgreSQL ─────────────────────────────────────────
       type: 'postgres',
       url: DATABASE_URL,
-      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory],
+      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric],
       synchronize: true, // กลับมาเปิด Auto-sync เพราะไม่มี Migrations
       ssl: process.env.DB_SSL === 'true'
         ? { rejectUnauthorized: false }
@@ -58,7 +62,7 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Development: SQLite (fallback เมื่อรัน local โดยไม่มี .env) ──
       type: 'sqlite',
       database: 'database.sqlite',
-      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory],
+      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric],
       synchronize: true,
     };
 
@@ -69,14 +73,12 @@ const typeOrmConfig: any = DATABASE_URL
       limit: 100, // 100 requests per minute
     }]),
     TypeOrmModule.forRoot(typeOrmConfig),
-    TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory]),
+    TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric]),
     ApiLogModule,
   ],
   // WazuhController — Legacy compatibility shim (ยังคง /api/wazuh ไว้เพื่อ backward compat)
-  controllers: [AuthController, AttacksController, IngestController, WazuhController, SettingsController, AuditController, ExportController, CVEController, WebhookController],
-  providers: [
-    NetworkMapService,
-    LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService, AuditService, ExportService, WebhookService
-  ],
+  controllers: [AuthController, AttacksController, IngestController, WazuhController, SettingsController, AuditController, ExportController, CVEController, WebhookController, SystemController],
+  providers: [NetworkMapService,
+    LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService, AuditService, ExportService, WebhookService, SystemService],
 })
 export class AppModule {}

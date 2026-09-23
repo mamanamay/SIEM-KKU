@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
+  import ConfirmModal from '../../../lib/components/ConfirmModal.svelte';
   
   let searchQuery = '';
   
@@ -46,6 +47,54 @@
     }] : mappedCVEs;
 
   let cveSimilarityEntries: any[] = [];
+  let selectedHistoryIds: string[] = [];
+
+  $: uniqueCveHistory = cveSimilarityEntries.reduce((acc, curr) => {
+    if (!acc.find((item: any) => item.cveId === curr.cveId)) {
+      acc.push(curr);
+    }
+    return acc;
+  }, []);
+
+  let showDeleteConfirm = false;
+
+  function toggleHistorySelect(cveId: string) {
+    if (selectedHistoryIds.includes(cveId)) {
+      selectedHistoryIds = selectedHistoryIds.filter(id => id !== cveId);
+    } else {
+      selectedHistoryIds = [...selectedHistoryIds, cveId];
+    }
+  }
+
+  function requestDeleteHistory() {
+    if (selectedHistoryIds.length === 0) return;
+    showDeleteConfirm = true;
+  }
+
+  async function confirmDeleteHistory() {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/cve/history/delete', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ids: selectedHistoryIds })
+      });
+      if (res.ok) {
+        cveSimilarityEntries = cveSimilarityEntries.filter(item => !selectedHistoryIds.includes(item.cveId));
+        selectedHistoryIds = [];
+        showDeleteConfirm = false;
+      } else {
+        alert('Failed to delete history');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error deleting history');
+    }
+  }
+
   onMount(async () => {
     try {
       const token = localStorage.getItem('token');
@@ -424,15 +473,26 @@
     </div>
 
     <div class="trending-card" style="margin-top:20px;">
-      <div class="trending-title" style="color: #00d4ff;"><i class="ti ti-history"></i> Recent CVE Searches</div>
-      {#each cveSimilarityEntries as history}
-        <div class="trend-item" on:click={() => searchVulnerability(history.cveId)}>
-          <div class="t-head">
-            <span class="t-name" style="font-family: monospace;">{history.cveId}</span>
-            <span class="t-score {history.severity?.toLowerCase()}">{history.cvssScore?.toFixed(1) || '0.0'}</span>
-          </div>
-          <div style="font-size:11px; color:var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            {history.aiSummary?.substring(0, 50)}...
+      <div class="trending-title" style="color: #00d4ff; display: flex; justify-content: space-between; align-items: center;">
+        <span><i class="ti ti-history"></i> Recent CVE Searches</span>
+        {#if selectedHistoryIds.length > 0}
+          <button on:click={requestDeleteHistory} style="background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 4px; transition: 0.2s;">
+            <i class="ti ti-trash"></i> Delete Selected ({selectedHistoryIds.length})
+          </button>
+        {/if}
+      </div>
+      {#each uniqueCveHistory as history}
+        <!-- svelte-ignore a11y-click-events-have-key-events -->
+        <div class="trend-item" style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" checked={selectedHistoryIds.includes(history.cveId)} on:click|stopPropagation={() => toggleHistorySelect(history.cveId)} style="cursor: pointer; width: 16px; height: 16px;" />
+          <div style="flex: 1; cursor: pointer;" on:click={() => searchVulnerability(history.cveId)}>
+            <div class="t-head">
+              <span class="t-name" style="font-family: monospace;">{history.cveId}</span>
+              <span class="t-score {history.severity?.toLowerCase()}">{history.cvssScore?.toFixed(1) || '0.0'}</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;">
+              {history.aiSummary?.substring(0, 50)}...
+            </div>
           </div>
         </div>
       {:else}
@@ -583,3 +643,15 @@
   </div>
 </div>
 </div>
+
+<ConfirmModal 
+  bind:visible={showDeleteConfirm}
+  title="ยืนยันการลบประวัติ"
+  message="คุณแน่ใจหรือไม่ที่จะลบประวัติการค้นหาจำนวน {selectedHistoryIds.length} รายการ?"
+  icon="ti-trash"
+  confirmColor="#ef4444"
+  confirmText="ลบข้อมูล"
+  cancelText="ยกเลิก"
+  on:confirm={confirmDeleteHistory}
+  on:cancel={() => showDeleteConfirm = false}
+/>

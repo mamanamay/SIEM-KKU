@@ -8,7 +8,7 @@
   import { themeStore } from '../../stores/theme';
   import Omnisearch from '../../lib/components/Omnisearch.svelte';
   import { page } from '$app/stores';
-  import { initSocket, disconnectSocket, roleStore, connectionState, latestAttackStore } from '../../stores/events';
+  import { initSocket, disconnectSocket, roleStore, connectionState, latestAttackStore, usernameStore } from '../../stores/events';
   
   let currentTime = '';
   let timeInterval: any;
@@ -39,7 +39,7 @@
   let showConfirmLogout = false;
   let userAgent = '';
   let osName = 'Unknown OS';
-  let userProfile = { firstName: 'Admin', lastName: '', email: 'admin@system.local' };
+  let userProfile = { firstName: '', lastName: '', email: '' };
   let browserName = 'Unknown Browser';
 
   onMount(() => {
@@ -52,7 +52,7 @@
         .then(data => {
           if (data && data.username) {
             userProfile = {
-              firstName: data.firstName || data.username,
+              firstName: data.firstName || data.username || 'User',
               lastName: data.lastName || '',
               email: data.email || `${data.username}@kkusiem.local`
             };
@@ -281,6 +281,9 @@
         <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}">
           <i class="ti ti-settings"></i> Setting
         </a>
+        <a href="/dashboard/health" class="nav-item {$page.url.pathname === '/dashboard/health' ? 'active' : ''}">
+          <i class="ti ti-server"></i> System Health
+        </a>
         {/if}
       </nav>
     <div class="sidebar-footer">
@@ -293,7 +296,7 @@
         <button class="profile-btn" on:click={() => showProfileMenu = !showProfileMenu}>
           <div class="avatar"><i class="ti ti-user"></i></div>
           <div class="profile-info">
-            <span class="p-name">{userProfile.firstName} {userProfile.lastName}</span>
+            <span class="p-name">{userProfile.firstName || $usernameStore || 'User'} {userProfile.lastName}</span>
             <span class="p-role" style="text-transform: capitalize;">{$roleStore}</span>
           </div>
           <i class="ti ti-chevron-up" style="margin-left: auto; color: var(--text-muted); font-size: 14px;"></i>
@@ -305,10 +308,10 @@
           <div class="profile-dropdown" style="position: absolute; bottom: calc(100% + 12px); left: 16px; width: 320px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); z-index: 100; overflow: hidden; display: flex; flex-direction: column;">
             
             <div class="dropdown-header" style="padding: 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
-              <div class="avatar" style="width: 44px; height: 44px; border-radius: 50%; background: #3b82f6; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; flex-shrink: 0;">{userProfile.firstName.charAt(0).toUpperCase()}</div>
+              <div class="avatar" style="width: 44px; height: 44px; border-radius: 50%; background: #3b82f6; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; flex-shrink: 0;">{(userProfile.firstName || $usernameStore || 'U').charAt(0).toUpperCase()}</div>
               
               <div style="flex: 1; overflow: hidden;">
-                <div style="font-size: 15px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{userProfile.firstName} {userProfile.lastName}</div>
+                <div style="font-size: 15px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{userProfile.firstName || $usernameStore || 'User'} {userProfile.lastName}</div>
                 <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{userProfile.email}</div>
               </div>
               

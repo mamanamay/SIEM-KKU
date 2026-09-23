@@ -115,7 +115,7 @@
 </div>
 
 <style>
-  .mitre-page { display: flex; flex-direction: column; height: 100%; padding: 24px; gap: 24px; overflow: hidden; font-family: 'Inter', sans-serif; color: var(--text-primary); }
+  .mitre-page { display: flex; flex-direction: column; flex: 1; padding: 24px; gap: 24px; overflow: hidden; font-family: 'Inter', sans-serif; color: var(--text-primary); }
   
   .header-row { display: flex; justify-content: space-between; align-items: flex-end; flex-shrink: 0; }
   .page-title { margin: 0; font-size: 24px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
