@@ -39,7 +39,7 @@ class RealXGBoostClassifier:
         top_pred = sorted_classes[0]
         
         return {
-            'predicted_attack': top_pred[0],
+            'predicted_class': top_pred[0],
             'probability': top_pred[1]
         }
 

@@ -68,7 +68,9 @@ const typeOrmConfig: any = DATABASE_URL
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{
+
       ttl: 60000,
       limit: 100, // 100 requests per minute
     }]),

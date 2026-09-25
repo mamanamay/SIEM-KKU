@@ -10,9 +10,10 @@ import { User } from './entities/user.entity';
  * Mode 1 (default): Rule-based engine built into the code.
  *   → Works with ZERO external dependencies or API keys.
  *   → Produces Thai-language analysis from a curated knowledge base.
+ *   → Set STATIC_ANALYSIS_MODE=true in .env to force this mode always.
  *
- * Mode 2 (enhanced): Google Gemini 2.0 Flash via API.
- *   → Activates automatically when GEMINI_API_KEY is set in .env
+ * Mode 2 (enhanced): KKU IntelSphere AI (Typhoon/Llama via gen.ai.kku.ac.th)
+ *   → Activates when user has configured AI API URL + key in Settings > Integrations
  *   → Falls back to Mode 1 if API fails or times out.
  *
  * Rate limiting: max 1 AI call per unique IP per 60 seconds.
@@ -20,8 +21,9 @@ import { User } from './entities/user.entity';
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private readonly geminiUrl =
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+  // Force rule-based mode — set STATIC_ANALYSIS_MODE=true in .env to skip KKU AI
+  private readonly staticMode = process.env.STATIC_ANALYSIS_MODE === 'true';
 
   constructor(
     @InjectRepository(SystemConfig)
@@ -31,10 +33,13 @@ export class AiService {
   ) {}
 
   /**
-   * Calls the unified AI proxy configured in SystemConfig
-   * Uses OpenAI-compatible API format (e.g. Typhoon, Llama).
+   * Calls the KKU IntelSphere AI proxy (OpenAI-compatible format)
+   * Config is read from user.apiConfigJson (set via Settings > Integrations)
    */
   async callUnifiedAI(userId: number, messages: any[], maxTokens = 2048, temperature = 0.3): Promise<string> {
+    if (this.staticMode) {
+      throw new Error('STATIC_ANALYSIS_MODE is enabled — skipping KKU AI call');
+    }
     if (!userId) {
         throw new Error('User context missing for AI call.');
     }
@@ -91,21 +96,24 @@ export class AiService {
       }
     }
 
-    try {
-      const prompt = `คุณคือ SOC Analyst ของมหาวิทยาลัยขอนแก่น วิเคราะห์ภัยคุกคามนี้เป็นภาษาไทย กระชับ 3 ประโยค
+    // Static mode or KKU AI call
+    if (!this.staticMode) {
+      try {
+        const prompt = `คุณคือ SOC Analyst ของมหาวิทยาลัยขอนแก่น วิเคราะห์ภัยคุกคามนี้เป็นภาษาไทย กระชับ 3 ประโยค
 
 ข้อมูล: ประเภท=${alert.type} | IP=${alert.ip}(${alert.country}) | ${alert.detail} | MITRE=${alert.mitreCode} | Score=${alert.threatScore}/100
 
 ตอบ 3 ส่วน: 1)เกิดอะไรขึ้น 2)ความเสี่ยง 3)ต้องทำอะไรทันที`.trim();
 
-      // We use user ID 1 (Admin) for background tasks since there is no web request context
-      const aiResponse = await this.callUnifiedAI(1, [{ role: 'user', content: prompt }], 250, 0.2);
-      if (aiResponse) {
-        this.logger.log(`🤖 [AI Proxy] Analyzed: ${alert.type} for ${alert.ip}`);
-        return `[AI Analysis]\n${aiResponse.trim()}`;
+        // User ID 1 (Admin) for background tasks — no web request context
+        const aiResponse = await this.callUnifiedAI(1, [{ role: 'user', content: prompt }], 250, 0.2);
+        if (aiResponse) {
+          this.logger.log(`🤖 [KKU AI] Analyzed: ${alert.type} for ${alert.ip}`);
+          return `[AI Analysis]\n${aiResponse.trim()}`;
+        }
+      } catch (e: any) {
+        this.logger.warn(`KKU AI call failed: ${e?.message} — using rule engine`);
       }
-    } catch (e: any) {
-      this.logger.warn(`AI Proxy call failed: ${e?.message} — using rule engine`);
     }
 
     // Rule-based fallback (always works)

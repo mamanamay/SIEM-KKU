@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$false)][string]$ServerIP,
-    [Parameter(Mandatory=$false)][string]$Username
+    [Parameter(Mandatory=$false)][string]$Username,
+    [Parameter(Mandatory=$false)][string]$RemoteDir = "~/siem_kku"
 )
 
 Write-Host ""
@@ -9,40 +10,56 @@ Write-Host "    KKUSIEM Honeypot - Deploy to Server           " -ForegroundColor
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host ""
 
-if (-not $ServerIP) { $ServerIP = Read-Host "Enter Server IP (e.g. 192.168.1.100)" }
-if (-not $Username) { $Username = Read-Host "Enter SSH Username (e.g. ubuntu or root)" }
+if (-not $ServerIP) { $ServerIP = Read-Host "Enter Server IP (e.g. 10.101.104.234)" }
+if (-not $Username) { $Username = Read-Host "Enter SSH Username (e.g. ubuntu)" }
 
-# ----------------------------------------------------
-# 1. Define files/folders to EXPLICITLY INCLUDE
-# ----------------------------------------------------
+# ────────────────────────────────────────────────────────────
+# [1/4] Pack — เฉพาะไฟล์ที่ใช้รัน production จริงๆ
+# ────────────────────────────────────────────────────────────
+Write-Host "[1/4] Packing production files..." -ForegroundColor Yellow
+
 $includeItems = @(
-    "backend",
-    ".env",
-    "backend/.env",
-    "frontend",
-    "nginx",
-    "detection-engine",
-    "docker-compose.yml",
-    ".dockerignore",
-    ".env.example",
-    "README.md",
-    "DEPLOY.md",
-    "INGEST_GUIDE.md"
+    "backend/src",
+    "backend/package.json",
+    "backend/package-lock.json",
+    "backend/tsconfig.json",
+    "backend/tsconfig.build.json",
+    "backend/nest-cli.json",
+    "backend/Dockerfile",
+    "frontend/src",
+    "frontend/static",
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/svelte.config.js",
+    "frontend/vite.config.ts",
+    "frontend/tsconfig.json",
+    "frontend/Dockerfile",
+    "detection-engine/api",
+    "detection-engine/core",
+    "detection-engine/engine",
+    "detection-engine/features",
+    "detection-engine/fusion",
+    "detection-engine/parsers",
+    "detection-engine/schemas",
+    "detection-engine/database",
+    "detection-engine/models_registry",
+    "detection-engine/main.py",
+    "detection-engine/requirements.txt",
+    "detection-engine/Dockerfile",
+    "nginx/nginx.conf",
+    "docker-compose.yml"
 )
 
-# ----------------------------------------------------
-# 2. Define patterns to EXCLUDE from the included folders
-# ----------------------------------------------------
 $excludePatterns = @(
     "node_modules",
-    "frontend/build", 
-    "frontend/.svelte-kit",
-    "backend/dist",
-    "detection-engine/__pycache__",
-    "*.log"
+    "__pycache__",
+    "*.pyc",
+    "*.log",
+    ".svelte-kit",
+    "dist",
+    "build",
+    ".git"
 )
-
-Write-Host "[1/4] Packing project files (only necessary files for production)..." -ForegroundColor Yellow
 
 $tarArgs = "-czf deploy.tar.gz "
 foreach ($ex in $excludePatterns) {
@@ -54,48 +71,75 @@ foreach ($item in $includeItems) {
 
 try {
     Invoke-Expression "tar $tarArgs"
-    Write-Host "  [OK] Packed -> deploy.tar.gz" -ForegroundColor Green
+    $size = [math]::Round((Get-Item deploy.tar.gz).Length / 1MB, 2)
+    Write-Host "  [OK] deploy.tar.gz ($size MB)" -ForegroundColor Green
 } catch {
-    Write-Host "  [FAIL] tar failed. Make sure tar is available (Git Bash or Windows 10+)" -ForegroundColor Red
+    Write-Host "  [FAIL] tar failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
 
+# ────────────────────────────────────────────────────────────
+# [2/4] Upload
+# ────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "[2/4] Uploading to ${Username}@${ServerIP}..." -ForegroundColor Yellow
-Write-Host "      (You will be prompted for SSH password)" -ForegroundColor Cyan
 scp deploy.tar.gz "${Username}@${ServerIP}:~/deploy.tar.gz"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  [FAIL] SCP upload failed" -ForegroundColor Red
+    Remove-Item deploy.tar.gz -ErrorAction SilentlyContinue
+    exit 1
+}
 Write-Host "  [OK] Upload complete" -ForegroundColor Green
 
+# ────────────────────────────────────────────────────────────
+# [3/4] Extract + Restart containers บน server
+# ────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "[3/4] Extracting and starting on server..." -ForegroundColor Yellow
-Write-Host "      (You will be prompted for SSH password again)" -ForegroundColor Cyan
+Write-Host "[3/4] Extracting and restarting on server..." -ForegroundColor Yellow
 
-# Define remote script as a simple string to avoid PowerShell parsing errors on older systems
-$remoteScript = "set -e;"
-$remoteScript += " echo '  -> Extracting files...';"
-$remoteScript += " mkdir -p ~/siem_kku;"
-$remoteScript += " tar -xzf ~/deploy.tar.gz -C ~/siem_kku;"
-$remoteScript += " rm ~/deploy.tar.gz;"
-$remoteScript += " cd ~/siem_kku;"
-$remoteScript += " if [ ! -f .env ]; then cp .env.example .env; cp backend/.env.example backend/.env; echo '  [WARNING] .env created from template. Edit .env and backend/.env then run: cd ~/siem_kku && bash nginx/generate-ssl.sh && docker compose up -d --build'; exit 0; fi;"
-$remoteScript += " chmod +x nginx/generate-ssl.sh;"
-$remoteScript += " bash nginx/generate-ssl.sh;"
-$remoteScript += " mkdir -p logs/siem;"
-$remoteScript += " docker compose build --no-cache;"
-$remoteScript += " docker compose up -d;"
-$remoteScript += " docker compose ps"
+$remoteScript = @"
+set -e
+echo '  -> Extracting...'
+mkdir -p $RemoteDir
+tar -xzf ~/deploy.tar.gz -C $RemoteDir
+rm -f ~/deploy.tar.gz
+
+cd $RemoteDir
+
+# ตรวจว่า .env มีอยู่แล้ว (ต้องวางไว้บน server ก่อน deploy)
+if [ ! -f .env ]; then
+  echo '[ERROR] .env not found in $RemoteDir — วาง .env บน server ก่อนแล้วค่อย deploy ใหม่'
+  exit 1
+fi
+
+echo '  -> Building and restarting containers...'
+docker compose build --no-cache
+docker compose up -d
+
+echo ''
+echo '  -> Container status:'
+docker compose ps
+"@
 
 ssh "${Username}@${ServerIP}" $remoteScript
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  [FAIL] Remote script failed" -ForegroundColor Red
+    Remove-Item deploy.tar.gz -ErrorAction SilentlyContinue
+    exit 1
+}
+Write-Host "  [OK] Server updated" -ForegroundColor Green
 
+# ────────────────────────────────────────────────────────────
+# [4/4] Cleanup local tar
+# ────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "[4/4] Cleaning up..." -ForegroundColor Yellow
+Write-Host "[4/4] Cleaning up local temp file..." -ForegroundColor Yellow
 Remove-Item deploy.tar.gz -ErrorAction SilentlyContinue
-Write-Host "  [OK] Cleaned" -ForegroundColor Green
+Write-Host "  [OK] Done" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  [OK] DEPLOYMENT COMPLETE!                       " -ForegroundColor Cyan
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  Dashboard : https://$ServerIP" -ForegroundColor Green
+Write-Host "  DEPLOYMENT COMPLETE                             " -ForegroundColor Cyan
+Write-Host "  Dashboard : https://$ServerIP`:18443           " -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host ""

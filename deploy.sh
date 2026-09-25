@@ -74,7 +74,7 @@ ssh ${USERNAME}@${SERVER_IP} << 'REMOTE'
     echo "      nano ~/siem_kku/.env"
     echo "      nano ~/siem_kku/backend/.env"
     echo ""
-    echo "  After editing, run: cd ~/siem_kku && bash nginx/generate-ssl.sh && docker compose up -d --build"
+    echo "  After editing, run: cd ~/siem_kku && bash nginx/generate-ssl.sh && docker builder prune -f ; docker compose up -d --build"
     exit 0
   fi
 
@@ -86,7 +86,7 @@ ssh ${USERNAME}@${SERVER_IP} << 'REMOTE'
   mkdir -p logs/siem
 
   echo "  → Starting Docker containers..."
-  docker compose up -d --build
+  docker builder prune -f ; docker compose up -d --build
   docker compose ps
 REMOTE
 

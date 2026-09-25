@@ -102,16 +102,31 @@ export class SystemService implements OnModuleInit {
 
   private async getDiskUsage(): Promise<{ usedGb: number, totalGb: number, usage: number }> {
     try {
-      // Assuming Docker Alpine/Linux
-      const { stdout } = await execAsync('df -k /hostfs 2>/dev/null | tail -n 1 || df -k / | tail -n 1');
-      const parts = stdout.trim().split(/\s+/);
-      // Example: overlay 104857600 52428800 52428800 50% /
-      const totalKb = parseInt(parts[1], 10);
-      const usedKb = parseInt(parts[2], 10);
-      const totalGb = totalKb / (1024 ** 2);
-      const usedGb = usedKb / (1024 ** 2);
-      const usage = (usedKb / totalKb) * 100;
-      return { usedGb, totalGb, usage };
+      if (os.platform() === 'win32') {
+        const { stdout } = await execAsync('wmic logicaldisk get size,freespace,caption');
+        const lines = stdout.trim().split('\n').map(l => l.trim()).filter(l => l && !l.toLowerCase().startsWith('caption'));
+        let cDrive = lines.find(l => l.startsWith('C:')) || lines[0];
+        if (!cDrive) throw new Error('No drive found');
+        const parts = cDrive.split(/\s+/);
+        const freeBytes = parseInt(parts[1], 10);
+        const totalBytes = parseInt(parts[2], 10);
+        const usedBytes = totalBytes - freeBytes;
+        return {
+          usedGb: usedBytes / (1024 ** 3),
+          totalGb: totalBytes / (1024 ** 3),
+          usage: (usedBytes / totalBytes) * 100
+        };
+      } else {
+        const { stdout } = await execAsync('df -k /hostfs 2>/dev/null | tail -n 1 || df -k / | tail -n 1');
+        const parts = stdout.trim().split(/\s+/);
+        const totalKb = parseInt(parts[1], 10);
+        const usedKb = parseInt(parts[2], 10);
+        return {
+          usedGb: usedKb / (1024 ** 2),
+          totalGb: totalKb / (1024 ** 2),
+          usage: (usedKb / totalKb) * 100
+        };
+      }
     } catch (e) {
       return { usedGb: 0, totalGb: 0, usage: 0 };
     }

@@ -432,6 +432,7 @@ export class LogService implements OnModuleInit {
     try {
       this.logger.log(`[✓] Started tailing log file (Node.js polling): ${filePath} [${sourceName}]`);
       let fileSize = fs.statSync(filePath).size;
+      let tailBuffer = ''; // เก็บ Buffer ไว้กรณีอ่านได้บรรทัดไม่สมบูรณ์ (ตัดครึ่งบรรทัด)
 
       // ใช้ fs.watchFile (Polling) เพื่อแก้บั๊ก Docker Volume ไม่ส่ง Event inotify ทะลุเข้ามา
       fs.watchFile(filePath, { interval: 1000 }, (curr: any, prev: any) => {
@@ -440,21 +441,28 @@ export class LogService implements OnModuleInit {
         // ถ้าขนาดไฟล์เล็กลง แปลว่าเกิด Log Rotation (ไฟล์ถูกตัดขึ้นวันใหม่)
         if (curr.size < prev.size) {
           fileSize = 0; // เริ่มอ่านใหม่จากต้นไฟล์
+          tailBuffer = '';
         }
         
+        // Node.js fs.createReadStream `end` is inclusive, so we must subtract 1
+        const endPos = curr.size > 0 ? curr.size - 1 : 0;
+        if (fileSize > endPos) return; // Prevent invalid range
+
         const stream = fs.createReadStream(filePath, {
           encoding: 'utf8',
           start: fileSize,
-          end: curr.size
+          end: endPos
         });
 
-        let data = '';
         stream.on('data', (chunk: Buffer) => {
-          data += chunk.toString();
+          tailBuffer += chunk.toString();
         });
 
         stream.on('end', () => {
-          const lines = data.split('\n');
+          const lines = tailBuffer.split('\n');
+          // เก็บส่วนท้ายสุดที่ยังไม่มี \n ไว้ใน buffer สำหรับรอบต่อไป
+          tailBuffer = lines.pop() || '';
+          
           for (const line of lines) {
             if (line.trim()) {
               this.processSyslogMessage(line.trim(), '127.0.0.1', sourceName);
@@ -490,9 +498,9 @@ export class LogService implements OnModuleInit {
       }
 
       // Drop log if it's not related to our LAN
-      if (!isLanRelated) {
-        return;
-      }
+      // if (!isLanRelated) {
+      //   return;
+      // }
 
       // 2. FORWARD TO DETECTION ENGINE
       const axios = require('axios');
@@ -513,7 +521,7 @@ export class LogService implements OnModuleInit {
           for (const det of data.new_detections) {
             // Transform DetectionEngine output to Backend Attack Entity format
             const dstIpMatch = logString.match(/dstip=([\d\.]+)/);
-            const dstIp = dstIpMatch ? dstIpMatch[1] : '10.101.104.234';
+            const dstIp = dstIpMatch?.[1] || '10.101.104.234';
 
             const attackPayload = {
               source: aiSource,
@@ -535,7 +543,7 @@ export class LogService implements OnModuleInit {
         // Fallback or ignore
       }
       
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Error processing syslog from ${sourceName}: ${e.message}`);
     }
   }

@@ -8,7 +8,7 @@ from parsers.firewall_parser import FirewallParser
 from parsers.nginx_parser import NginxParser
 from parsers.server_parser import ServerParser
 
-from core.ip_filter import is_internal_ip
+from core.ip_filter import is_external_attacker
 from features.aggregator import FeatureAggregator
 
 from engine.ml.xgboost_classifier import RealXGBoostClassifier
@@ -42,6 +42,8 @@ async def ingest_logs(payload: Dict[str, Any]):
         
     processed, dropped, incidents_created = 0, 0, 0
     
+    new_detections = []
+    
     for raw_log in raw_logs:
         try:
             # 1. Parse -> Normalize
@@ -51,10 +53,10 @@ async def ingest_logs(payload: Dict[str, Any]):
             else:
                 dropped += 1; continue
                 
-            # 1.5 LAN Ingress Filter (Drop if source is not internal LAN)
-            if not is_internal_ip(event.src_ip):
-                dropped += 1
-                continue
+            # 1.5 External Attacker Filter (DISABLED per user request to allow LAN testing)
+            # if not is_external_attacker(event.src_ip):
+            #     dropped += 1
+            #     continue
                 
             # 2. Feature Aggregation
             aggregator.add_event(event)
@@ -63,11 +65,11 @@ async def ingest_logs(payload: Dict[str, Any]):
             # 3. AI Screening (Isolation Forest)
             iso_result = iso_forest.predict(features)
             
-            if not iso_result.get('is_anomaly'):
-                # Normal -> Cold Storage
-                cold_storage.append(event)
-                processed += 1
-                continue
+            # (DISABLED anomaly drop per user request to see all logs in Dashboard)
+            # if not iso_result.get('is_anomaly'):
+            #     cold_storage.append(event)
+            #     processed += 1
+            #     continue
                 
             # 4. Threat Engine (Suspicious Events)
             xgb_result = xgb_model.predict(features)
@@ -85,13 +87,22 @@ async def ingest_logs(payload: Dict[str, Any]):
             # 6. SOC Copilot Engine (AI Analyst -> Incident)
             incident = ai_analyst.generate_incident(attack_session, evidence)
             
-            # Update incidents list (simplistic approach: append new or update existing based on some logic)
-            # For MVP we just append
-            incidents.append(incident.dict())
+            incident_dict = incident.dict()
+            incidents.append(incident_dict)
             incidents_created += 1
             processed += 1
             
+            # Prepare payload for backend's new_detections array
+            new_detections.append({
+                "attack_type": incident.attack_type,
+                "risk_score": incident.risk_score,
+                "source_ips": [event.src_ip],
+                "ioc": []
+            })
+            
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             dropped += 1
             continue
             
@@ -99,7 +110,8 @@ async def ingest_logs(payload: Dict[str, Any]):
         "status": "success", 
         "processed": processed, 
         "dropped": dropped, 
-        "incidents_created": incidents_created
+        "incidents_created": incidents_created,
+        "new_detections": new_detections
     }
 
 @app.get("/api/incidents")

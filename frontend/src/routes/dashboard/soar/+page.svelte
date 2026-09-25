@@ -2,6 +2,7 @@
 <script lang="ts">
   import OrgBadge from '../../../lib/components/OrgBadge.svelte';
   import { eventsStore } from '../../../stores/events';
+  import { getFacultyForIP, getServerName } from '../../../stores/faculties';
   import { formatEventTime } from '../../../lib/formatTime';
   import { onMount } from 'svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
@@ -89,21 +90,16 @@
     aiExplanation = e.aiAnalysis || '';
   }
   
-  let isActionRunning = false;
-  let actionResult = '';
-  
-  function executePlaybook(action: string) {
-    if (!selectedEvent) return;
-    const confirmMsg = `Are you sure you want to execute: ${action}?\n\nNOTE: Physical Firewall/WAF API is not currently connected. This action will be recorded as a SIMULATED recommendation.`;
-    if (!confirm(confirmMsg)) return;
-    
-    isActionRunning = true;
-    actionResult = `Simulating ${action} for ${selectedEvent.ip}...`;
-    
-    setTimeout(() => {
-      actionResult = `[SIMULATED] ${action} logged as recommended SOC action. No external system was modified.`;
-      isActionRunning = false;
-    }, 1500);
+  let showDevPopup = false;
+  let devPopupTitle = '';
+  let devPopupMsg = '';
+
+  function openDevPopup(action: string) {
+    devPopupTitle = action;
+    devPopupMsg = action.toLowerCase().includes('isolat')
+      ? 'ฟีเจอร์นี้ต้องเชื่อมต่อกับ Network Switch API (SNMP/SSH)\nเพื่อสั่ง shutdown port โดยอัตโนมัติ\nจะพร้อมใช้งานเมื่อ integrate กับระบบ Network จริง'
+      : 'ฟีเจอร์นี้ต้องเชื่อมต่อกับ Firewall/WAF API จริง\nเพื่อ inject blocking rule แบบ real-time\nจะพร้อมใช้งานเมื่อ integrate กับ Firewall ขององค์กร';
+    showDevPopup = true;
   }
 
   function clearExactMatch() {
@@ -259,6 +255,55 @@
 
   $: mitreData = selectedEvent ? getMitreTactic(selectedEvent.type) : null;
   $: attackStory = selectedEvent ? generateAttackStory(selectedEvent, forensicData) : '';
+
+  // ── IP History Modal ──────────────────────────────────────────────────────
+  let showIpHistoryModal = false;
+  let ipHistoryData: any = null;
+  let ipHistoryLoading = false;
+
+  async function checkIpHistory(ip: string) {
+    if (!ip) return;
+    showIpHistoryModal = true;
+    ipHistoryLoading = true;
+    ipHistoryData = null;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/attacks/ip-history/${encodeURIComponent(ip)}`, {
+        headers: { 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      ipHistoryData = await res.json();
+    } catch (e: any) {
+      ipHistoryData = { error: e.message || 'โหลดข้อมูลไม่ได้' };
+    } finally {
+      ipHistoryLoading = false;
+    }
+  }
+
+  // ── Full Raw Log (reactive) ───────────────────────────────────────────────
+  $: fullRawLog = selectedEvent ? JSON.stringify({
+    timestamp:         selectedEvent.timeStr || selectedEvent.time || selectedEvent.createdAt,
+    src_ip:            selectedEvent.ip,
+    dest_ip:           selectedEvent.destIp || 'unknown',
+    event_type:        selectedEvent.type,
+    severity:          selectedEvent.severity,
+    detail:            selectedEvent.detail,
+    payload:           selectedEvent.payload,
+    mitre_code:        selectedEvent.mitreCode,
+    mitre_tactic:      selectedEvent.mitreTactic,
+    threat_score:      selectedEvent.threatScore,
+    country:           selectedEvent.country,
+    organization:      selectedEvent.organization,
+    source_sensor:     selectedEvent.source || selectedEvent.clientVersion,
+    honeypot_port:     selectedEvent.honeypotPort,
+    session_id:        selectedEvent.sessionId,
+    correlation_chain: selectedEvent.correlationChain || [],
+    attack_commands:   selectedEvent.attackCommands || [],
+    credentials_used:  selectedEvent.credentialsUsed || null,
+  }, null, 2) : '';
+
+  // ── Dest IP Faculty ───────────────────────────────────────────────────────
+  $: destFaculty = selectedEvent?.destIp ? getFacultyForIP(selectedEvent.destIp) : null;
 </script>
 
 <div style="display:flex;flex-direction:column;height:100%;gap:16px;">
@@ -337,7 +382,14 @@
               <div class="flow-node target">
                 <div class="fn-icon"><i class="ti ti-building-community"></i></div>
                 <div class="fn-title">IP เป้าหมาย</div>
-                <div class="fn-val text-muted">ไม่ทราบ (ถูกซ่อนโดย NAT)</div>
+                <div class="fn-val" style="font-family: monospace;">
+                  {getServerName(selectedEvent.destIp || '10.101.104.234') || selectedEvent.destIp || 'ไม่ระบุ'}
+                  {#if destFaculty}
+                    <div style="font-size: 11px; margin-top: 4px; color: var(--color-cyan, #22d3ee);">{destFaculty.name}</div>
+                  {:else if selectedEvent.destIp}
+                    <div style="font-size: 11px; margin-top: 4px; color: var(--text-muted);">ไม่พบในฐานข้อมูล</div>
+                  {/if}
+                </div>
               </div>
             </div>
           {/if}
@@ -478,8 +530,8 @@
                 <div class="re-header">
                   <span class="re-title"><i class="ti ti-code"></i> หลักฐานดิบ และโค้ดอันตราย (Raw Log & Payload)</span>
                 </div>
-                <div class="re-body font-mono" style="background:#1e1e1e; color:#d4d4d4; padding:16px; white-space: pre-wrap; word-break: break-all; line-height: 1.5;">
-                  {selectedEvent.detail || selectedEvent.payload || 'ไม่มีข้อมูล Log ดิบ หรือ Payload สำหรับเหตุการณ์นี้'}
+                <div class="re-body font-mono" style="background:#1e1e1e; color:#d4d4d4; padding:16px; white-space: pre-wrap; word-break: break-all; line-height: 1.5; font-size: 11px;">
+                  {fullRawLog}
                 </div>
               </div>
             </div>
@@ -506,22 +558,15 @@
             {:else}
               <div class="playbook-section">
                 <h4 class="section-title">SOC Playbook Actions</h4>
-                <button class="playbook-btn" on:click={() => executePlaybook('Enrich IP Reputation')}>
+                <button class="playbook-btn" on:click={() => checkIpHistory(selectedEvent.ip)}>
                   <i class="ti ti-search"></i> ตรวจสอบประวัติ IP
                 </button>
-                <button class="playbook-btn" on:click={() => executePlaybook('Isolate Endpoint')}>
+                <button class="playbook-btn" on:click={() => openDevPopup('Isolate Endpoint')}>
                   <i class="ti ti-shield-lock"></i> แยกเครื่องออกจากระบบ (Isolate)
                 </button>
-                <button class="playbook-btn danger" on:click={() => executePlaybook('Block IP at Firewall')}>
+                <button class="playbook-btn danger" on:click={() => openDevPopup('Block IP at Firewall')}>
                   <i class="ti ti-ban"></i> บล็อก IP ที่ Firewall
                 </button>
-                
-                {#if actionResult}
-                  <div class="action-result {isActionRunning ? 'running' : 'done'}">
-                    {#if isActionRunning}<i class="ti ti-loader ti-spin"></i>{/if}
-                    {actionResult}
-                  </div>
-                {/if}
               </div>
             {/if}
           </div>
@@ -710,4 +755,108 @@
   .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
   .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
   .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(150,150,150,0.3); border-radius: 3px; }
+
+  /* Modals */
+  .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px); }
+  .modal-content { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+  .modal-content h3 { margin-top: 0; font-size: 16px; margin-bottom: 16px; }
+  
+  .dev-popup { text-align: center; max-width: 400px; }
+  .dev-icon { font-size: 48px; margin-bottom: 16px; }
+  .dev-action { font-size: 14px; font-weight: 700; color: var(--color-cyan, #22d3ee); margin-bottom: 12px; }
+  .dev-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap; margin-bottom: 16px; }
+  .dev-eta { font-size: 11px; color: var(--text-muted); background: var(--bg-secondary); padding: 8px; border-radius: 6px; margin-bottom: 20px; }
+  .btn-close-modal { background: #3b82f6; color: white; border: none; padding: 8px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+  .btn-close-modal:hover { background: #2563eb; }
+
+  .ip-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  .ip-stat-box { background: var(--bg-secondary); padding: 12px; border-radius: 8px; border: 1px solid var(--border); }
+  .ip-stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
+  .ip-stat-val { font-size: 16px; font-weight: 700; }
 </style>
+
+<!-- Dev Popup Modal -->
+{#if showDevPopup}
+<div class="modal-overlay" on:click={() => showDevPopup = false}>
+  <div class="modal-content dev-popup" on:click|stopPropagation>
+    <div class="dev-icon">🚧</div>
+    <h3>อยู่ระหว่างพัฒนา</h3>
+    <p class="dev-action">{devPopupTitle}</p>
+    <p class="dev-desc">{devPopupMsg}</p>
+    <div class="dev-eta">ฟีเจอร์การเชื่อมต่ออุปกรณ์เครือข่ายจริงกำลังดำเนินการ</div>
+    <button class="btn-close-modal" on:click={() => showDevPopup = false}>รับทราบ</button>
+  </div>
+</div>
+{/if}
+
+<!-- IP History Modal -->
+{#if showIpHistoryModal}
+<div class="modal-overlay" on:click={() => showIpHistoryModal = false}>
+  <div class="modal-content" on:click|stopPropagation>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3><i class="ti ti-history"></i> ประวัติ IP: {ipHistoryData?.ip || '...'}</h3>
+      <button style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;" on:click={() => showIpHistoryModal = false}><i class="ti ti-x" style="font-size:20px;"></i></button>
+    </div>
+    
+    {#if ipHistoryLoading}
+      <div style="text-align:center; padding: 40px; color:var(--text-muted);">
+        <i class="ti ti-loader ti-spin" style="font-size:32px; margin-bottom:16px; display:block;"></i>
+        กำลังโหลดข้อมูลประวัติ...
+      </div>
+    {:else if ipHistoryData?.error}
+      <div style="padding: 20px; background: rgba(239,68,68,0.1); color:#ef4444; border-radius: 8px;">
+        {ipHistoryData.error}
+      </div>
+    {:else if ipHistoryData}
+      <div class="ip-stat-grid">
+        <div class="ip-stat-box">
+          <div class="ip-stat-label">เหตุการณ์ทั้งหมด</div>
+          <div class="ip-stat-val">{ipHistoryData.totalEvents} ครั้ง</div>
+        </div>
+        <div class="ip-stat-box">
+          <div class="ip-stat-label">ความรุนแรงสูงสุด</div>
+          <div class="ip-stat-val"><span class="badge-sev {ipHistoryData.maxSeverity}">{ipHistoryData.maxSeverity.toUpperCase()}</span></div>
+        </div>
+        <div class="ip-stat-box">
+          <div class="ip-stat-label">พบครั้งแรก</div>
+          <div class="ip-stat-val" style="font-size:12px;">{ipHistoryData.firstSeen ? new Date(ipHistoryData.firstSeen).toLocaleString() : '-'}</div>
+        </div>
+        <div class="ip-stat-box">
+          <div class="ip-stat-label">พบล่าสุด</div>
+          <div class="ip-stat-val" style="font-size:12px;">{ipHistoryData.lastSeen ? new Date(ipHistoryData.lastSeen).toLocaleString() : '-'}</div>
+        </div>
+      </div>
+      
+      {#if ipHistoryData.successCount > 0}
+        <div style="margin-bottom:20px; padding:12px; background:rgba(239,68,68,0.1); border-left:4px solid #ef4444; border-radius:4px;">
+          <strong style="color:#ef4444;"><i class="ti ti-alert-triangle"></i> แจ้งเตือนความเสี่ยงสูง:</strong> พบเหตุการณ์ที่มีแนวโน้มโจมตีสำเร็จ (Success/Command Execution) จำนวน {ipHistoryData.successCount} ครั้งจาก IP นี้
+        </div>
+      {/if}
+
+      <div style="margin-bottom:12px; font-size:13px; font-weight:700;">ประเภทการโจมตีที่พบ:</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:24px;">
+        {#each ipHistoryData.uniqueTypes || [] as t}
+          <span style="background:var(--bg-secondary); border:1px solid var(--border); padding:4px 8px; border-radius:12px; font-size:11px;">{t}</span>
+        {/each}
+      </div>
+
+      <div style="margin-bottom:12px; font-size:13px; font-weight:700;">Timeline ล่าสุด:</div>
+      <div class="v-timeline">
+        {#each ipHistoryData.timeline || [] as tEvent}
+          <div class="vt-item">
+            <div class="vt-dot {tEvent.severity}"></div>
+            <div class="vt-content">
+              <div class="vt-time">{new Date(tEvent.time).toLocaleString()}</div>
+              <div class="vt-type">{tEvent.type}</div>
+              <div style="font-size:11px; color:var(--text-muted); font-family:monospace; margin-top:4px;">
+                เป้าหมาย: {getServerName(tEvent.destIp || '10.101.104.234') || tEvent.destIp || 'Unknown'} <br>
+                {tEvent.detail}
+              </div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </div>
+</div>
+{/if}

@@ -604,65 +604,125 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
     }
   }
 
+  // ── IP History & Timeline ────────────────────────────────────────────────
+  @Get('ip-history/:ip')
+  @UseGuards(AuthGuard)
+  async getIpHistory(@Param('ip') ip: string) {
+    const attacks = await this.attackRepository.find({
+      where: { ip },
+      order: { id: 'ASC' },
+      take: 200,
+    });
+
+    const successKeywords = /(command|success|compromised|login.*ok|session.*open|cmd:|exec:|rm |wget |curl )/i;
+
+    return {
+      ip,
+      totalEvents:  attacks.length,
+      firstSeen:    attacks[0]?.createdAt || null,
+      lastSeen:     attacks[attacks.length - 1]?.createdAt || null,
+      uniqueTypes:  [...new Set(attacks.map(a => a.type))],
+      maxSeverity:  attacks.some(a => a.severity === 'critical') ? 'critical'
+                  : attacks.some(a => a.severity === 'high')     ? 'high' : 'medium',
+      successCount: attacks.filter(a => successKeywords.test((a.type || '') + (a.detail || ''))).length,
+      timeline: attacks.map(a => ({
+        id:        a.id,
+        time:      a.timeStr || a.createdAt,
+        type:      a.type,
+        severity:  a.severity,
+        detail:    (a.detail || '').substring(0, 150),
+        destIp:    a.destIp,
+        mitreCode: a.mitreCode,
+      })),
+    };
+  }
+
   // ── AI Event Analysis (On-Demand) ─────────────────────────────────────────
   @Post('analyze-event')
   async analyzeEvent(@Body() event: any, @Req() req: any) {
-    const payloadText = event.payload || event.detail || 'ไม่พบ payload';
-    
+    // สร้าง full raw log จากทุก field เพื่อให้ AI วิเคราะห์ได้ครบ
+    const fullRawLog = {
+      timestamp:         event.timeStr || event.time || event.createdAt,
+      src_ip:            event.ip,
+      dest_ip:           event.destIp || 'unknown',
+      event_type:        event.type,
+      severity:          event.severity,
+      detail:            event.detail,
+      payload:           event.payload,
+      mitre_code:        event.mitreCode,
+      mitre_tactic:      event.mitreTactic,
+      threat_score:      event.threatScore,
+      country:           event.country,
+      organization:      event.organization,
+      source_sensor:     event.source || event.clientVersion,
+      honeypot_port:     event.honeypotPort,
+      session_id:        event.sessionId,
+      correlation_chain: event.correlationChain || [],
+      attack_commands:   event.attackCommands || [],
+      credentials_used:  event.credentialsUsed || null,
+    };
+    const payloadText = JSON.stringify(fullRawLog, null, 2);
 
+    // ─── Rule-based fallback (ทำงานได้โดยไม่ต้องใช้ AI API) ───────────────
     const generateRuleBasedAnalysis = () => {
+      const rawStr = JSON.stringify(fullRawLog).toLowerCase();
       let intent = 'พยายามแสกนช่องโหว่ หรือเดารหัสผ่านเพื่อเข้าสู่ระบบ';
-      let deepAnalysis = `ระบบตรวจพบพฤติกรรมน่าสงสัยจาก Payload: "${payloadText.substring(0, 100)}${payloadText.length > 100 ? '...' : ''}"`;
+      let outcome = '❌ ผลลัพธ์: ไม่ทราบ — ไม่มีข้อมูลการตอบกลับเพียงพอ';
       let recommendation = 'บล็อก IP ทันที และตรวจสอบสิทธิ์การเข้าถึงเซิร์ฟเวอร์';
+      const destLabel = event.destIp ? `IP ${event.destIp}` : 'ระบบ Honeypot';
+      const srcLabel  = `IP ${event.ip || 'ไม่ทราบ'} (${event.country || 'ไม่ทราบ'})`;
 
-      if (/SELECT|DROP|UNION|OR 1=1|--/i.test(payloadText)) {
+      if (/select|drop|union|or 1=1|--|insert|update|delete from/i.test(rawStr)) {
         intent = 'พยายามเจาะฐานข้อมูล (SQL Injection)';
-        deepAnalysis = 'พบคำสั่ง SQL ที่ผิดปกติฝังมาในข้อมูล (เช่น SELECT, DROP, OR 1=1) ซึ่งแฮกเกอร์หวังจะดึงข้อมูลหรือลบข้อมูลในฐานข้อมูล';
-        recommendation = 'ตรวจสอบการ Validate Input ในระบบฐานข้อมูลและ Web Application ด่วน รวมถึงบล็อก IP นี้';
-      } else if (/<script>|javascript:|alert\(/i.test(payloadText)) {
-        intent = 'พยายามโจมตีด้วยสคริปต์ (Cross-Site Scripting - XSS)';
-        deepAnalysis = 'พบสคริปต์ HTML/JS ฝังมาในระบบ หากสำเร็จอาจทำให้แฮกเกอร์ขโมย Cookie หรือควบคุมหน้าเว็บได้';
-        recommendation = 'เปิดใช้งาน WAF Rules สำหรับป้องกัน XSS และทำ Data Sanitization ขาเข้า';
-      } else if (/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(payloadText) && payloadText.length > 20) {
-        intent = 'พยายามซ่อนคำสั่งโจมตี (Base64 Encoded Payload)';
-        deepAnalysis = 'ข้อมูลถูกเข้ารหัสด้วย Base64 เพื่อหลบหลีกการตรวจจับเบื้องต้น (Obfuscation)';
-        recommendation = 'พิจารณานำ Payload ไปถอดรหัส (Decode) เพื่อวิเคราะห์คำสั่งที่แท้จริง และบล็อก IP ทันที';
-      } else if (event.type?.toLowerCase().includes('brute force')) {
-        intent = 'พยายามเดารหัสผ่านซ้ำๆ (Brute Force)';
-        deepAnalysis = 'พบอัตราการส่งคำขอเข้าสู่ระบบ (Login attempts) ที่สูงผิดปกติในระยะเวลาสั้นๆ';
-        recommendation = 'เปิดใช้งานระบบ 2FA (Two-Factor Authentication) และตั้งค่า Lockout อัตโนมัติหลังใส่รหัสผิดเกินกำหนด';
+        recommendation = 'ตรวจสอบ Input Validation ใน Web Application และบล็อก IP นี้';
+      } else if (/<script>|javascript:|alert\(|onerror=/i.test(rawStr)) {
+        intent = 'พยายามโจมตีด้วยสคริปต์ (XSS)';
+        recommendation = 'เปิดใช้งาน WAF และทำ Data Sanitization';
+      } else if (/brute|ssh.*login|login.*fail|authentication.*fail/i.test(rawStr)) {
+        intent = 'พยายามเดารหัสผ่าน (Brute Force) เข้าสู่ SSH/ระบบ';
+        recommendation = 'เปิด 2FA และตั้งค่า Lockout หลังใส่รหัสผิดเกินกำหนด';
+      } else if (/rm |rm -rf|wget |curl |chmod|exec|cmd:/i.test(rawStr)) {
+        intent = 'รันคำสั่งอันตรายบนระบบ (Command Execution)';
+        recommendation = 'ตรวจสอบ process ที่รันอยู่และ isolate เครื่องทันที';
       }
 
-      return {
-        analysis: `**(💡 วิเคราะห์ด้วย Rule-based AI - โหมดประหยัด)**\n\n1. 🎯 **เป้าหมายของแฮกเกอร์:** ${intent}\n2. 🔬 **วิเคราะห์เชิงลึก:** ${deepAnalysis}\n3. 🛡️ **ข้อเสนอแนะเร่งด่วน:** ${recommendation}`,
-        mode: 'rule-based'
-      };
+      if (/success|login.*ok|session.*open|http 200|200 ok/i.test(rawStr)) {
+        outcome = '✅ ผลลัพธ์: <strong>สำเร็จ</strong> — ผู้โจมตีเข้าถึงระบบได้';
+      } else if (/fail|block|403|401|reject|denied/i.test(rawStr)) {
+        outcome = '❌ ผลลัพธ์: <strong>ไม่สำเร็จ</strong> — ถูกระบบป้องกันบล็อก';
+      }
+
+      const analysis = `<strong>🎯 เป้าหมาย:</strong> ${destLabel}<br>` +
+        `<strong>👤 ผู้โจมตี:</strong> ${srcLabel}<br>` +
+        `<strong>⚔️ สิ่งที่ทำ:</strong> ${intent}<br>` +
+        `<strong>${outcome}</strong><br>` +
+        `<strong>⚠️ ความเสี่ยง:</strong> ${event.mitreCode || 'N/A'} — ตรวจสอบและรับมือทันที<br>` +
+        `<strong>🛡️ แนะนำ:</strong> ${recommendation}` +
+        `<br><br><em style="opacity:0.6;font-size:11px;">(💡 Rule-based Analysis — ไม่ต้องการ AI API)</em>`;
+
+      return { analysis, mode: 'rule-based' };
     };
 
-    const prompt = `คุณคือผู้เชี่ยวชาญ Cyber Security (SOC Analyst อาวุโส)
-กรุณาวิเคราะห์ Log เหตุการณ์นี้สั้นๆ เป็นภาษาไทย แบบมืออาชีพและเข้าใจง่าย
+    // ─── KKU AI Analysis ─────────────────────────────────────────────────────
+    const prompt = `คุณคือ SOC Analyst ของมหาวิทยาลัยขอนแก่น วิเคราะห์เหตุการณ์ security นี้เป็นภาษาไทย แบบ narrative story
+ตอบเป็น HTML (ใช้ <strong>, <br>, <ul>, <li>) โดยใช้โครงสร้างนี้เท่านั้น ห้ามใส่ markdown code block:
 
-ข้อมูลเหตุการณ์:
-- IP ต้นทาง: ${event.sourceIp || event.ip || 'Unknown'}
-- ประเภทการโจมตี: ${event.type || 'Unknown'}
-- ความรุนแรง: ${event.severity?.toUpperCase() || 'UNKNOWN'}
-- ข้อมูล/Payload: ${payloadText}
+<strong>🎯 เป้าหมาย:</strong> [Faculty/หน่วยงาน ถ้าระบุได้] IP [dest_ip]<br>
+<strong>👤 ผู้โจมตี:</strong> IP [src_ip] จาก [country] / [organization ถ้ามี]<br>
+<strong>⚔️ สิ่งที่ทำ:</strong> [อธิบายประเภทการโจมตีและ payload ให้เข้าใจง่าย ไม่ใช้ศัพท์เทคนิคมาก]<br>
+<strong>📋 ขั้นตอน:</strong><ul>[correlation_chain แต่ละขั้น ถ้าไม่มีให้สรุปจาก detail และ commands]</ul>
+<strong>[✅ หรือ ❌] ผลลัพธ์:</strong> [สำเร็จ/ไม่สำเร็จ — ดูจาก status, success keyword, หรือ commands ที่รันได้]<br>
+<strong>⚠️ ความเสี่ยง:</strong> MITRE [mitre_code] — [ถ้าสำเร็จจะเกิดผลเสียอะไรต่อมหาวิทยาลัย]
 
-รูปแบบคำตอบ:
-1. 🎯 เป้าหมายของแฮกเกอร์: (พยายามทำอะไร?)
-2. 🔬 วิเคราะห์เชิงลึก: (อธิบาย Payload หรือพฤติกรรมนี้)
-3. 🛡️ ข้อเสนอแนะเร่งด่วน: (ควรทำอย่างไร?)
-`;
+ข้อมูล Log เต็มรูปแบบ (JSON):
+${payloadText}`;
 
     try {
-      const resText = await this.aiService.callUnifiedAI(req.user.sub, [{ role: 'user', content: prompt }], 800, 0.3);
+      const resText = await this.aiService.callUnifiedAI(req.user.sub, [{ role: 'user', content: prompt }], 1024, 0.3);
       return { analysis: resText.trim(), mode: 'ai' };
     } catch (e) {
-      console.error('[Analyze Event] Gemini call failed:', e);
-      return generateRuleBasedAnalysis(); // Fallback on timeout/failure
+      console.error('[Analyze Event] KKU AI call failed — using rule-based fallback:', e);
+      return generateRuleBasedAnalysis();
     }
-    
-    // Fallback on timeout or fetch failure
-    return generateRuleBasedAnalysis();
   }
 }

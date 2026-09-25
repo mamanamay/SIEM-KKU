@@ -80,3 +80,12 @@ export function getFacultyForIP(ip: string) {
   
   return bestMatch;
 }
+
+// Special mapping for known honeypot/server IPs so the user can easily identify the target
+export function getServerName(ip: string): string | null {
+  const map: Record<string, string> = {
+    '10.101.104.234': 'SIEM Honeypot Server',
+    '127.0.0.1': 'Localhost',
+  };
+  return map[ip] || null;
+}

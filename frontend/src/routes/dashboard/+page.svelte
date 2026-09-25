@@ -3,7 +3,7 @@
   import { onDestroy } from 'svelte';
   import { eventsStore, connectionState } from '../../stores/events';
   import { formatEventTime } from '../../lib/formatTime';
-  import { getFacultyForIP, isInternalIP } from '../../stores/faculties';
+  import { getFacultyForIP, isInternalIP, getServerName } from '../../stores/faculties';
   import { themeStore } from '../../stores/theme';
 
   // ─── Attack entity field reference (from backend/src/entities/attack.entity.ts)
@@ -18,9 +18,30 @@
   }
 
   // ─── Raw Events ──────────────────────────────────────────────────────────────
+  let allEvents: any[] = [];
   let events: any[] = [];
-  const unsub = eventsStore.subscribe(v => { events = v.filter(e => isInternalIP(e.ip) || isInternalIP(e.destIp)); });
+  let lanOnly = false; // Toggle for showing only attacks directed at internal IPs
 
+  const unsub = eventsStore.subscribe(v => { 
+    allEvents = v; 
+    filterEvents();
+  });
+
+  function filterEvents() {
+    if (lanOnly) {
+      events = allEvents.filter(e => e.destIp && isInternalIP(e.destIp));
+    } else {
+      events = allEvents;
+    }
+    // Trigger reactivity for charts
+    events = [...events];
+  }
+
+  $: {
+    // Re-filter when toggle changes
+    lanOnly; 
+    filterEvents();
+  }
   let showModal = false;
   let selectedIncident = null;
 
@@ -356,7 +377,19 @@
     <span class="sep">|</span>
     <i class="ti ti-clock hl-icon"></i>
     <span class="hl">Last: <b>{lastEventLabel}</b></span>
-    <span class="ml-auto hl"><i class="ti ti-database hl-icon"></i> <b>{totalEvents}</b> events</span>
+    
+    <div class="ml-auto" style="display: flex; align-items: center; gap: 12px;">
+      <!-- LAN Filter Toggle -->
+      <label class="lan-toggle">
+        <input type="checkbox" bind:checked={lanOnly}>
+        <span class="lan-toggle-slider"></span>
+        <span class="lan-toggle-text">เป้าหมายในวง LAN มข.</span>
+      </label>
+      
+      <span class="hl" style="border-left: 1px solid var(--border); padding-left: 12px;">
+        <i class="ti ti-database hl-icon"></i> <b>{totalEvents}</b> events
+      </span>
+    </div>
   </div>
 
   <!-- ── KPI Cards ──────────────────────────────────────────────────────────── -->
@@ -410,7 +443,7 @@
             <span class="t-sev" style="color:{sevColor(e.severity)};border-color:{sevColor(e.severity)}44;background:{sevColor(e.severity)}18;">
               {(e.severity||'info').toUpperCase()}
             </span>
-            <span class="t-ip">Target: {e.destIp || '10.101.104.234'}</span>
+            <span class="t-ip">Target: {getServerName(e.destIp || '10.101.104.234') || e.destIp || '10.101.104.234'}</span>
             <span class="t-type">{e.type||'Unknown'}</span>
             <span class="t-dot">·</span>
           </span>
@@ -504,7 +537,7 @@
             <div class="ev-accent"></div>
             <div class="ev-content">
               <div class="ev-row1">
-                <span class="ev-ip"><i class="ti ti-target"></i> Target: {e.destIp || '10.101.104.234'}</span>
+                <span class="ev-ip"><i class="ti ti-target"></i> Target: {getServerName(e.destIp || '10.101.104.234') || e.destIp || '10.101.104.234'}</span>
               </div>
               <div class="ev-row2">
                 <span class="ev-type">{e.type}</span>
@@ -557,6 +590,15 @@
   .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
   .dot-green { background: #22c55e; box-shadow: 0 0 5px #22c55e; }
   .dot-red   { background: #ef4444; box-shadow: 0 0 5px #ef4444; }
+
+  /* LAN Toggle */
+  .lan-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .lan-toggle input { display: none; }
+  .lan-toggle-slider { width: 28px; height: 16px; background: var(--border); border-radius: 16px; position: relative; transition: 0.2s; }
+  .lan-toggle-slider::before { content: ''; position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; background: #fff; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .lan-toggle input:checked + .lan-toggle-slider { background: #3b82f6; }
+  .lan-toggle input:checked + .lan-toggle-slider::before { transform: translateX(12px); }
+  .lan-toggle-text { font-weight: 600; color: var(--text-primary); font-size: 11px; }
 
   /* ─── KPI Cards ──────────────────────────────────────────────────────────── */
   .kpi-grid {
