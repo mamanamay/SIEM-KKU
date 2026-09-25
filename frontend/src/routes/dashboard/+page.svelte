@@ -20,7 +20,7 @@
   // ─── Raw Events ──────────────────────────────────────────────────────────────
   let allEvents: any[] = [];
   let events: any[] = [];
-  let lanOnly = false; // Toggle for showing only attacks directed at internal IPs
+  let lanOnly = true; // Toggle for showing only attacks directed at internal IPs
 
   const unsub = eventsStore.subscribe(v => { 
     allEvents = v; 

@@ -497,10 +497,10 @@ export class LogService implements OnModuleInit {
         }
       }
 
-      // Drop log if it's not related to our LAN
-      // if (!isLanRelated) {
-      //   return;
-      // }
+      // Drop log if it's not related to our LAN (to ensure ALL pages only show LAN IPs)
+      if (!isLanRelated) {
+        return;
+      }
 
       // 2. FORWARD TO DETECTION ENGINE
       const axios = require('axios');
