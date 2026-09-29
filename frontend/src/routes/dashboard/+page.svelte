@@ -29,7 +29,7 @@
 
   function filterEvents() {
     if (lanOnly) {
-      events = allEvents.filter(e => e.destIp && isInternalIP(e.destIp));
+      events = allEvents.filter(e => isInternalIP(e.destIp || '10.101.104.234') || isInternalIP(e.ip));
     } else {
       events = allEvents;
     }
