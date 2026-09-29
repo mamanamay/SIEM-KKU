@@ -1,0 +1,26 @@
+[req]
+default_bits        = 2048
+prompt              = no
+default_md          = sha256
+distinguished_name  = dn
+x509_extensions     = v3_req
+
+[dn]
+C  = TH
+ST = Khon Kaen
+L  = Khon Kaen
+O  = Khon Kaen University
+OU = SIEM Security Operations Center
+CN = odt-siem-uat.kku.ac.th
+
+[v3_req]
+subjectAltName = @alt_names
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+basicConstraints = CA:FALSE
+
+[alt_names]
+DNS.1 = odt-siem-uat.kku.ac.th
+DNS.2 = localhost
+IP.1  = 127.0.0.1
+IP.2  = 10.101.104.234
