@@ -443,7 +443,7 @@
             <span class="t-sev" style="color:{sevColor(e.severity)};border-color:{sevColor(e.severity)}44;background:{sevColor(e.severity)}18;">
               {(e.severity||'info').toUpperCase()}
             </span>
-            <span class="t-ip">Target: {getServerName(e.destIp || '10.101.104.234') || e.destIp || '10.101.104.234'}</span>
+            <span class="t-ip">Target: {e.destIp ? (getServerName(e.destIp) || e.destIp) : 'ไม่ระบุใน Log'}</span>
             <span class="t-type">{e.type||'Unknown'}</span>
             <span class="t-dot">·</span>
           </span>
@@ -537,7 +537,7 @@
             <div class="ev-accent"></div>
             <div class="ev-content">
               <div class="ev-row1">
-                <span class="ev-ip"><i class="ti ti-target"></i> Target: {getServerName(e.destIp || '10.101.104.234') || e.destIp || '10.101.104.234'}</span>
+                <span class="ev-ip"><i class="ti ti-target"></i> Target: {e.destIp ? (getServerName(e.destIp) || e.destIp) : 'ไม่ระบุใน Log'}</span>
               </div>
               <div class="ev-row2">
                 <span class="ev-type">{e.type}</span>
