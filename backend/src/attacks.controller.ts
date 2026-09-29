@@ -634,8 +634,7 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
 
     if (lan === 'true') {
       qb.andWhere(
-        `(a.destIp LIKE '10.52.%' OR a.destIp LIKE '10.101.%' OR a.destIp = '127.0.0.1' OR
-          a.ip LIKE '10.52.%' OR a.ip LIKE '10.101.%' OR a.ip = '127.0.0.1')`
+        `(a.destIp LIKE '10.52.%' OR a.destIp LIKE '10.101.%' OR a.destIp = '127.0.0.1' OR a.destIp IS NULL OR a.ip LIKE '10.52.%' OR a.ip LIKE '10.101.%' OR a.ip = '127.0.0.1')`
       );
     }
 

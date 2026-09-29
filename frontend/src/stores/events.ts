@@ -193,7 +193,7 @@ import { isInternalIP } from './faculties';
 
 export const lanEventsStore = derived(eventsStore, ($events) =>
   $events.filter((e) => {
-    const destIsLan = e.destIp && isInternalIP(e.destIp);
+    const destIsLan = isInternalIP(e.destIp || '10.101.104.234'); // Assume honeypot if missing
     const srcIsLan  = e.ip && isInternalIP(e.ip);
     return destIsLan || srcIsLan;
   }).sort((a, b) => {

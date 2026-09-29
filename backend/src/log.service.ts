@@ -329,13 +329,28 @@ export class LogService implements OnModuleInit {
       // Requirement: Show ONLY IPs strictly defined in networkmap (ip_records.json).
       // Drop logs where neither the source nor the destination is inside our LAN.
       
-      const resolvedDestIp = payload.destIp || payload.dst_ip || '10.101.104.234';
+      // --- STRICT LAN FILTER (Network Map Only) ---
+      // Requirement: Show ONLY IPs strictly defined in networkmap (ip_records.json).
+      // Drop logs where neither the source, destination, nor sensor is inside our LAN.
       
-      const isLanDest = this.networkMapService.isInLan(resolvedDestIp);
+      const realDestIp = payload.destIp || payload.dst_ip || null;
+      payload.destIp = realDestIp; // Keep it true to the log! Null if not present.
+      
+      // The sensor reporting this is our Honeypot/Agent (Inside LAN)
+      const sensorIp = payload.agent?.ip || '10.101.104.234';
+      
+      const isLanDest = this.networkMapService.isInLan(realDestIp);
       const isLanSrc = this.networkMapService.isInLan(payload.ip);
+      const isLanSensor = this.networkMapService.isInLan(sensorIp);
       
-      if (!isLanDest && !isLanSrc) {
-        return; // Silently drop noise that isn't related to our strict network map
+      // Keep IF: 
+      // 1. Explicitly targets our LAN
+      // 2. Or explicitly originates from our LAN
+      // 3. Or destination is not explicitly logged, but our LAN sensor caught it
+      const isRelevant = isLanDest || isLanSrc || (!realDestIp && isLanSensor);
+      
+      if (!isRelevant) {
+        return; // Silently drop purely external noise
       }
       // --------------------------------------------
       

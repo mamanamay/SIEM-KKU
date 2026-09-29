@@ -383,7 +383,7 @@
                 <div class="fn-icon"><i class="ti ti-building-community"></i></div>
                 <div class="fn-title">IP เป้าหมาย</div>
                 <div class="fn-val" style="font-family: monospace;">
-                  {getServerName(selectedEvent.destIp || '10.101.104.234') || selectedEvent.destIp || 'ไม่ระบุ'}
+                  {selectedEvent.destIp ? (getServerName(selectedEvent.destIp) || selectedEvent.destIp) : 'ไม่ระบุใน Log (Unspecified)'}
                   {#if destFaculty}
                     <div style="font-size: 11px; margin-top: 4px; color: var(--color-cyan, #22d3ee);">{destFaculty.name}</div>
                   {:else if selectedEvent.destIp}
@@ -849,7 +849,7 @@
               <div class="vt-time">{new Date(tEvent.time).toLocaleString()}</div>
               <div class="vt-type">{tEvent.type}</div>
               <div style="font-size:11px; color:var(--text-muted); font-family:monospace; margin-top:4px;">
-                เป้าหมาย: {getServerName(tEvent.destIp || '10.101.104.234') || tEvent.destIp || 'Unknown'} <br>
+                เป้าหมาย: {tEvent.destIp ? (getServerName(tEvent.destIp) || tEvent.destIp) : 'ไม่ระบุใน Log'} <br>
                 {tEvent.detail}
               </div>
             </div>
