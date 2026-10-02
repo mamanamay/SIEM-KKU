@@ -115,10 +115,15 @@ fi
 echo '  -> Building and restarting containers...'
 docker compose build --no-cache
 docker compose up -d
+docker compose restart nginx
 
 echo ''
 echo '  -> Container status:'
 docker compose ps
+
+echo ''
+echo '  -> Backend Logs (Crash Check):'
+docker compose logs --tail=50 backend
 "@
 
 ssh "${Username}@${ServerIP}" $remoteScript
@@ -140,6 +145,6 @@ Write-Host "  [OK] Done" -ForegroundColor Green
 Write-Host ""
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "  DEPLOYMENT COMPLETE                             " -ForegroundColor Cyan
-Write-Host "  Dashboard : https://$ServerIP`:18443           " -ForegroundColor Green
+Write-Host "  Dashboard : https://$ServerIP                  " -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host ""

@@ -73,7 +73,7 @@
   $: if ($latestAttackStore) {
     // Prevent duplicate triggers if store hasn't actually changed reference (Svelte reactivity quirk)
     const attack = $latestAttackStore;
-    if (!notificationsHistory.find(n => n.id === attack.id)) {
+    if (!notificationsHistory.find(n => n.id === attack.id) && (attack.severity === 'critical' || attack.severity === 'high')) {
       notificationsHistory = [attack, ...notificationsHistory];
       unreadCount++;
       
@@ -638,20 +638,22 @@
 
 /* Notification Dropdown */
 .notification-wrapper { position: relative; }
-.notification-dropdown { position: absolute; top: 110%; right: 0; width: 320px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); z-index: 1000; overflow: hidden; animation: slideDown 0.2s ease; }
-.dropdown-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); }
-.btn-clear { background: none; border: none; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
-.btn-clear:hover { color: var(--text-primary); text-decoration: underline; }
-.dropdown-list { max-height: 350px; overflow-y: auto; }
-.dropdown-item { display: flex; gap: 10px; padding: 12px 15px; border-bottom: 1px solid var(--border); cursor: pointer; text-decoration: none; color: inherit; transition: background 0.15s; }
-.dropdown-item:hover { background: var(--bg-hover); }
-.dropdown-repeat { background: rgba(239,68,68,0.05); }
-.dropdown-repeat:hover { background: rgba(239,68,68,0.1); }
-.notif-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
-.notif-content { display: flex; flex-grow: 1; flex-direction: column; gap: 2px; }
-.notif-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-.notif-desc { font-size: 11px; color: var(--text-secondary); }
-.notif-time { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.notification-dropdown { position: absolute; top: 120%; right: 0; width: 380px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); z-index: 1000; overflow: hidden; animation: slideDown 0.2s ease; }
+.dropdown-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
+.dropdown-header span { font-size: 14px !important; font-weight: 700 !important; color: var(--text-primary); }
+.btn-clear { background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); font-size: 11px; cursor: pointer; padding: 4px 10px; border-radius: 4px; transition: 0.2s; font-weight: 500; }
+.btn-clear:hover { background: var(--border); }
+.dropdown-list { max-height: 400px; overflow-y: auto; }
+.dropdown-item { display: flex; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--border); cursor: pointer; text-decoration: none; color: inherit; transition: all 0.2s; position: relative; }
+.dropdown-item:hover { background: var(--bg-hover); padding-left: 24px; }
+.dropdown-item::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: transparent; transition: 0.2s; }
+.dropdown-item:hover::before { background: var(--red); }
+.notif-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; background: rgba(239, 68, 68, 0.1); color: var(--red); }
+.notif-content { display: flex; flex-grow: 1; flex-direction: column; gap: 4px; }
+.notif-title { font-size: 13px; font-weight: 700; color: var(--red); line-height: 1.3; }
+.notif-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+.notif-time { font-size: 11px; color: var(--text-muted); font-weight: 500; margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+.notif-time i { font-size: 12px; }
 
 /* Toast Notification */
 .toast-notification { position: fixed; bottom: 25px; right: 25px; background: var(--bg-panel); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); padding: 15px; display: flex; align-items: center; gap: 12px; z-index: 9999; animation: toastSlide 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); text-decoration: none; border-left: 4px solid var(--accent); min-width: 300px; }

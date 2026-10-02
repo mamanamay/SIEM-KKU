@@ -44,12 +44,12 @@ class AIAnalystEngine:
             
         # Generate Storyline (Mock SLM behavior)
         src = session.attack_path[0] if len(session.attack_path) > 0 else "Unknown"
-        target = session.attack_path[2] if len(session.attack_path) > 2 else "Unknown"
+        target = session.attack_path[2] if len(session.attack_path) > 2 else "ระบบเป้าหมาย"
         
-        summary = f"พบพฤติกรรมน่าสงสัยจาก {src} มีเป้าหมายที่ {target} ตรวจพบเป็น {attack_type}"
+        summary = f"ตรวจพบพฤติกรรมการโจมตีจากไอพี {src} พุ่งเป้าไปที่ {target} (ระบุเป็น {attack_type})"
         storyline = (
-            f"จากข้อมูล Session {session.session_id}, เริ่มต้นเวลา {session.first_seen} "
-            f"เครื่อง {src} มีการเข้าถึงเป้าหมาย {target} รวม {session.total_events} ครั้ง "
+            f"จากข้อมูล Session {session.session_id}, เริ่มต้นเมื่อ {session.first_seen} "
+            f"เครื่องผู้โจมตี ({src}) ได้พยายามเข้าถึงหรือส่งคำสั่งโจมตีมายังเป้าหมาย ({target}) รวม {session.total_events} ครั้ง "
         )
         if logllm:
             storyline += f"LogLLM พบรูปแบบ '{logllm.pattern_matched}' ซึ่งมีความเสี่ยงระดับ {logllm.risk_level}. "

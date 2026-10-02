@@ -1,5 +1,5 @@
 import { User } from './entities/user.entity';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { Put, Param, Delete } from '@nestjs/common';
 ﻿import { Controller, Get, Post, Body, Req, BadRequestException , Res, UseGuards } from '@nestjs/common';
 import { UseInterceptors, UploadedFile } from '@nestjs/common';

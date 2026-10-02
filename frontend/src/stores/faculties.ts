@@ -21,12 +21,12 @@ for (const r of ipRecordsRaw) {
   if (isNaN(maskBits)) continue;
   
   let facultyObj = null;
-  if (r['Faculty/Dept'] && r['Faculty/Dept'] !== '�') {
-    let code = String(r['Faculty/Dept']).split('�')[0].trim().toUpperCase();
+  if (r['Faculty/Dept'] && r['Faculty/Dept'].trim() !== '—' && r['Faculty/Dept'].trim() !== '-' && r['Faculty/Dept'].trim() !== '') {
+    let code = String(r['Faculty/Dept']).split('—')[0].split('-')[0].trim().toUpperCase();
     if (code === 'MS/KKBS') code = 'MS/KKBS';
     facultyObj = { code, name: String(r['Faculty/Dept']) };
   } else if (r.Route.startsWith('10.52.') || r.Route.startsWith('10.101.')) {
-    facultyObj = { code: 'ODT', name: 'ODT-????????????????????????' };
+    facultyObj = { code: 'ODT', name: 'ODT-สำนักเทคโนโลยีดิจิทัล' };
   }
   
   const maskLong = (0xffffffff << (32 - maskBits)) >>> 0;

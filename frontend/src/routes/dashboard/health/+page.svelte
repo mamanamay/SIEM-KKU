@@ -3,12 +3,36 @@
   import { systemHealthStore } from '../../../stores/events';
   import Chart from 'chart.js/auto';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
+    import { showNotification } from '../../../stores/notificationStore';
+  
   
   let chartCanvas: HTMLCanvasElement;
   let chartInstance: Chart | null = null;
   let metricsHistory: any[] = [];
   let isLoading = true;
   let loadError = '';
+  let isPruning = false;
+
+  async function triggerGC() {
+    isPruning = true;
+    try {
+      const res = await fetch('/api/system/gc', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        alert('Memory pruned successfully!');
+        // Force refresh health
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        showNotification('error', 'Error', 'Failed to prune memory.');
+      }
+    } catch (e) {
+      showNotification('error', 'Error', 'Connection error.');
+    } finally {
+      isPruning = false;
+    }
+  }
 
   // Fallback ค่าเริ่มต้น — ใช้ null เพื่อแยกออกจาก "ข้อมูลจริงที่เป็น 0"
   $: health = $systemHealthStore || null;
@@ -120,7 +144,12 @@
     title="System Health Monitor" 
     description="Real-time CPU, RAM, and Disk resource utilization" 
     icon="ti-server" 
-  />
+  >
+    <button slot="actions" class="btn-primary {isPruning ? 'loading' : ''}" on:click={triggerGC} disabled={isPruning}>
+      {#if isPruning}<span class="spinner"></span>{/if}
+      <i class="ti ti-eraser"></i> Prune Memory (GC)
+    </button>
+  </PageHeader>
 
   <!-- Error Banner -->
   {#if loadError}
@@ -327,4 +356,9 @@
     font-size: 14px;
     font-style: italic;
   }
+  .btn-primary { padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+  .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>

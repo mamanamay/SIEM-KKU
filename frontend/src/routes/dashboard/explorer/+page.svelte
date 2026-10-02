@@ -14,14 +14,6 @@
   let showModal = false;
   let selectedIncident = null;
   
-  function openIncident(row) {
-    if (row.id || row.incident_id) {
-      window.location.href = `/dashboard/soar?id=${row.id || row.incident_id}`;
-    } else {
-      window.location.href = `/dashboard/soar?ip=${row.ip}&time=${row.time || row.createdAt}`;
-    }
-  }
-  
   $: if(isLiveUpdates && $eventsStore) { performSearch(); }
   
   // Histogram Data
@@ -103,7 +95,7 @@
       </thead>
       <tbody>
         {#each searchResults as row}
-          <tr on:click={() => openIncident(row)} style="cursor: pointer;">
+          <tr>
             <td class="col-time">{new Date(row.time || row.createdAt).toLocaleString('en-GB')}</td>
             <td>
               <span class="badge {row.severity}">{String(row.severity || '').toUpperCase()}</span>

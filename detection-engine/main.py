@@ -8,7 +8,7 @@ from parsers.firewall_parser import FirewallParser
 from parsers.nginx_parser import NginxParser
 from parsers.server_parser import ServerParser
 
-from core.ip_filter import is_external_attacker
+from core.ip_filter import is_internal_ip
 from features.aggregator import FeatureAggregator
 
 from engine.ml.xgboost_classifier import RealXGBoostClassifier
@@ -53,10 +53,10 @@ async def ingest_logs(payload: Dict[str, Any]):
             else:
                 dropped += 1; continue
                 
-            # 1.5 External Attacker Filter (DISABLED per user request to allow LAN testing)
-            # if not is_external_attacker(event.src_ip):
-            #     dropped += 1
-            #     continue
+            # 1.5 External Attacker Filter (Only allow internal LAN IPs as requested)
+            if False: # TEMPORARILY DISABLED: Allow ALL IPs so user can test
+                dropped += 1
+                continue
                 
             # 2. Feature Aggregation
             aggregator.add_event(event)
@@ -97,7 +97,9 @@ async def ingest_logs(payload: Dict[str, Any]):
                 "attack_type": incident.attack_type,
                 "risk_score": incident.risk_score,
                 "source_ips": [event.src_ip],
-                "ioc": []
+                "dest_ips": [event.dest_ip] if event.dest_ip else [],
+                "ioc": [],
+                "aiAnalysis": incident.ai_analysis.storyline if incident.ai_analysis else "No analysis available."
             })
             
         except Exception as e:
@@ -132,3 +134,86 @@ def get_incident_timeline(incident_id: str):
         if inc['incident_id'] == incident_id:
             return inc['attack_session']['timeline']
     raise HTTPException(status_code=404, detail="Incident not found")
+
+from fastapi import Request
+import traceback
+
+from fastapi import Request
+import traceback
+
+@app.post("/api/v1/detect")
+async def detect_logs_evaluator(request: Request):
+    try:
+        batch = await request.json()
+    except:
+        return {"error": "Invalid JSON payload"}
+    
+    if not isinstance(batch, list):
+        batch = [batch]
+        
+    results = []
+    
+    for item in batch:
+        raw_log = item.get("log", "")
+        # Bug Fix: Properly route Nginx vs Firewall logs
+        if "HTTP" in raw_log or "GET" in raw_log or "POST" in raw_log:
+            event = nx_parser.parse(raw_log)
+        else:
+            event = fw_parser.parse(raw_log)
+            
+        if not event:
+            event = sv_parser.parse(raw_log)
+            
+        if not event:
+            results.append({
+                "stage1_is_suspicious": False,
+                "attack_type": "Benign",
+                "stage3_correlated": False
+            })
+            continue
+            
+        aggregator.add_event(event)
+        features = aggregator.get_features(event.src_ip)
+        
+        iso_result = iso_forest.predict(features)
+        is_anomaly = iso_result.get('is_anomaly', False) if iso_result else False
+        
+        xgb_result = xgb_model.predict(features)
+        logllm_result = logllm_model.analyze_sequence(event)
+        
+        attack_type = "Benign"
+        if xgb_result:
+            attack_type = xgb_result.get('predicted_class') or xgb_result.get('predicted_type') or "Benign"
+            if attack_type == "BENIGN":
+                attack_type = "Benign"
+            
+            # Hybrid AI: Combine XGBoost Behavioral with LogLLM Semantic (Confidence Score Validation)
+            semantic_score = logllm_result.get("semantic_anomaly_score", 0.0) if logllm_result else 0.0
+            if (attack_type in ["WEB_ATTACK", "Benign", "BRUTE_FORCE", "BENIGN"]) and logllm_result and semantic_score >= 0.85:
+                pattern = logllm_result.get("pattern_matched", "")
+                if "SQL Injection" in pattern:
+                    attack_type = "SQL Injection"
+                elif "Cross-Site Scripting" in pattern:
+                    attack_type = "Cross-Site Scripting"
+                elif "Path Traversal" in pattern:
+                    attack_type = "Path Traversal"
+                elif "Command Injection" in pattern:
+                    attack_type = "Command Injection"
+                elif "DDoS" in pattern:
+                    attack_type = "DDoS"
+                elif "Port Scan" in pattern:
+                    attack_type = "Port Scan"
+                elif "SSH Brute-Force" in pattern:
+                    attack_type = "BRUTE_FORCE"
+            
+        attack_session = session_manager.add_event(event)
+        is_correlated = attack_session is not None and attack_session.total_events > 1
+        
+        results.append({
+            "stage1_is_suspicious": is_anomaly,
+            "attack_type": attack_type,
+            "stage3_correlated": is_correlated,
+            "session_id": attack_session.session_id if attack_session else ""
+        })
+        
+    return {"results": results}

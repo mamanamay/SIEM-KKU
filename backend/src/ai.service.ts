@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SystemConfig } from './entities/system-config.entity';
@@ -40,10 +40,16 @@ export class AiService {
     if (this.staticMode) {
       throw new Error('STATIC_ANALYSIS_MODE is enabled — skipping KKU AI call');
     }
-    if (!userId) {
-        throw new Error('User context missing for AI call.');
+        let user = null;
+    if (userId) {
+      user = await this.userRepository.findOne({ where: { id: userId } });
     }
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user || !user.apiConfigJson) {
+      user = await this.userRepository.createQueryBuilder("user")
+        .where("user.apiConfigJson IS NOT NULL")
+        .andWhere("user.apiConfigJson != ''")
+        .getOne();
+    }
     if (!user || !user.apiConfigJson) {
       throw new Error('AI API configuration is missing. Please configure it in Settings > Integrations.');
     }
@@ -99,14 +105,48 @@ export class AiService {
     // Static mode or KKU AI call
     if (!this.staticMode) {
       try {
-        const prompt = `คุณคือ SOC Analyst ของมหาวิทยาลัยขอนแก่น วิเคราะห์ภัยคุกคามนี้เป็นภาษาไทย กระชับ 3 ประโยค
+        const prompt = `# ROLE & CONTEXT
+คุณคือ Elite SOC Analyst หน้าที่ของคุณคือวิเคราะห์ Raw Security Logs และถอดรหัสออกมาเป็นรายงานที่ครอบคลุมทุกมิติ
 
-ข้อมูล: ประเภท=${alert.type} | IP=${alert.ip}(${alert.country}) | ${alert.detail} | MITRE=${alert.mitreCode} | Score=${alert.threatScore}/100
+# CRITICAL RULES
+1. การระบุทิศทางต้องแม่นยำ: "srcip" (Source IP) หรือ "ip" ต้นทาง คือผู้เริ่มการเชื่อมต่อ เสมอ, "dstip" (Destination IP) คือเป้าหมายเสมอ ห้ามสลับฝั่ง
+2. ห้ามทึกทักว่าเป็น "การโจมตี" เสมอไป ให้ดูฟิลด์ action, msg, detail ประกอบ หากเป็นการเข้าเว็บปกติให้บอกว่าปกติ
+3. ต้องระบุ "ลำดับเวลา" (Timeline), "ระยะการโจมตี" (MITRE ATT&CK Phase) และ "เส้นทางการเชื่อมต่อ" (Network Path) เสมอ
+4. ตอบกลับในรูปแบบ Markdown 6 หัวข้อด้านล่างเป๊ะๆ ถ้าไม่มีข้อมูลให้เขียนว่า "ไม่มีข้อมูลใน Log"
 
-ตอบ 3 ส่วน: 1)เกิดอะไรขึ้น 2)ความเสี่ยง 3)ต้องทำอะไรทันที`.trim();
+# RAW LOG DATA
+${JSON.stringify(alert, null, 2)}
+
+# REQUIRED OUTPUT FORMAT
+> **🚨 บทสรุปผู้บริหาร (Executive Summary)**
+[สรุป 1-2 บรรทัด]
+
+**🔍 1. ใครเป็นคนทำ (Source & Actor)**
+* **IP ต้นทาง:** [ระบุ srcip หรือ ip] (พิกัด: [country])
+* **อุปกรณ์/แอป:** [วิเคราะห์จาก agent/user-agent]
+* **พอร์ตต้นทาง:** [srcport]
+
+**🎯 2. เป้าหมายคือที่ไหน (Target & Asset)**
+* **IP ปลายทาง:** [dstip]
+* **เป้าหมาย:** [hostname, url, หรือ dstport]
+
+**🛠️ 3. ทำอะไร อย่างไร เมื่อไหร่ (Action, Phase & Timeline)**
+* **เวลาที่เกิดเหตุ (Timeline):** [ระบุ date, time, timezone และลำดับเหตุการณ์ถ้ามีหลาย log]
+* **พฤติกรรม:** [อธิบายจาก detail, action, type]
+* **ระยะการโจมตี (Attack Phase):** [ประเมินระยะการโจมตี เช่น Reconnaissance, Delivery, Exploitation หรือ N/A หากเป็นการใช้งานปกติ]
+
+**🛡️ 4. ระบบที่ตรวจพบ และเส้นทาง (Detection & Network Path)**
+* **เส้นทางการเชื่อมต่อ (Route):** [ประเมินเส้นทาง เช่น External (Internet) -> Firewall -> DMZ Server]
+* **แหล่งที่มา/อุปกรณ์:** [devname, sensor, หรือ log type]
+
+**✅ 5. ผลลัพธ์สุดท้าย (Result & Impact)**
+* **สถานะ:** [action, msg, หรือ severity]
+
+**🤖 6. คำแนะนำ (AI Recommendation)**
+* [คำแนะนำ Action ที่ควรทำต่อ]`.trim();
 
         // User ID 1 (Admin) for background tasks — no web request context
-        const aiResponse = await this.callUnifiedAI(1, [{ role: 'user', content: prompt }], 250, 0.2);
+        const aiResponse = await this.callUnifiedAI(1, [{ role: 'user', content: prompt }], 1024, 0.2);
         if (aiResponse) {
           this.logger.log(`🤖 [KKU AI] Analyzed: ${alert.type} for ${alert.ip}`);
           return `[AI Analysis]\n${aiResponse.trim()}`;

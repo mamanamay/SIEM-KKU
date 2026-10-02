@@ -10,7 +10,7 @@ import { LoginSession } from './entities/login-session.entity';
 import { TotpService } from './totp.service';
 import { JWT_SECRET } from './jwt.config';
 import * as jwt from 'jsonwebtoken';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 
 // ── Pre-auth token helpers (stateless, no DB, short-lived) ──────────────────
 // We store a signed JSON in an httpOnly cookie instead of a full JWT lib

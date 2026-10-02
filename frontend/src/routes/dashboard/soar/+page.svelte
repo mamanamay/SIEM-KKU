@@ -85,6 +85,20 @@
   }).sort((a, b) => new Date(b.time || b.createdAt).getTime() - new Date(a.time || a.createdAt).getTime());
   
   let selectedEvent: any = null;
+  $: kcPhase = (function(event) {
+    if (!event) return 'Recon';
+    if (event.killChainPhase) return event.killChainPhase;
+    const text = `${event.type} ${event.detail || ''}`.toLowerCase();
+    if (/malware|trojan|ransomware|c2|beacon|miner|backdoor|botnet|wanna|crypto|coin|virus/i.test(text)) return 'C&C';
+    if (/drop|delete|destroy|rm -rf|format|wipe|dos|ddos/i.test(text)) return 'Impact';
+    if (/sql|xss|injection|rce|traversal|exploit/i.test(text)) return 'Exploitation';
+    if (/brute|login|auth|ssh/i.test(text)) return 'Intrusion';
+    if (['Authentication Brute Force', 'SSH Login Attempt'].includes(event.type)) return 'Intrusion';
+    if (['SQL Injection (SQLi)', 'Cross-Site Scripting (XSS)', 'Command Injection (RCE)', 'Path Traversal / LFI', 'SQL Inject'].includes(event.type)) return 'Exploitation';
+    if (event.type === 'Malware C2 Beacon') return 'C&C';
+    if (event.type === 'Denial of Service (DoS)') return 'Impact';
+    return 'Recon';
+  })(selectedEvent);
   function selectEvent(e: any) { 
     selectedEvent = e; 
     aiExplanation = e.aiAnalysis || '';
@@ -360,182 +374,168 @@
     <!-- COL 2: Correlation & Details -->
     <div class="col-main custom-scrollbar">
       {#if selectedEvent}
-        <!-- Correlation Flow -->
-        <h3 class="panel-title"><i class="ti ti-route"></i> เส้นทางการโจมตี (Attack Path)</h3>
-        <div style="margin-bottom: 24px;">
-          {#if selectedEvent.attack_session?.attack_path}
-            <AttackPathGraph event={selectedEvent} />
+        <!-- 1. INSTANT HUMAN-READABLE DASHBOARD (Native, No AI) -->
+        <h3 class="panel-title"><i class="ti ti-dashboard"></i> สรุปเหตุการณ์ทันที (Instant Overview)</h3>
+        
+        <div class="instant-dashboard" style="margin-bottom: 24px;">
+          <!-- Source vs Dest Cards -->
+          <div style="display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap;">
+            
+            <!-- Attacker Card (RED) -->
+            <div class="entity-card attacker" style="flex:1; min-width:250px; background:#fff1f2; border:1px solid #fda4af; border-radius:12px; padding:16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+              <div style="font-size:12px; font-weight:800; color:#e11d48; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                <i class="ti ti-spy" style="font-size:18px;"></i> ต้นทาง / ผู้กระทำ (SOURCE)
+              </div>
+              <div style="font-size:22px; font-weight:bold; font-family:monospace; color:#881337; margin-bottom:8px;">
+                {selectedEvent.ip || 'Unknown'}
+              </div>
+              <div style="font-size:14px; color:#be123c; margin-bottom:6px;">
+                📍 ประเทศ: <strong>{selectedEvent.country && selectedEvent.country !== 'Unknown' ? selectedEvent.country : 'ไม่ระบุ'}</strong>
+              </div>
+              <div style="font-size:13px; color:#9f1239; opacity:0.9; word-break:break-all;">
+                📱 อุปกรณ์: {selectedEvent.agent || forensicData?.userAgent || 'ไม่ระบุ / ตรวจไม่พบ'}
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:center; justify-content:center; color:#cbd5e1; font-size:32px;">
+              <i class="ti ti-arrow-right"></i>
+            </div>
+
+            <!-- Target Card (GREEN) -->
+            <div class="entity-card target" style="flex:1; min-width:250px; background:#f0fdf4; border:1px solid #86efac; border-radius:12px; padding:16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+              <div style="font-size:12px; font-weight:800; color:#16a34a; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                <i class="ti ti-target" style="font-size:18px;"></i> ปลายทาง / เป้าหมาย (DESTINATION)
+              </div>
+              <div style="font-size:22px; font-weight:bold; font-family:monospace; color:#14532d; margin-bottom:8px;">
+                {selectedEvent.destIp || 'Unknown'}
+              </div>
+              <div style="font-size:14px; color:#166534; margin-bottom:6px;">
+                🌐 เซิร์ฟเวอร์: <strong>{selectedEvent.hostname || forensicData?.host || getServerName(selectedEvent.destIp) || 'ไม่ทราบชื่อ'}</strong>
+              </div>
+              <div style="font-size:13px; color:#14532d; opacity:0.9; word-break:break-all;">
+                🔗 ไฟล์/URL: {selectedEvent.url || forensicData?.request || '-'}
+              </div>
+            </div>
+          </div>
+
+          <!-- Behavior & Outcome Banner -->
+          <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+            <div style="flex:2; min-width:200px;">
+              <div style="font-size:12px; font-weight:800; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">พฤติกรรมหลัก (Action & Behavior)</div>
+              <div style="font-size:16px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+                {selectedEvent.type}
+                {#if selectedEvent.httpmethod || forensicData?.method}
+                  <span style="padding:4px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text-secondary); font-family:monospace;">Method: {selectedEvent.httpmethod || forensicData.method}</span>
+                {/if}
+              </div>
+              <div style="font-size:14px; color:var(--text-secondary);">
+                รายละเอียด: {selectedEvent.detail || selectedEvent.msg || 'ไม่มีคำอธิบายเพิ่มเติม'}
+              </div>
+            </div>
+            
+            <div style="flex:1; min-width:150px; text-align:right; border-left:2px dashed var(--border); padding-left:20px;">
+              <div style="font-size:12px; font-weight:800; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">ผลลัพธ์ (Outcome)</div>
+              <div style="font-size:20px; font-weight:900; text-transform:uppercase; {['dropped','blocked'].includes((selectedEvent.action || '').toLowerCase()) ? 'color:#16a34a;' : 'color:#dc2626;'}">
+                {selectedEvent.action || forensicData?.outcome || 'UNKNOWN'}
+              </div>
+              <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">
+                ระบบที่ตรวจจับ: {selectedEvent.clientVersion || selectedEvent.source || 'Syslog Sensor'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stages of Attack (Kill Chain) -->
+        <h3 class="panel-title" style="margin-top: 24px;"><i class="ti ti-target"></i> ระยะของการโจมตี (Kill Chain)</h3>
+        <div class="kill-chain" style="margin-bottom: 24px; padding: 24px 20px;">
+          <div class="kc-step {kcPhase === 'Recon' ? 'active' : 'passed'}">
+            <div class="kc-icon"><i class="ti ti-radar"></i></div>
+            <div class="kc-label">Recon</div>
+            {#if kcPhase === 'Recon'}<div class="kc-sublabel">สแกนหาช่องโหว่<br>(ก่อนเจาะระบบ)</div>{/if}
+          </div>
+          <div class="kc-line {kcPhase === 'Recon' ? '' : 'passed'}"></div>
+          
+          <div class="kc-step {kcPhase === 'Intrusion' ? 'active' : (kcPhase === 'Recon' ? '' : 'passed')}">
+            <div class="kc-icon"><i class="ti ti-lock-open"></i></div>
+            <div class="kc-label">Intrusion</div>
+            {#if kcPhase === 'Intrusion'}<div class="kc-sublabel">พยายามเจาะเข้าสู่<br>ระบบล็อกอิน</div>{/if}
+          </div>
+          <div class="kc-line {['Recon', 'Intrusion'].includes(kcPhase) ? '' : 'passed'}"></div>
+          
+          <div class="kc-step {kcPhase === 'Exploitation' ? 'active' : (['C&C', 'Impact'].includes(kcPhase) ? 'passed' : '')}">
+            <div class="kc-icon"><i class="ti ti-bug"></i></div>
+            <div class="kc-label">Exploitation</div>
+            {#if kcPhase === 'Exploitation'}<div class="kc-sublabel">โจมตีผ่านช่องโหว่<br>(อันตรายสูง)</div>{/if}
+          </div>
+          <div class="kc-line {['C&C', 'Impact'].includes(kcPhase) ? 'passed' : ''}"></div>
+          
+          <div class="kc-step {kcPhase === 'C&C' ? 'active' : (kcPhase === 'Impact' ? 'passed' : '')}">
+            <div class="kc-icon"><i class="ti ti-satellite"></i></div>
+            <div class="kc-label">C&C</div>
+            {#if kcPhase === 'C&C'}<div class="kc-sublabel">มัลแวร์พยายาม<br>ติดต่อเซิร์ฟเวอร์</div>{/if}
+          </div>
+          <div class="kc-line {kcPhase === 'Impact' ? 'passed' : ''}"></div>
+          
+          <div class="kc-step {kcPhase === 'Impact' ? 'active danger' : ''}">
+            <div class="kc-icon"><i class="ti ti-skull"></i></div>
+            <div class="kc-label">Impact</div>
+            {#if kcPhase === 'Impact'}<div class="kc-sublabel">ระบบดาวน์ /<br>ถูกทำลาย</div>{/if}
+          </div>
+        </div>
+
+        <!-- 2. AI DEEP DIVE (Optional/Copilot) -->
+        <div class="ai-deep-dive" style="border-top:1px dashed var(--border); padding-top:24px;">
+          {#if selectedEvent.ai_analysis}
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 class="panel-title" style="margin: 0; color: var(--primary, #8e44ad);"><i class="ti ti-brain"></i> วิเคราะห์เชิงลึกด้วย AI (Deep Analysis Copilot)</h3>
+              <button class="btn-refresh" on:click={generateAiBriefing} disabled={aiGeneratingBrief} style="background: var(--bg-secondary); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; cursor: pointer; color: var(--text-primary); font-weight: bold; font-size: 12px;">
+                <i class="ti ti-refresh {aiGeneratingBrief ? 'ti-spin' : ''}"></i> {aiGeneratingBrief ? 'กำลังวิเคราะห์...' : '🔄 วิเคราะห์ซ้ำ'}
+              </button>
+            </div>
+            {#if aiGeneratingBrief}
+              <div class="chat-bubble ai typing" style="margin-bottom: 24px;">
+                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+              </div>
+            {:else}
+              <AiAnalysisBlock event={selectedEvent} />
+            {/if}
           {:else}
-            <div class="correlation-flow">
-              <div class="flow-node attacker">
-                <div class="fn-icon"><i class="ti ti-spy"></i></div>
-                <div class="fn-title">IP ผู้โจมตี</div>
-                <div class="fn-val">{selectedEvent.ip} <OrgBadge organization={selectedEvent.organization} country={selectedEvent.country} /></div>
+            <h3 class="panel-title" style="color: var(--primary, #8e44ad);"><i class="ti ti-brain"></i> วิเคราะห์เชิงลึกด้วย AI (Deep Analysis Copilot)</h3>
+            <div class="ai-section" style="margin-bottom: 24px;">
+              <div style="display:flex; justify-content:flex-start; margin-bottom:12px;">
+                <button class="btn-refresh" on:click={generateAiBriefing} disabled={aiGeneratingBrief} style="background: linear-gradient(135deg, #8e44ad, #3b82f6); color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
+                  <i class="ti ti-sparkles {aiGeneratingBrief ? 'ti-spin' : ''}"></i> {aiGeneratingBrief ? 'กำลังให้ AI อ่าน Log...' : 'คลิกเพื่อเจาะลึก Payload ด้วย AI'}
+                </button>
               </div>
-              <div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>
-              <div class="flow-node origin">
-                <div class="fn-icon"><i class="ti ti-server"></i></div>
-                <div class="fn-title">ระบบที่ตรวจจับ (Sensor)</div>
-                <div class="fn-val">{selectedEvent.clientVersion || selectedEvent.source || 'Syslog Sensor'}</div>
-              </div>
-              <div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>
-              <div class="flow-node target">
-                <div class="fn-icon"><i class="ti ti-building-community"></i></div>
-                <div class="fn-title">IP เป้าหมาย</div>
-                <div class="fn-val" style="font-family: monospace;">
-                  {selectedEvent.destIp ? (getServerName(selectedEvent.destIp) || selectedEvent.destIp) : 'ไม่ระบุใน Log (Unspecified)'}
-                  {#if destFaculty}
-                    <div style="font-size: 11px; margin-top: 4px; color: var(--color-cyan, #22d3ee);">{destFaculty.name}</div>
-                  {:else if selectedEvent.destIp}
-                    <div style="font-size: 11px; margin-top: 4px; color: var(--text-muted);">ไม่พบในฐานข้อมูล</div>
-                  {/if}
-                </div>
+              <div class="ai-chat-box">
+                {#if aiGeneratingBrief}
+                  <div class="chat-bubble ai typing">
+                    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+                  </div>
+                {:else if aiExplanation}
+                  <div class="chat-bubble ai">
+                    {@html aiExplanation}
+                  </div>
+                {:else}
+                  <div class="chat-bubble ai text-muted" style="background: var(--bg-secondary, rgba(142, 68, 173, 0.05)); border: 1px dashed var(--border, rgba(142, 68, 173, 0.3)); color: var(--text-secondary);">
+                    ข้อมูลด้านบนเพียงพอต่อการรู้ว่าเกิดอะไรขึ้น แต่หากคุณต้องการทราบว่า "แฮกเกอร์หวังผลอะไร" หรือ "Payload นี้ทำงานอย่างไร" สามารถให้ AI ช่วยวิเคราะห์ได้ครับ
+                  </div>
+                {/if}
               </div>
             </div>
           {/if}
         </div>
 
-        <!-- AI Analyst Summary (Moved from Right Col) -->
-        {#if selectedEvent.ai_analysis}
-          <h3 class="panel-title"><i class="ti ti-brain"></i> สรุปเรื่องราวโดย AI (AI Analysis Storyline)</h3>
-          <AiAnalysisBlock event={selectedEvent} />
-        {:else}
-          <h3 class="panel-title"><i class="ti ti-brain"></i> วิเคราะห์โดย AI (AI Investigation)</h3>
-          <div class="ai-section" style="margin-bottom: 24px;">
-            <div style="display:flex; justify-content:flex-start; margin-bottom:12px;">
-              <button class="btn-refresh" on:click={generateAiBriefing} disabled={aiGeneratingBrief}>
-                <i class="ti ti-refresh {aiGeneratingBrief ? 'ti-spin' : ''}"></i> {aiGeneratingBrief ? 'กำลังวิเคราะห์...' : 'เริ่มวิเคราะห์ Log นี้'}
-              </button>
-            </div>
-            <div class="ai-chat-box">
-              {#if aiGeneratingBrief}
-                <div class="chat-bubble ai typing">
-                  <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-                </div>
-              {:else if aiExplanation}
-                <div class="chat-bubble ai">
-                  {@html aiExplanation}
-                </div>
-              {:else}
-                <div class="chat-bubble ai text-muted">
-                  คลิก "เริ่มวิเคราะห์ Log นี้" เพื่อให้ AI ช่วยสรุปเหตุการณ์ (สำหรับ Log เก่าที่ยังไม่ได้วิเคราะห์)
-                </div>
-              {/if}
-            </div>
-          </div>
-        {/if}
-
-        <!-- Stages of Attack (Kill Chain) -->
-        <h3 class="panel-title" style="margin-top: 24px;"><i class="ti ti-target"></i> ระยะของการโจมตี (Kill Chain)</h3>
-        <div class="kill-chain">
-          <div class="kc-step {['Network / Vulnerability Scanning', 'Web Scan'].includes(selectedEvent.type) ? 'active' : 'passed'}">
-            <div class="kc-icon"><i class="ti ti-radar"></i></div>
-            <div class="kc-label">Recon</div>
-          </div>
-          <div class="kc-line {['Network / Vulnerability Scanning', 'Web Scan'].includes(selectedEvent.type) ? '' : 'passed'}"></div>
-          <div class="kc-step {['Authentication Brute Force', 'SSH Login Attempt'].includes(selectedEvent.type) ? 'active' : (['Network / Vulnerability Scanning', 'Web Scan'].includes(selectedEvent.type) ? '' : 'passed')}">
-            <div class="kc-icon"><i class="ti ti-lock-open"></i></div>
-            <div class="kc-label">Intrusion</div>
-          </div>
-          <div class="kc-line {['Authentication Brute Force', 'SSH Login Attempt', 'Network / Vulnerability Scanning', 'Web Scan'].includes(selectedEvent.type) ? '' : 'passed'}"></div>
-          <div class="kc-step {['SQL Injection (SQLi)', 'Cross-Site Scripting (XSS)', 'Command Injection (RCE)', 'Path Traversal / LFI', 'SQL Inject'].includes(selectedEvent.type) ? 'active' : (['Denial of Service (DoS)', 'Malware C2 Beacon'].includes(selectedEvent.type) ? 'passed' : '')}">
-            <div class="kc-icon"><i class="ti ti-bug"></i></div>
-            <div class="kc-label">Exploitation</div>
-          </div>
-          <div class="kc-line {['Denial of Service (DoS)', 'Malware C2 Beacon'].includes(selectedEvent.type) ? 'passed' : ''}"></div>
-          <div class="kc-step {selectedEvent.type === 'Malware C2 Beacon' ? 'active' : (selectedEvent.type === 'Denial of Service (DoS)' ? 'passed' : '')}">
-            <div class="kc-icon"><i class="ti ti-satellite"></i></div>
-            <div class="kc-label">C&C</div>
-          </div>
-          <div class="kc-line {selectedEvent.type === 'Denial of Service (DoS)' ? 'passed' : ''}"></div>
-          <div class="kc-step {selectedEvent.type === 'Denial of Service (DoS)' ? 'active danger' : ''}">
-            <div class="kc-icon"><i class="ti ti-skull"></i></div>
-            <div class="kc-label">Impact</div>
-          </div>
-        </div>
-
-        <!-- Details & Timeline Split -->
-        <div class="main-bottom">
-          <!-- Deep Attack Analysis (Forensic View) -->
-          <div class="mb-box flex-2 custom-scrollbar" style="overflow-y: auto;">
-            <div class="box-head" style="margin-bottom: 8px;"><i class="ti ti-microscope"></i> การวิเคราะห์เชิงลึกและโค้ดอันตราย (Deep Analysis)</div>
-            
-            <div class="forensic-grid">
-              <!-- HIGHLIGHT BANNER: Instant Story & MITRE -->
-              <div class="story-banner {forensicData ? forensicData.riskColor : 'medium'}">
-                <div class="sb-header">
-                  <div class="sb-title"><i class="ti ti-bolt"></i> สรุปแบบรวดเร็ว (Instant Story)</div>
-                  {#if mitreData}
-                    <div class="sb-mitre badge-sev {mitreData.color}">
-                      <i class="ti ti-crosshair"></i> MITRE: {mitreData.tactic} ({mitreData.code})
-                    </div>
-                  {/if}
-                </div>
-                <div class="sb-text">
-                  {attackStory}
-                </div>
-              </div>
-
-              <!-- Basic Context -->
-              <div class="f-row" style="margin-bottom: 16px;">
-                <div class="f-col"><span class="f-label">เวลาที่เกิดเหตุ (Timestamp)</span><span class="f-val">{new Date(selectedEvent.time || selectedEvent.createdAt).toString()}</span></div>
-                <div class="f-col"><span class="f-label">ประเภท (Event Type)</span><span class="f-val" style="font-weight:700;">{selectedEvent.type}</span></div>
-                <div class="f-col"><span class="f-label">ความรุนแรง (Severity)</span><span class="badge-sev {selectedEvent.severity}" style="width:fit-content;">{selectedEvent.severity.toUpperCase()}</span></div>
-              </div>
-
-              {#if forensicData}
-                <div class="forensic-cards">
-                  <!-- Attacker & Target -->
-                  <div class="f-card">
-                    <div class="f-card-title"><i class="ti ti-shield"></i> ผู้โจมตีและเป้าหมาย (Attacker & Target)</div>
-                    <div class="f-card-body">
-                      <div class="d-row"><span class="d-label">Source IP:</span> <span class="d-val font-mono">{selectedEvent.ip} <OrgBadge organization={selectedEvent.organization} country={selectedEvent.country} /></span></div>
-                      <div class="d-row"><span class="d-label">Target Host:</span> <span class="d-val font-mono" style="color:var(--color-cyan, #22d3ee); font-weight:700;">{forensicData.host}</span></div>
-                      <div class="d-row"><span class="d-label">สถานะพอร์ต:</span> <span class="d-val">{selectedEvent.status || 'Opened'}</span></div>
-                    </div>
-                  </div>
-
-                  <!-- Payload & Request -->
-                  <div class="f-card">
-                    <div class="f-card-title"><i class="ti ti-bomb"></i> คำสั่งและจุดที่ถูกโจมตี (Request)</div>
-                    <div class="f-card-body">
-                      <div class="d-row"><span class="d-label">Method:</span> <span class="d-val badge-sev high" style="background:rgba(59,130,246,0.15); color:#3b82f6;">{forensicData.method}</span></div>
-                      <div class="d-row"><span class="d-label">Path/File:</span> <span class="d-val font-mono" style="word-break: break-all; color: #f43f5e;">{forensicData.request}</span></div>
-                      <div class="d-row"><span class="d-label">User-Agent:</span> <span class="d-val text-muted" style="font-size:11px; word-break:break-all;">{forensicData.userAgent}</span></div>
-                    </div>
-                  </div>
-
-                  <!-- Impact & Outcome -->
-                  <div class="f-card">
-                    <div class="f-card-title"><i class="ti ti-chart-bar"></i> ผลลัพธ์และผลกระทบ (Impact)</div>
-                    <div class="f-card-body">
-                      <div class="d-row">
-                        <span class="d-label">Response:</span> 
-                        <span class="d-val">
-                          <span class="badge-sev {Number(forensicData.status) >= 400 ? 'low' : (Number(forensicData.status) >= 500 ? 'critical' : 'high')}" style="font-size: 10px;">HTTP {forensicData.status}</span>
-                        </span>
-                      </div>
-                      <div class="d-row"><span class="d-label">Outcome:</span> <span class="d-val" style="font-weight:600;">{forensicData.outcome}</span></div>
-                      <div class="d-row"><span class="d-label">Data Sent:</span> <span class="d-val">{forensicData.bytes} Bytes <span class="text-muted">({forensicData.reqTime})</span></span></div>
-                      <div class="d-row" style="margin-top:4px;"><span class="d-label">Assessment:</span> <span class="badge-sev {forensicData.riskColor}">{forensicData.riskLevel}</span></div>
-                    </div>
-                  </div>
-                </div>
-              {:else}
-                <!-- ซ่อนกรอบ "ไม่มีข้อมูล Forensic" ออกไปเลยตามคำแนะนำ เพื่อความสะอาดตา -->
-              {/if}
-              
-              <!-- Raw Evidence Box -->
-              <div class="raw-evidence-box" style="margin-top: 16px;">
-                <div class="re-header">
-                  <span class="re-title"><i class="ti ti-code"></i> หลักฐานดิบ และโค้ดอันตราย (Raw Log & Payload)</span>
-                </div>
-                <div class="re-body font-mono" style="background:#1e1e1e; color:#d4d4d4; padding:16px; white-space: pre-wrap; word-break: break-all; line-height: 1.5; font-size: 11px;">
-                  {fullRawLog}
-                </div>
+        <!-- Raw Data -->
+        <div class="raw-data-section" style="border-top:1px dashed var(--border); padding-top:24px;">
+          <details>
+            <summary style="font-weight: bold; cursor: pointer; color: var(--text-muted);"><i class="ti ti-code"></i> แสดงข้อมูล Log ดิบ (Raw Log)</summary>
+            <div class="raw-evidence-box" style="margin-top: 16px;">
+              <div class="re-body font-mono" style="background:#1e1e1e; color:#d4d4d4; padding:16px; white-space: pre-wrap; word-break: break-all; line-height: 1.5; font-size: 11px; border-radius: 8px;">
+                {fullRawLog}
               </div>
             </div>
-          </div>
+          </details>
         </div>
       {:else}
         <div class="empty-state" style="margin-top: 100px;">
@@ -556,16 +556,31 @@
             {#if selectedEvent.detection_evidence || selectedEvent.recommended_actions}
               <AiEvidenceBlock event={selectedEvent} />
             {:else}
-              <div class="playbook-section">
-                <h4 class="section-title">SOC Playbook Actions</h4>
-                <button class="playbook-btn" on:click={() => checkIpHistory(selectedEvent.ip)}>
-                  <i class="ti ti-search"></i> ตรวจสอบประวัติ IP
+              <div class="playbook-section" style="margin-bottom: 32px;">
+                <h4 class="section-title" style="margin-bottom:16px;">SOC Playbook Actions</h4>
+                
+                <button class="playbook-btn pb-check" on:click={() => checkIpHistory(selectedEvent.ip)}>
+                  <div class="pb-icon"><i class="ti ti-search"></i></div>
+                  <div class="pb-text">
+                    <strong>ตรวจสอบประวัติ IP</strong>
+                    <span>ค้นหาพฤติกรรมย้อนหลังในระบบ</span>
+                  </div>
                 </button>
-                <button class="playbook-btn" on:click={() => openDevPopup('Isolate Endpoint')}>
-                  <i class="ti ti-shield-lock"></i> แยกเครื่องออกจากระบบ (Isolate)
+
+                <button class="playbook-btn pb-isolate" on:click={() => openDevPopup('Isolate Endpoint')}>
+                  <div class="pb-icon"><i class="ti ti-shield-lock"></i></div>
+                  <div class="pb-text">
+                    <strong>แยกเครื่องเป้าหมาย (Isolate)</strong>
+                    <span>ตัดการเชื่อมต่อเพื่อควบคุมความเสียหาย</span>
+                  </div>
                 </button>
-                <button class="playbook-btn danger" on:click={() => openDevPopup('Block IP at Firewall')}>
-                  <i class="ti ti-ban"></i> บล็อก IP ที่ Firewall
+
+                <button class="playbook-btn pb-block" on:click={() => openDevPopup('Block IP at Firewall')}>
+                  <div class="pb-icon"><i class="ti ti-ban"></i></div>
+                  <div class="pb-text">
+                    <strong>บล็อก IP ที่ Firewall</strong>
+                    <span>ระงับ IP ต้นทางทันทีที่ Gateway (ฉุกเฉิน)</span>
+                  </div>
                 </button>
               </div>
             {/if}
@@ -584,7 +599,7 @@
                     <div class="vt-dot {tEvent.severity}"></div>
                     <div class="vt-content">
                       <div class="vt-time">{formatEventTime(tEvent.time || tEvent.createdAt)}</div>
-                      <div class="vt-type">{tEvent.type}</div>
+                      <div class="vt-type {tEvent.severity}">{tEvent.type}</div>
                     </div>
                   </div>
                 {/each}
@@ -649,6 +664,7 @@
   .kc-step.passed .kc-label { color: #3b82f6; }
   .kc-step.active .kc-label { color: #f59e0b; }
   .kc-step.active.danger .kc-label { color: #ef4444; }
+  .kc-sublabel { position: absolute; top: 76px; width: 140px; text-align: center; font-size: 11px; font-weight: 600; color: var(--text-primary); line-height: 1.4; background: var(--bg-panel); padding: 4px; border-radius: 4px; border: 1px dashed var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
   .kc-line { flex: 1; height: 4px; background: var(--border); margin: 0 8px; transform: translateY(-10px); transition: 0.3s; position: relative; }
   .kc-line::after { content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 0%; background: #3b82f6; transition: 0.5s; }
   .kc-line.passed::after { width: 100%; }
@@ -722,8 +738,10 @@
   .vt-dot.critical { background: #ef4444; }
   .vt-dot.high { background: #f59e0b; }
   .vt-dot.medium { background: #eab308; }
-  .vt-time { font-size: 11px; color: var(--text-muted); font-family: monospace; margin-bottom: 2px; }
-  .vt-type { font-size: 12px; font-weight: 600; }
+  .vt-time { font-size: 11px; color: var(--text-muted); font-family: monospace; margin-bottom: 4px; opacity: 0.8; }
+  .vt-type { font-size: 13px; font-weight: 700; color: var(--text-primary); transition: 0.2s; }
+  .vt-type.critical { color: #ef4444; }
+  .vt-type.high { color: #f59e0b; }
   
   /* Col 3 AI */
   .col-ai { width: 340px; background: var(--bg-secondary); border-left: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
@@ -731,10 +749,23 @@
   .ai-body { flex: 1; overflow-y: auto; padding: 20px; }
   .section-title { font-size: 12px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin: 0 0 12px; }
   
-  .playbook-btn { width: 100%; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.2s; margin-bottom: 8px; }
-  .playbook-btn:hover { border-color: #94a3b8; }
-  .playbook-btn.danger { border-color: rgba(239,68,68,0.3); color: #ef4444; }
-  .playbook-btn.danger:hover { background: rgba(239,68,68,0.1); }
+  .playbook-btn { width: 100%; padding: 12px; border-radius: 8px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.2s; margin-bottom: 12px; background: transparent; border: 1px solid transparent; }
+  .pb-icon { font-size: 20px; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; }
+  .pb-text { display: flex; flex-direction: column; gap: 4px; }
+  .pb-text strong { font-size: 13px; font-weight: 700; }
+  .pb-text span { font-size: 11px; font-weight: 500; opacity: 0.8; }
+  
+  .pb-check { border-color: rgba(59,130,246,0.3); color: #3b82f6; }
+  .pb-check:hover { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.5); }
+  .pb-check .pb-icon { background: rgba(59,130,246,0.15); }
+  
+  .pb-isolate { background: #f97316; color: white; box-shadow: 0 4px 6px -1px rgba(249,115,22,0.2); }
+  .pb-isolate:hover { background: #ea580c; transform: translateY(-1px); box-shadow: 0 6px 8px -1px rgba(249,115,22,0.3); }
+  .pb-isolate .pb-icon { background: rgba(255,255,255,0.2); }
+  
+  .pb-block { background: #ef4444; color: white; box-shadow: 0 4px 6px -1px rgba(239,68,68,0.2); }
+  .pb-block:hover { background: #dc2626; transform: translateY(-1px); box-shadow: 0 6px 8px -1px rgba(239,68,68,0.3); }
+  .pb-block .pb-icon { background: rgba(255,255,255,0.2); }
   
   .action-result { margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 11px; line-height: 1.4; display: flex; align-items: flex-start; gap: 8px; }
   .action-result.running { background: rgba(59,130,246,0.1); color: #3b82f6; border: 1px solid rgba(59,130,246,0.2); }

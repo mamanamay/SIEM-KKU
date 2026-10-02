@@ -750,18 +750,45 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
     };
 
     // ─── KKU AI Analysis ─────────────────────────────────────────────────────
-    const prompt = `คุณคือ SOC Analyst ของมหาวิทยาลัยขอนแก่น วิเคราะห์เหตุการณ์ security นี้เป็นภาษาไทย แบบ narrative story
-ตอบเป็น HTML (ใช้ <strong>, <br>, <ul>, <li>) โดยใช้โครงสร้างนี้เท่านั้น ห้ามใส่ markdown code block:
+    const prompt = `# ROLE & CONTEXT
+คุณคือ Elite SOC Analyst หน้าที่ของคุณคือวิเคราะห์ Raw Security Logs และถอดรหัสออกมาเป็นรายงานที่ครอบคลุมทุกมิติ
 
-<strong>🎯 เป้าหมาย:</strong> [Faculty/หน่วยงาน ถ้าระบุได้] IP [dest_ip]<br>
-<strong>👤 ผู้โจมตี:</strong> IP [src_ip] จาก [country] / [organization ถ้ามี]<br>
-<strong>⚔️ สิ่งที่ทำ:</strong> [อธิบายประเภทการโจมตีและ payload ให้เข้าใจง่าย ไม่ใช้ศัพท์เทคนิคมาก]<br>
-<strong>📋 ขั้นตอน:</strong><ul>[correlation_chain แต่ละขั้น ถ้าไม่มีให้สรุปจาก detail และ commands]</ul>
-<strong>[✅ หรือ ❌] ผลลัพธ์:</strong> [สำเร็จ/ไม่สำเร็จ — ดูจาก status, success keyword, หรือ commands ที่รันได้]<br>
-<strong>⚠️ ความเสี่ยง:</strong> MITRE [mitre_code] — [ถ้าสำเร็จจะเกิดผลเสียอะไรต่อมหาวิทยาลัย]
+# CRITICAL RULES
+1. การระบุทิศทางต้องแม่นยำ: "srcip" (Source IP) หรือ "ip" ต้นทาง คือผู้เริ่มการเชื่อมต่อ เสมอ, "dstip" (Destination IP) คือเป้าหมายเสมอ ห้ามสลับฝั่ง
+2. ห้ามทึกทักว่าเป็น "การโจมตี" เสมอไป ให้ดูฟิลด์ action, msg, detail ประกอบ หากเป็นการเข้าเว็บปกติให้บอกว่าปกติ
+3. ต้องระบุ "ลำดับเวลา" (Timeline), "ระยะการโจมตี" (MITRE ATT&CK Phase) และ "เส้นทางการเชื่อมต่อ" (Network Path) เสมอ
+4. ตอบกลับในรูปแบบ Markdown 6 หัวข้อด้านล่างเป๊ะๆ ถ้าไม่มีข้อมูลให้เขียนว่า "ไม่มีข้อมูลใน Log"
 
-ข้อมูล Log เต็มรูปแบบ (JSON):
-${payloadText}`;
+# RAW LOG DATA
+${payloadText}
+
+# REQUIRED OUTPUT FORMAT
+> **🚨 บทสรุปผู้บริหาร (Executive Summary)**
+[สรุป 1-2 บรรทัด]
+
+**🔍 1. ใครเป็นคนทำ (Source & Actor)**
+* **IP ต้นทาง:** [ระบุ srcip หรือ ip] (พิกัด: [country])
+* **อุปกรณ์/แอป:** [วิเคราะห์จาก agent/user-agent]
+* **พอร์ตต้นทาง:** [srcport]
+
+**🎯 2. เป้าหมายคือที่ไหน (Target & Asset)**
+* **IP ปลายทาง:** [dest_ip]
+* **เป้าหมาย:** [hostname, url, หรือ dstport]
+
+**🛠️ 3. ทำอะไร อย่างไร เมื่อไหร่ (Action, Phase & Timeline)**
+* **เวลาที่เกิดเหตุ (Timeline):** [ระบุ date, time, timezone]
+* **พฤติกรรม:** [อธิบายจาก detail, action, type]
+* **ระยะการโจมตี (Attack Phase):** [ประเมินระยะการโจมตี เช่น Reconnaissance, Delivery, Exploitation หรือ N/A หากเป็นการใช้งานปกติ]
+
+**🛡️ 4. ระบบที่ตรวจพบ และเส้นทาง (Detection & Network Path)**
+* **เส้นทางการเชื่อมต่อ (Route):** [ประเมินเส้นทาง เช่น External (Internet) -> Firewall -> DMZ Server]
+* **แหล่งที่มา/อุปกรณ์:** [source_sensor, devname, หรือ log type]
+
+**✅ 5. ผลลัพธ์สุดท้าย (Result & Impact)**
+* **สถานะ:** [action, msg, หรือ severity]
+
+**🤖 6. คำแนะนำ (AI Recommendation)**
+* [คำแนะนำ Action ที่ควรทำต่อ]`.trim();
 
     try {
       const resText = await this.aiService.callUnifiedAI(req.user.sub, [{ role: 'user', content: prompt }], 1024, 0.3);

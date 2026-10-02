@@ -1,6 +1,6 @@
 # 🏗️ KKUSIEM Architecture & Project Structure
 
-ไฟล์นี้อธิบายโครงสร้างโปรเจกต์ (Folder Structure) และสถาปัตยกรรมระบบ (System Architecture) ของ KKUSIEM อย่างละเอียด โดยเน้นการทำงานร่วมกันระหว่าง Backend และ Detection Engine (AI/ML)
+ไฟล์นี้อธิบายโครงสร้างโปรเจกต์ สถาปัตยกรรม และหลักการทำงานของ KKUSIEM อย่างละเอียด สำหรับนักพัฒนาหรือ AI Agent ที่จะทำงานบนโค้ดนี้
 
 ---
 
@@ -11,43 +11,45 @@ Demo_Honeypot/
 │
 ├── backend/                     # 🔴 NestJS Backend API & WebSocket (ระบบหลัก)
 │   ├── src/
-│   │   ├── attacks.controller.ts # CRUD attack, บล็อก IP, จัดการ SOAR
-│   │   ├── ingest.controller.ts  # POST /api/ingest — Endpoint หลักสำหรับรับ log (Wazuh, Cowrie, WebTrap)
-│   │   ├── log.service.ts        # ⚙️ Data Flow Controller (รับข้อมูล -> กรอง -> ส่ง Detection Engine -> เซฟลง DB)
-│   │   ├── ai.service.ts         # ประสานงานกับ LLM (Gemini) เพื่อทำ Narrative สรุปเหตุการณ์
-│   │   ├── events.gateway.ts     # Real-time WebSocket (Socket.io)
-│   │   └── ...                   # ส่วนอื่นๆ เช่น Auth, Entities, Config
+│   │   ├── attacks.controller.ts  # CRUD attack, บล็อก IP, จัดการ SOAR
+│   │   ├── ingest.controller.ts   # POST /api/ingest — Endpoint รับ log ทุกต้นทาง
+│   │   ├── log.service.ts         # ⚙️ Core Engine: Ingest → LAN Filter → Batch → DB → WebSocket
+│   │   ├── network-map.service.ts # 🗺️ LAN subnet matching จาก ip_records.json
+│   │   ├── ai.service.ts          # Gemini LLM สรุปเหตุการณ์ภาษาไทย
+│   │   ├── events.gateway.ts      # Real-time WebSocket (Socket.io)
+│   │   ├── ip_records.json        # 644 subnet records ของวงแลน KKU
+│   │   └── entities/attack.entity.ts  # Schema ตาราง attacks ใน PostgreSQL
 │   └── .env
 │
-├── detection-engine/            # 🧠 AI/ML Engine (FastAPI) [หัวใจสำคัญของการตรวจจับอัจฉริยะ]
-│   ├── api/                     # FastAPI Endpoints
-│   ├── parsers/                 # แปลง Log หลายฟอร์แมต (Firewall, Nginx, Server) ให้อยู่ในรูปแบบมาตรฐาน
-│   ├── core/                    # ฟิลเตอร์พื้นฐาน (เช่น IP Filter)
-│   ├── features/                # การสร้าง Feature Vector สำหรับ Machine Learning
-│   ├── engine/ml/               # โมเดล ML สำหรับตรวจจับ: Isolation Forest (Anomaly) และ XGBoost
-│   ├── fusion/                  # AI Analyst (LLM Mock / Scoring) จัดกลุ่มและออก Report
-│   └── main.py                  # จุดศูนย์กลางในการรับ POST /api/v1/ingest
+├── detection-engine/            # 🧠 AI/ML Engine (FastAPI)
+│   ├── api/                     # FastAPI Endpoints (POST /api/v1/ingest)
+│   ├── parsers/                 # แปลง Log หลายฟอร์แมต (Firewall, Nginx) ให้เป็นมาตรฐาน
+│   ├── core/                    # IP Filter และ Core Logic
+│   ├── features/                # Feature Aggregation สำหรับ ML
+│   ├── engine/ml/               # Isolation Forest + XGBoost Classifier
+│   ├── fusion/                  # AI Analyst Fusion (Risk Score + Incident Generation)
+│   └── main.py                  # Entry point
 │
-├── frontend/                    # 🟢 SvelteKit Frontend Dashboard
+├── frontend/                    # 🟢 SvelteKit Dashboard
 │   ├── src/
-│   │   ├── lib/components/      # UI (กราฟ, ตาราง, โมดอล AI)
-│   │   ├── routes/dashboard/    # หน้าแผงควบคุมหลัก
-│   │   └── stores/events.ts     # เก็บ State และจัดการ WebSocket กับ Backend
+│   │   ├── lib/components/      # UI Components (กราฟ, ตาราง, AI Modal)
+│   │   ├── routes/dashboard/    # หน้า Dashboard หลัก
+│   │   ├── routes/networkmap/   # หน้าจัดการ LAN subnet (ip_records.json)
+│   │   └── stores/events.ts     # State Management + WebSocket
 │   └── .env
 │
-├── honeypots/                   # 🪤 ระบบล่อลวง (Decoys)
-│   ├── cowrie/                  # SSH/Telnet Honeypot (ยิง log เป็น JSON ไปยัง Backend)
-│   └── webtrap/                 # ดักจับ Web-based Attacks
+├── honeypots/
+│   ├── cowrie/                  # SSH/Telnet Honeypot → ส่ง JSON ไปที่ POST /api/ingest
+│   └── webtrap/                 # HTTP Honeypot → ดักจับ Web Attacks
 │
-├── nginx/                       # 🛡️ Reverse Proxy + SSL config (Production)
-└── docker-compose.yml           # ไฟล์รันทุกเซอร์วิสเข้าด้วยกัน
+├── nginx/                       # Reverse Proxy + SSL (Production)
+├── logrotate.conf               # Log rotation: hourly, create+postrotate (ไม่ใช้ copytruncate)
+└── docker-compose.yml           # Deploy ทุก Service พร้อมกัน
 ```
 
 ---
 
 ## 📐 สถาปัตยกรรมระบบ (System Architecture)
-
-ระบบถูกออกแบบด้วยสถาปัตยกรรมแบบกระจายศูนย์ที่แบ่งแยกหน้าที่ชัดเจน: **Backend** จัดการข้อมูล (Routing/DB/WebSocket) ในขณะที่ **Detection Engine** รับหน้าที่เป็นสมองวิเคราะห์ (AI/ML)
 
 ```mermaid
 graph TD
@@ -59,68 +61,188 @@ graph TD
     classDef frontend fill:#ffffcc,stroke:#cccc00,stroke-width:2px;
 
     A[Hacker / Attacker]:::attacker
-    B1[Cowrie / WebTrap / Suricata]:::source
-    B2[Syslog: Fortigate / Nginx]:::source
+    B1[Cowrie / WebTrap / Wazuh]:::source
+    B2["Syslog: Fortigate / Nginx (file tail)"]:::source
 
-    C((NestJS Backend API)):::backend
+    C((NestJS Backend)):::backend
+    LAN{LAN Filter}:::backend
+    BATCH[Batch Buffer 50lines/2s]:::backend
     D[[FastAPI Detection Engine]]:::engine
-    E[(Database / PostgreSQL)]:::backend
+    FB[Fallback Basic Parser]:::backend
+    E[(PostgreSQL)]:::backend
     F[Google Gemini AI]:::llm
     G[SvelteKit Dashboard]:::frontend
 
-    A -->|โจมตี| B1
-    A -->|Traffic| B2
+    A -->|โจมตีเครื่องในวงแลน| B1
+    A -->|Traffic ผ่าน Firewall/Proxy| B2
 
     B1 -.->|POST /api/ingest| C
-    B2 -->|Tail /var/log| C
+    B2 -->|watchFile polling 1s| C
 
-    C -->|Syslog HTTP POST| D
-    D -->|1. Parse & Normalize| D
-    D -->|2. Isolation Forest| D
-    D -->|3. XGBoost + LogLLM| D
-    D -->|4. AI Analyst Score| D
-    D -.->|Return JSON Detections| C
+    C --> LAN
+    LAN -->|destIp ใน ip_records.json| BATCH
+    LAN -->|ไม่ใช่ LAN → DROP| X[ ]
 
-    C -->|Rule-based & Aggregation| E
-    C -->|Trigger High/Critical Alerts| F
+    BATCH -->|batch HTTP POST| D
+    D -.->|new_detections JSON| C
+    D -.->|timeout / down| FB
+    FB -->|basic parse fallback| C
+
+    C -->|Rule-based + Aggregation Cache| E
+    C -->|High/Critical only| F
     F -.->|AI Narrative ภาษาไทย| C
 
     C == WebSocket Real-time ==> G
-    G -->|Block IP / SOAR| C
+    G -->|Block IP / SOAR Actions| C
 ```
-
-### 🧠 เจาะลึกการทำงานของ Detection Engine (Python/FastAPI)
-`detection-engine` เป็นตัววิเคราะห์ข้อมูล Log ที่ไม่มีโครงสร้างชัดเจน (เช่น Syslog) โดยเฉพาะ ซึ่ง Backend (`log.service.ts`) จะส่งข้อมูลมาให้ผ่าน `POST /api/v1/ingest` Engine นี้มี Pipeline ดังนี้:
-
-1. **Parsers (`parsers/`)**: ทำการแยกวิเคราะห์ (Parsing) Log จากแหล่งกำเนิดต่างๆ เช่น Firewall หรือ Web Server เพื่อให้ได้โครงสร้างที่เป็นมาตรฐาน (Normalized Event)
-2. **IP Filter (`core/ip_filter.py`)**: ตรวจสอบว่าเป็น IP โจมตีจากภายนอกหรือไม่ (ตัด Local IP ทิ้ง)
-3. **Feature Aggregator (`features/`)**: รวบรวมสถิติและลักษณะพฤติกรรม (Behavioral Features) ของ IP ภายในหน้าต่างเวลาที่กำหนด (เช่น 5 นาที)
-4. **AI Screening (`engine/ml/`)**: 
-   - ใช้ **Isolation Forest** กรองเหตุการณ์ปกติออกไปเพื่อลดภาระ
-   - ใช้ **XGBoost Classifier** ช่วยจำแนกประเภทความเสี่ยงขั้นสูง
-   - ใช้ **LogLLM** ตรวจสอบพฤติกรรมทาง Semantic
-5. **AI Analyst Fusion (`fusion/`)**: ประเมินผลลัพธ์จากโมเดลทั้งหมด ให้คะแนน (Risk Score) สรุปเป็น Incident ส่งกลับไปให้ Backend บันทึก
-
-### ⚙️ กระบวนการทำงานใน Backend (`log.service.ts`)
-1. **Ingest Endpoint**: สำหรับ Honeypot/IDS ที่มีการจัดรูปแบบมาแล้ว (JSON) จะถูกส่งเข้า `POST /api/ingest` เพื่อประมวลผลด้วย Rule-based Engine 
-2. **File Tailing**: สำหรับ Syslog (เช่น `/var/log/firewall`) Backend จะทำหน้าที่คอยอ่านบรรทัดใหม่และส่งไปวิเคราะห์ที่ `Detection Engine` (พอร์ต 8100) ทันที
-3. **Aggregation Cache**: ข้อมูลผลลัพธ์จะถูกนำมารวมกลุ่ม (Aggregate) ในช่วงเวลาสั้นๆ ป้องกันการบันทึกฐานข้อมูลซ้ำซ้อน
-4. **WebSocket Broadcast**: ส่งข้อมูลที่ผ่านการบันทึก (หรือการวิเคราะห์แล้ว) ไปที่ Dashboard ทันที
-5. **AI Narrative Layer**: เรียกใช้ Generative AI (เช่น Gemini) เพื่อเขียนสรุปภาษาไทย สำหรับ Event ระดับ High/Critical เท่านั้น เพื่อไม่ให้เปลืองโควต้าและไม่ให้ระบบโดยรวมทำงานช้าลง
 
 ---
 
-## 🧪 คำแนะนำการพัฒนา (Development Conventions)
+## ⚙️ การทำงานของ `log.service.ts` (Core Engine)
 
-### 📏 การแก้ไขโค้ด
-- **Backend (NestJS):** ทุก Service และ Controller ออกแบบมาให้ทำงานแบบ Asynchronous หลีกเลี่ยงการเขียนโค้ดที่ Block Event Loop
-- **Detection Engine (FastAPI):** เขียนเป็น Python Pipeline ถ้าต้องการเพิ่มโมเดล ML ใหม่ ให้สร้างคลาสในโฟลเดอร์ `engine/ml/` และนำไปเชื่อมต่อที่ขั้นตอน Fusion
-- **Frontend (SvelteKit):** การแสดงผลกราฟต่างๆ ดึงข้อมูลแบบ Real-time ผ่าน `eventsStore` (ดูที่ `frontend/src/stores/events.ts`)
+### Data Flow ทั้งหมด
 
-### 🐳 การทดสอบด้วย Docker Compose
-โปรเจกต์นี้ตั้งค่า `docker-compose.yml` เพื่อให้ทุก Service เชื่อมต่อกันผ่าน Network จำลองของ Docker:
-- `backend` เรียกใช้ `postgres` และ `redis`
-- `nginx` ทำหน้าที่เป็น Gateway จัดการ WebSocket ให้วิ่งเข้าหา `backend:5000`
-- `detection-engine` ถูกเปิดพอร์ตภายในไว้รับข้อมูลจาก `backend`
+```
+[Source: Cowrie/Wazuh/WebTrap]
+    → POST /api/ingest
+    → ingestLog()
+    → processXxx() (per-source rule-based processor)
+    → saveAndBroadcast()
+         ├─ LAN Filter (drop ถ้า destIp ไม่ใน LAN)
+         ├─ Kill Chain & Severity Classifier
+         ├─ Aggregation Cache (dedup ใน 1 นาที)
+         ├─ attackRepository.save() → PostgreSQL
+         └─ eventsGateway.broadcastAttack() → WebSocket → Dashboard
 
-> **Note:** หากต้องการทำ Load Testing หรือทดสอบการรับ Log ปริมาณมาก แนะนำให้ตรวจสอบฟังก์ชัน `Aggregation` ภายใน `log.service.ts` เพื่อป้องกันฐานข้อมูลทำงานหนักเกินไป
+[Source: Fortigate Syslog / Nginx revproxy]
+    → startFileTail() watchFile polling ทุก 1 วิ
+    → processSyslogMessage()
+         └─ LAN Filter (ตรวจ IP ทุกตัวในบรรทัด)
+         └─ queueLineForDetection()
+              └─ logBatchBuffer (สูงสุด 50 lines)
+                   └─ flushBatchToDetectionEngine() ทุก 2 วิ
+                        ├─ axios.post detection-engine:8100 → ingestLog() [ปกติ]
+                        └─ ingestRawLineAsFallback() [ถ้า AI ไม่ตอบ]
+```
+
+### Cron Jobs ที่รันอยู่เสมอ
+
+| Schedule | Method | หน้าที่ |
+|----------|--------|---------|
+| ทุก 5 นาที | `cleanupStaleCaches()` | GC: ล้าง aggregationCache, ipStats, cap sessionToIpMap ≤ 500 |
+| ทุกเที่ยงคืน | `pruneOldLogs()` | ลบ Log เกิน 30 วัน จาก PostgreSQL |
+
+### In-Memory State (และขอบเขต)
+
+| Map/Cache | Key | ขอบเขต/TTL | หมายเหตุ |
+|-----------|-----|-----------|---------|
+| `aggregationCache` | `${ip}-${type}` | 5 นาที (GC) | Dedup attack events |
+| `ipStats` | IP address | 5 นาที (GC) | นับครั้ง brute force |
+| `sessionToIpMap` | Cowrie session ID | cap 500 (FIFO) | เชื่อม Cowrie session กับ real IP |
+| `blockedIpsCache` | — | 1 นาที (TTL) | Cache blocked_ips.json |
+| `logBatchBuffer` | — | flush ทุก 2 วิ หรือ 50 lines | Buffer ก่อนส่ง Detection Engine |
+
+---
+
+## 🗺️ การทำงานของ LAN Filter
+
+### Logic ใน `saveAndBroadcast()`
+
+```typescript
+const isLanDest   = networkMapService.isInLan(destIp);    // เป้าหมายใน LAN?
+const isLanSensor = networkMapService.isInLan(sensorIp);   // sensor ของเราใน LAN?
+
+const isRelevant  = isLanDest || (!destIp && isLanSensor);
+if (!isRelevant) return; // DROP
+```
+
+### Logic ใน `processSyslogMessage()` (สำหรับ file tail)
+
+```typescript
+// ตรวจ IP ทุกตัวในบรรทัด log — ถ้าไม่มีตัวใดอยู่ใน LAN → drop ตั้งแต่ต้น
+const ips = logString.match(/\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g) || [];
+const isLanRelated = ips.some(ip =>
+  ip !== '127.0.0.1' && ip !== '0.0.0.0' && networkMapService.isInLan(ip)
+);
+if (!isLanRelated) return;
+```
+
+### `isInLan()` Edge Cases (network-map.service.ts)
+
+| IP | ผลลัพธ์ | เหตุผล |
+|----|---------|--------|
+| `0.0.0.0` | `false` | Wazuh fallback — ไม่ใช่ IP จริง |
+| `127.0.0.1` | `true` | Localhost Honeypot sensor — ต้องผ่าน |
+| `10.x.x.x` (ใน records) | `true` | IP ในวง KKU LAN |
+| IP ต่างประเทศ | `false` | ภายนอก LAN |
+
+### Field ที่โชว์บน Dashboard
+
+| Field | ค่า | ความหมาย |
+|-------|-----|---------|
+| `ip` | เช่น `185.220.101.45` | **IP ผู้โจมตี** (attacker) |
+| `destIp` | เช่น `10.101.104.234` | **IP เครื่องเหยื่อ** ในวงแลน |
+| `organization` | เช่น `คณะแพทย์` | หน่วยงานของเครื่องเหยื่อ (lookup จาก destIp) |
+| `country` | เช่น `Russia` | ประเทศผู้โจมตี (GeoIP) |
+
+---
+
+## 🔧 Processors แต่ละต้นทาง
+
+| Source | Processor | Field สำคัญที่แมป |
+|--------|-----------|-----------------|
+| `cowrie` | `processCowrieLine()` | `src_ip` → attacker, `destIp='10.101.104.234'` |
+| `webtrap` | `processWebTrapLine()` | `src_ip` → attacker, `destIp='10.101.104.234'` |
+| `wazuh` / `suricata` | `processWazuhAlert()` | `data.srcip` → attacker, `destIp=agent.ip` |
+| `firewall` (forti) | `ingestRawLineAsFallback()` | parse `srcip=` / `dstip=` จาก syslog line |
+| `nginx` (reproxy) | `ingestRawLineAsFallback()` | parse `client=` / `for=` จาก nginx log |
+| generic | `processGenericLog()` | `src_ip`, `dest_ip` fields |
+
+---
+
+## 🐛 Known Issues & Gotchas
+
+### การแก้ไขโค้ดใน `log.service.ts`
+ไฟล์นี้มี **Unicode box-drawing characters** (`──`, `─`) ในบรรทัด comment ทำให้ `replace_file_content` tool ใน IDE บางตัวล้มเหลว  
+**ต้องใช้ PowerShell Get-Content -Raw + .Replace() + Set-Content -NoNewline เท่านั้น**
+
+```powershell
+$src = "...\backend\src\log.service.ts"
+$content = Get-Content $src -Raw -Encoding UTF8
+$content = $content.Replace($oldStr, $newStr)
+Set-Content $src -Value $content -NoNewline -Encoding UTF8
+```
+
+### logrotate.conf — ห้ามใช้ `copytruncate`
+`startFileTail()` ใช้ `watchFile + createReadStream` **ไม่ได้ lock file descriptor** → ไม่ต้องการ `copytruncate`  
+การใช้ `copytruncate` จะทำให้ log ถูก ingest **ซ้ำสอง** ในช่วง copy window  
+ปัจจุบันใช้ `create 0644 root root` + `postrotate: pkill -HUP rsyslog`
+
+### Detection Engine — Single Point of Failure
+ถ้า `detection-engine` container ลง → log จาก file tail จะเข้า **Fallback Mode** ไม่หายไป  
+Fallback ใช้ regex parse `srcip=`, `dstip=` จาก raw log line แล้ว ingest เข้า DB ตรงๆ
+
+---
+
+## 🧪 Development Conventions
+
+### Backend (NestJS)
+- ทุก method ที่ I/O-bound ต้องเป็น `async/await` ห้าม block Event Loop
+- ห้ามใช้ `require()` ใน function body — ใช้ top-level `import` เสมอ
+- การเพิ่ม Log Source ใหม่: เพิ่ม `case` ใน `ingestLog()` switch และสร้าง `processXxx()` ใหม่ พร้อมตั้ง `destIp` ให้ครบ
+
+### Detection Engine (FastAPI / Python)
+- เพิ่มโมเดล ML ใหม่: สร้างคลาสใน `engine/ml/` แล้วเชื่อมที่ `fusion/`
+- Response format ที่ Backend คาดหวัง: `{ new_detections: [ { attack_type, risk_score, source_ips, dest_ips, ioc } ] }`
+
+### Frontend (SvelteKit)
+- การแสดงผล Real-time ผ่าน `eventsStore` (`frontend/src/stores/events.ts`)
+- Network Map จัดการ subnet ผ่าน UI → ไฟล์ `ip_records.json` ถูก reload เมื่อ Backend restart
+
+### Docker Compose
+- `backend` → `postgres`, `redis`
+- `nginx` → Gateway WebSocket ไปหา `backend:5000`
+- `detection-engine` → รับ HTTP จาก `backend` ที่ port 8100 (internal only)
+- Backend Node.js heap จำกัด 512MB: `NODE_OPTIONS=--max-old-space-size=512`
+
+> **Performance Note:** Aggregation Cache dedup attack events ในหน้าต่าง 1 นาที (update DB ทุก 5 hits) ทำให้ DB ไม่โดน write storm จาก brute force ปริมาณสูง

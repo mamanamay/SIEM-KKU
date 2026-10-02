@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -38,12 +38,24 @@ export class NetworkMapService {
     }
   }
 
-  public getOrganization(ip: string, fallbackCountry?: string): string {
+  public isIpInRecords(ip: string): boolean {
+    if (ip === '127.0.0.1' || ip === '::1') return true;
+    for (const subnet of this.subnets) {
+      if (this.isIpInSubnet(ip, subnet['Net-Address'], subnet.Mask)) return true;
+    }
+    return false;
+  }
+
+    public getOrganization(ip: string, fallbackCountry?: string): string {
     if (!ip) return fallbackCountry || 'Unknown';
     
     for (const subnet of this.subnets) {
       if (this.isIpInSubnet(ip, subnet['Net-Address'], subnet.Mask)) {
-        return subnet['Faculty/Dept'];
+        const org = subnet['Faculty/Dept'];
+        if (org === '—' || org === '-' || !org) {
+          return 'Local Network (' + subnet['Net-Address'] + ')';
+        }
+        return org;
       }
     }
     
@@ -52,6 +64,10 @@ export class NetworkMapService {
 
   public isInLan(ip: string): boolean {
     if (!ip) return false;
+    // 0.0.0.0 = Wazuh/fallback when no real src IP -- NOT a real LAN address
+    if (ip === '0.0.0.0') return false;
+    // 127.0.0.1 / ::1 = Localhost -- treat as 'inside' so honeypot events are never dropped
+    if (ip === '127.0.0.1' || ip === '::1') return true;
     for (const subnet of this.subnets) {
       if (this.isIpInSubnet(ip, subnet['Net-Address'], subnet.Mask)) {
         return true;

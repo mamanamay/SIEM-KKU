@@ -8,7 +8,7 @@ import {
   ScureBase32Plugin,
 } from 'otplib';
 import * as QRCode from 'qrcode';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { CryptoService } from './crypto.service';
 
 /** Shared options for all TOTP operations in this service */

@@ -66,10 +66,14 @@ class SessionManager:
             ))
             
         # Basic attack path
+        target_str = f"{sess_data['dst_ip']}" if sess_data['dst_ip'] else "SIEM Honeypot Server"
+        if sess_data['dst_port']:
+            target_str += f":{sess_data['dst_port']}"
+
         attack_path = [
             f"{sess_data['src_ip']}",
-            f"Firewall (Internal)",
-            f"{sess_data['dst_ip']}:{sess_data['dst_port']}"
+            f"{events[-1].source_type if events else 'Sensor'}",
+            target_str
         ]
         
         # Add last URI if exists

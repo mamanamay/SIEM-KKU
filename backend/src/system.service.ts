@@ -142,9 +142,10 @@ export class SystemService implements OnModuleInit {
   }
 
   async getCurrentHealth() {
-    const latest = await this.metricRepository.findOne({
-      order: { timestamp: 'DESC' }
+    const latest = await this.metricRepository.find({
+      order: { timestamp: 'DESC' },
+      take: 1
     });
-    return latest || null;
+    return latest.length > 0 ? latest[0] : null;
   }
 }

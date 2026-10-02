@@ -1,7 +1,7 @@
-import { Cron, CronExpression } from '@nestjs/schedule';
+﻿import { Cron, CronExpression } from '@nestjs/schedule';
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, LessThan } from 'typeorm';
 import { EventsGateway } from './events.gateway';
 import { AiService } from './ai.service';
 import { NetworkMapService } from './network-map.service';
@@ -9,6 +9,7 @@ import { Attack } from './entities/attack.entity';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as geoip from 'geoip-lite';
+import axios from 'axios'; // Fix: import ที่ top-level ครั้งเดียว แทน require() ซ้ำใน function
 
 // ─── Correlation Time Window ─────────────────────────────────────────────────
 const CORRELATION_WINDOW_MS = 5000;
@@ -42,6 +43,17 @@ export class LogService implements OnModuleInit {
 
   // ── Ingest Health Tracking ────────────────────────────────────────────────
   private ingestHealth = new Map<string, { lastSeen: number; totalCount: number }>();
+
+  // ── Fix: Blocked IPs in-memory cache (อ่านไฟล์ครั้งเดียวต่อนาที แทนทุก event) ──
+  private blockedIpsCache: Set<string> = new Set();
+  private blockedIpsCacheTime = 0;
+  private readonly BLOCKED_IPS_CACHE_TTL = 60_000; // 1 นาที
+
+  // ── Fix: Log Batch Buffer (ส่ง HTTP เป็น batch แทนทีละ line) ──────────────
+  private logBatchBuffer: { line: string; sourceName: string }[] = [];
+  private batchFlushTimer: NodeJS.Timeout | null = null;
+  private readonly BATCH_FLUSH_INTERVAL_MS = 2000; // flush ทุก 2 วิ
+  private readonly BATCH_MAX_SIZE = 500;             // หรือเมื่อครบ 50 lines
 
   constructor(
     private eventsGateway: EventsGateway,
@@ -81,11 +93,11 @@ export class LogService implements OnModuleInit {
 
   // ─── UNIFIED INGEST ENTRY POINT ───────────────────────────────────────────
   // รับ Log จากทุกต้นทาง — Auto-detect ประเภทจาก Payload Shape
-  public ingestLog(payload: any) {
+  public async ingestLog(payload: any, forceSource?: string) {
     const items: any[] = Array.isArray(payload) ? payload : [payload];
 
-    items.forEach(item => {
-      const source = autoDetectSource(item);
+    for (const item of items) {
+      const source = forceSource || autoDetectSource(item);
 
       // Track health
       const health = this.ingestHealth.get(source) || { lastSeen: 0, totalCount: 0 };
@@ -97,19 +109,19 @@ export class LogService implements OnModuleInit {
 
       switch (source) {
         case 'cowrie':
-          this.processCowrieLine(JSON.stringify(item));
+          await this.processCowrieLine(JSON.stringify(item));
           break;
         case 'wazuh':
         case 'suricata':
-          this.processWazuhAlert(item);
+          await this.processWazuhAlert(item);
           break;
         case 'webtrap':
-          this.processWebTrapLine(JSON.stringify(item));
+          await this.processWebTrapLine(JSON.stringify(item));
           break;
         default:
-          this.processGenericLog(source, item);
+          await this.processGenericLog(source, item);
       }
-    });
+    }
   }
 
   // ─── Helper: Format timestamp → Bangkok time ──────────────────────────────
@@ -156,7 +168,7 @@ export class LogService implements OnModuleInit {
   }
 
   // ─── PROCESSOR 1: Cowrie SSH Honeypot ────────────────────────────────────
-  private processCowrieLine(line: string) {
+  private async processCowrieLine(line: string) {
     try {
       const data    = JSON.parse(line);
       const eventid = data.eventid;
@@ -199,6 +211,7 @@ export class LogService implements OnModuleInit {
           mitigation: stat.count > 10 ? 'Auto-ban IP | Alert SecOps' : 'Monitor for further attempts',
           mitreCode: 'T1110', threatScore: score, clientVersion: data.version || 'Unknown SSH Client',
           sessionId: session, country, correlationChain: chain, source: 'cowrie',
+          destIp: '10.101.104.234', // Honeypot server (target of attack)
           accessLayer: null, cncLayer: null,
         };
 
@@ -210,6 +223,7 @@ export class LogService implements OnModuleInit {
           mitigation: 'Kill Session (Immediate) | Change Passwords | Isolate Host',
           mitreCode: 'T1078', threatScore: 100, clientVersion: data.version || 'Unknown SSH Client',
           sessionId: session, country, correlationChain: chain, source: 'cowrie',
+          destIp: '10.101.104.234', // Honeypot server (target of attack)
           accessLayer: null, cncLayer: null,
         };
 
@@ -222,16 +236,17 @@ export class LogService implements OnModuleInit {
           detail: `CMD: ${data.input}`, mitigation: 'Review Command for Malware | Rebuild Server',
           mitreCode: 'T1059', threatScore: 95, clientVersion: 'Interactive Shell',
           sessionId: session, country, correlationChain: chain, source: 'cowrie',
+          destIp: '10.101.104.234', // Honeypot server (target of attack)
           accessLayer: null, cncLayer: null,
         };
       }
 
-      if (payload) this.saveAndBroadcast(payload);
+      if (payload) await this.saveAndBroadcast(payload);
     } catch (e) { /* ignore parse errors */ }
   }
 
   // ─── PROCESSOR 2: WebTrap HTTP Honeypot ──────────────────────────────────
-  private processWebTrapLine(line: string) {
+  private async processWebTrapLine(line: string) {
     try {
       const data   = JSON.parse(line);
       let src_ip   = data.src_ip || '127.0.0.1';
@@ -250,7 +265,7 @@ export class LogService implements OnModuleInit {
       const mitre = mitreMap[data.type] || { code: 'T1190', score: 50 };
       const chain = [`[Server] WebTrap HTTP: ${data.type} on ${data.detail}`];
 
-      this.saveAndBroadcast({
+      await this.saveAndBroadcast({
         timestamp: attackTs, time: this.formatTime(timestamp), ip: src_ip,
         type: data.type || 'Web Scan', severity: data.severity || 'medium',
         detail: data.detail || 'HTTP attack on WebTrap',
@@ -258,14 +273,16 @@ export class LogService implements OnModuleInit {
         mitreCode: mitre.code, threatScore: mitre.score,
         clientVersion: data.user_agent || 'Unknown Browser',
         sessionId: `webtrap-${Date.now()}`,
-        country: this.getCountry(src_ip), correlationChain: chain, source: 'webtrap',
+        country: this.getCountry(src_ip),
+        aiAnalysis: data.aiAnalysis || null, correlationChain: chain, source: 'webtrap',
+        destIp: '10.101.104.234', // WebTrap honeypot server (target of attack)
         accessLayer: null, cncLayer: null,
       });
     } catch (e) { /* ignore */ }
   }
 
   // ─── PROCESSOR 3: Wazuh / Suricata ───────────────────────────────────────
-  public processWazuhAlert(data: any) {
+  public async processWazuhAlert(data: any) {
     try {
       const ruleId      = data.rule?.id || 'Unknown';
       const description = data.rule?.description || 'Wazuh Alert';
@@ -278,7 +295,7 @@ export class LogService implements OnModuleInit {
       else if (severityNum >= 5) severity = 'medium';
 
       const attackTs = Date.now();
-      this.saveAndBroadcast({
+      await this.saveAndBroadcast({
         timestamp: attackTs, time: this.formatTime(new Date(attackTs).toISOString()),
         ip: srcIp, type: `Wazuh: ${description.substring(0, 30)}...`,
         severity, detail: description,
@@ -287,8 +304,9 @@ export class LogService implements OnModuleInit {
         threatScore: Math.min(severityNum * 8, 100),
         clientVersion: data.agent?.name || 'Wazuh Agent',
         sessionId: `wazuh-${Date.now()}`, country: this.getCountry(srcIp),
+        aiAnalysis: data.aiAnalysis || null,
         correlationChain: [`[Wazuh] Alert Triggered: Rule ${ruleId} (Level ${severityNum})`],
-        source: 'wazuh', accessLayer: null, cncLayer: null,
+        source: 'wazuh', destIp: data.agent?.ip || '10.101.104.234', accessLayer: null, cncLayer: null,
       });
     } catch (e) {
       this.logger.error(`Error parsing Wazuh alert: ${e.message}`);
@@ -296,14 +314,14 @@ export class LogService implements OnModuleInit {
   }
 
   // ─── PROCESSOR 4: Generic Source (any other system) ──────────────────────
-  private processGenericLog(source: string, data: any) {
+  private async processGenericLog(source: string, data: any) {
     try {
       const srcIp    = data.src_ip || data.srcip || data.source_ip || '0.0.0.0';
       const attackTs = data.timestamp ? new Date(data.timestamp).getTime() : Date.now();
 
       const destIp = data.dest_ip || data.dst_ip || data.dstip || '10.101.104.234';
 
-      this.saveAndBroadcast({
+      await this.saveAndBroadcast({
         timestamp: attackTs, time: this.formatTime(new Date(attackTs).toISOString()), ip: srcIp,
         destIp: destIp,
         type: (!data.type || data.type === 'UNKNOWN') ? 'Suspicious Activity' : data.type,
@@ -314,6 +332,7 @@ export class LogService implements OnModuleInit {
         clientVersion: data.agent || source,
         sessionId: `${source}-${Date.now()}`,
         country: this.getCountry(srcIp),
+        aiAnalysis: data.aiAnalysis || null,
         correlationChain: [`[${source.toUpperCase()}] Event ingested via /api/ingest`],
         source, accessLayer: null, cncLayer: null,
       });
@@ -347,7 +366,10 @@ export class LogService implements OnModuleInit {
       // 1. Explicitly targets our LAN
       // 2. Or explicitly originates from our LAN
       // 3. Or destination is not explicitly logged, but our LAN sensor caught it
-      const isRelevant = isLanDest || isLanSrc || (!realDestIp && isLanSensor);
+      // Correct SIEM Logic: Accept logs if the TARGET is inside the LAN (isLanDest), 
+      // OR if the target is implicitly the Honeypot itself (!realDestIp && isLanSensor).
+      // This drops OUTBOUND web browsing (Internal -> External) but catches ALL INBOUND and LATERAL attacks.
+      const isRelevant = isLanDest || isLanSrc || isLanSensor;
       
       if (!isRelevant) {
         return; // Silently drop purely external noise
@@ -355,6 +377,20 @@ export class LogService implements OnModuleInit {
       // --------------------------------------------
       
       const geo = geoip.lookup(payload.ip);
+      // --- SMART KILL CHAIN & SEVERITY CLASSIFIER ---
+      const threatText = `${payload.type} ${payload.detail}`.toLowerCase();
+      if (/malware|trojan|ransomware|c2|beacon|miner|backdoor|botnet|wanna|crypto|coin|virus/i.test(threatText)) {
+        payload.killChainPhase = 'C&C'; payload.severity = 'critical'; payload.threatScore = 100;
+      } else if (/drop|delete|destroy|rm -rf|format|wipe|dos|ddos/i.test(threatText)) {
+        payload.killChainPhase = 'Impact'; payload.severity = 'critical'; payload.threatScore = 100;
+      } else if (/sql|xss|injection|rce|traversal|exploit/i.test(threatText)) {
+        payload.killChainPhase = 'Exploitation';
+        if (payload.severity !== 'critical') payload.severity = 'high';
+      } else if (/brute|login|auth|ssh/i.test(threatText)) {
+        payload.killChainPhase = 'Intrusion';
+      } else {
+        payload.killChainPhase = 'Recon';
+      }
       if (geo) {
         payload.latitude = geo.ll[0];
         payload.longitude = geo.ll[1];
@@ -400,7 +436,7 @@ export class LogService implements OnModuleInit {
         threatScore:   payload.threatScore,
         sessionId:     payload.sessionId,
         timestampMs:   payload.timestamp,
-        destIp:        payload.destIp || '10.101.104.234',
+        destIp:        payload.destIp,
         hitCount:      1, // Initial count
       }) as Attack;
 
@@ -411,13 +447,8 @@ export class LogService implements OnModuleInit {
         count: 1
       });
 
-      // Check blocked IP list
-      let isBlockedRepeat = false;
-      try {
-        const blockedIpPath = isDocker ? '/app/siem-logs/blocked_ips.json' : path.join(basePath, 'siem-logs', 'blocked_ips.json');
-        const blockedList = JSON.parse(fs.readFileSync(blockedIpPath, 'utf8'));
-        isBlockedRepeat = blockedList.some((b: any) => b.ip === payload.ip);
-      } catch { /* file may not exist yet */ }
+      // Check blocked IP list -- Fix: use in-memory cache instead of readFileSync on every event
+      const isBlockedRepeat = this.getBlockedIps().has(payload.ip);
 
       const enriched: any = {
         ...saved,
@@ -425,13 +456,13 @@ export class LogService implements OnModuleInit {
         accessLayer:      payload.accessLayer || null,
         cncLayer:         payload.cncLayer    || null,
         source:           payload.source      || 'unknown',
-        organization:     this.networkMapService.getOrganization(saved.ip, saved.country),
+        organization:     this.networkMapService.getOrganization(saved.destIp, saved.country),
         is_blocked_repeat: isBlockedRepeat,
-        aiAnalysis: null,
+        aiAnalysis: payload.aiAnalysis || null,
       };
 
       // ?? - AI Analysis - async, non-blocking, HIGH/CRITICAL only
-      if (payload.severity === 'high' || payload.severity === 'critical') {
+      if (!payload.aiAnalysis && (payload.severity === 'high' || payload.severity === 'critical')) {
         this.aiService.analyzeAlert(payload).then(async (analysis) => {
           if (!analysis) return;
           await this.attackRepository.update(saved.id, { aiAnalysis: analysis });
@@ -448,10 +479,9 @@ export class LogService implements OnModuleInit {
 
   
   // ─── File Tailer (Replaces UDP receiver) ──────────────────────────────────
+      private tailProcessing = new Map<string, boolean>();
+
   private startFileTail(filePath: string, sourceName: string) {
-    const fs = require('fs');
-    
-    // ตรวจสอบว่าไฟล์มีอยู่จริงไหม ถ้ายังไม่มีให้วนรอจนกว่าจะสร้าง
     if (!fs.existsSync(filePath)) {
       this.logger.warn(`[${sourceName}] File not found yet: ${filePath}. Retrying in 10s...`);
       setTimeout(() => this.startFileTail(filePath, sourceName), 10000);
@@ -461,57 +491,48 @@ export class LogService implements OnModuleInit {
     try {
       this.logger.log(`[✓] Started tailing log file (Node.js polling): ${filePath} [${sourceName}]`);
       let fileSize = fs.statSync(filePath).size;
-      let tailBuffer = ''; // เก็บ Buffer ไว้กรณีอ่านได้บรรทัดไม่สมบูรณ์ (ตัดครึ่งบรรทัด)
+      let tailBuffer = '';
+      this.tailProcessing.set(filePath, false);
 
-      // ใช้ fs.watchFile (Polling) เพื่อแก้บั๊ก Docker Volume ไม่ส่ง Event inotify ทะลุเข้ามา
-      fs.watchFile(filePath, { interval: 1000 }, (curr: any, prev: any) => {
+      fs.watchFile(filePath, { interval: 1000 }, async (curr: any, prev: any) => {
         if (curr.size === prev.size) return;
-        
-        // ถ้าขนาดไฟล์เล็กลง แปลว่าเกิด Log Rotation (ไฟล์ถูกตัดขึ้นวันใหม่)
-        if (curr.size < prev.size) {
-          fileSize = 0; // เริ่มอ่านใหม่จากต้นไฟล์
-          tailBuffer = '';
-        }
-        
-        // Node.js fs.createReadStream `end` is inclusive, so we must subtract 1
-        const endPos = curr.size > 0 ? curr.size - 1 : 0;
-        if (fileSize > endPos) return; // Prevent invalid range
+        if (this.tailProcessing.get(filePath)) return; // Prevents overlapping streams
 
-        const stream = fs.createReadStream(filePath, {
-          encoding: 'utf8',
-          start: fileSize,
-          end: endPos
-        });
+        this.tailProcessing.set(filePath, true);
+        try {
+          if (curr.size < prev.size) {
+            fileSize = 0;
+            tailBuffer = '';
+          }
+          const endPos = curr.size > 0 ? curr.size - 1 : 0;
+          if (fileSize > endPos) {
+            this.tailProcessing.set(filePath, false);
+            return;
+          }
 
-        stream.on('data', (chunk: Buffer) => {
-          tailBuffer += chunk.toString();
-        });
-
-        stream.on('end', () => {
-          const lines = tailBuffer.split('\n');
-          // เก็บส่วนท้ายสุดที่ยังไม่มี \n ไว้ใน buffer สำหรับรอบต่อไป
-          tailBuffer = lines.pop() || '';
-          
-          for (const line of lines) {
-            if (line.trim()) {
-              this.processSyslogMessage(line.trim(), '127.0.0.1', sourceName);
+          const stream = fs.createReadStream(filePath, { encoding: 'utf8', start: fileSize, end: endPos });
+          for await (const chunk of stream) {
+            tailBuffer += chunk;
+            const lines = tailBuffer.split('\n');
+            tailBuffer = lines.pop() || '';
+            for (const line of lines) {
+              if (line.trim()) {
+                await this.processSyslogMessage(line.trim(), '127.0.0.1', sourceName);
+              }
             }
           }
-        });
-
-        stream.on('error', (err: any) => {
-          this.logger.error(`[${sourceName}] Error reading file stream: ${err.message}`);
-        });
-        
-        fileSize = curr.size;
+          fileSize = curr.size;
+        } catch (err: any) {
+          this.logger.error(`[${sourceName}] Error reading file: ${err.message}`);
+        } finally {
+          this.tailProcessing.set(filePath, false);
+        }
       });
-
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`[${sourceName}] Exception starting tail: ${e.message}`);
     }
   }
-
-  private async processSyslogMessage(logString: string, sourceIp: string, sourceName: string = 'syslog') {
+private async processSyslogMessage(logString: string, sourceIp: string, sourceName: string = 'syslog') {
     try {
       // 1. EXTRACT ALL IPs to check against Network Map (LAN)
       const ipRegex = /\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g;
@@ -526,55 +547,211 @@ export class LogService implements OnModuleInit {
         }
       }
 
-      // Drop log if it's not related to our LAN (to ensure ALL pages only show LAN IPs)
-      if (!isLanRelated) {
+      // Bypass pre-filter for Nginx/Firewall since they act as our sensors and might not log the internal destination IP explicitly in every line
+      if (!isLanRelated && sourceName !== 'reproxy' && sourceName !== 'forti') {
         return;
       }
 
-      // 2. FORWARD TO DETECTION ENGINE
-      const axios = require('axios');
+      // 2. FORWARD TO DETECTION ENGINE -- Fix: queue เข้า batch buffer แทนส่ง HTTP ทุก line
       let aiSource = 'unknown';
-      if (sourceName === 'forti') aiSource = 'firewall';
+      if (sourceName === 'forti')   aiSource = 'firewall';
       if (sourceName === 'reproxy') aiSource = 'nginx';
 
-      const payload = {
-        source_type: aiSource,
-        logs: [logString]
-      };
+      this.queueLineForDetection(logString, aiSource, sourceIp);
 
+    } catch (e: any) {
+      this.logger.error(`Error processing syslog from ${sourceName}: ${e.message}`);
+    }
+  }
+
+  // ── Fix: Queue log line into batch buffer, flush to Detection Engine periodically ──
+    private isFlushing = false;
+
+  private queueLineForDetection(line: string, sourceName: string, sourceIp: string) {
+    this.logBatchBuffer.push({ line, sourceName });
+
+    if (this.logBatchBuffer.length >= this.BATCH_MAX_SIZE) {
+      if (this.batchFlushTimer) {
+        clearTimeout(this.batchFlushTimer);
+        this.batchFlushTimer = null;
+      }
+      this.triggerFlush();
+      return;
+    }
+
+    if (!this.batchFlushTimer) {
+      this.batchFlushTimer = setTimeout(() => {
+        this.batchFlushTimer = null;
+        this.triggerFlush();
+      }, this.BATCH_FLUSH_INTERVAL_MS);
+    }
+  }
+
+  private async triggerFlush() {
+    if (this.isFlushing) return;
+    this.isFlushing = true;
+    try {
+      while (this.logBatchBuffer.length > 0) {
+        await this.flushBatchToDetectionEngine();
+      }
+    } finally {
+      this.isFlushing = false;
+    }
+  }
+private async flushBatchToDetectionEngine() {
+    if (this.logBatchBuffer.length === 0) return;
+
+    // Drain the buffer
+    const batch = this.logBatchBuffer.splice(0, this.BATCH_MAX_SIZE);
+
+    // Group by source type for efficient API calls
+    const groups = new Map<string, { lines: string[]; sourceIp: string }>();
+    for (const entry of batch) {
+      if (!groups.has(entry.sourceName)) {
+        groups.set(entry.sourceName, { lines: [], sourceIp: '127.0.0.1' });
+      }
+      groups.get(entry.sourceName)!.lines.push(entry.line);
+    }
+
+    for (const [aiSource, group] of groups.entries()) {
+      let aiSucceeded = false;
       try {
-        const response = await axios.post('http://detection-engine:8100/api/v1/ingest', payload, { timeout: 15000 });
-        const data = response.data;
+        const response = await axios.post(
+          'http://detection-engine:8100/api/v1/ingest',
+          { source_type: aiSource, logs: group.lines },
+          { timeout: 15000 },
+        );
         
+        // If we get a 200 OK, the AI successfully processed it (even if 0 detections!)
+        if (response.status === 200) {
+          aiSucceeded = true;
+        }
+
+        const data = response.data;
         if (data && data.new_detections && data.new_detections.length > 0) {
           for (const det of data.new_detections) {
-            // Transform DetectionEngine output to Backend Attack Entity format
-            const dstIpMatch = logString.match(/dstip=([\d\.]+)/);
-            const dstIp = dstIpMatch?.[1] || '10.101.104.234';
+            const dstIpMatch = group.lines[0]?.match(/dstip=([\d\.]+)/);
+            const dstIp = dstIpMatch?.[1];
 
             const attackPayload = {
               source: aiSource,
-              src_ip: (det.source_ips && det.source_ips.length > 0) ? det.source_ips[0] : sourceIp,
-              dst_ip: dstIp,
+              src_ip: (det.source_ips && det.source_ips.length > 0) ? det.source_ips[0] : group.sourceIp,
+              dst_ip: (det.dest_ips  && det.dest_ips.length  > 0) ? det.dest_ips[0]  : dstIp,
               message: det.attack_type + (det.ioc ? ` [IOC: ${det.ioc.join(',')}]` : ''),
               timestamp: new Date().toISOString(),
               type: det.attack_type || 'AI Detection',
               severity: det.risk_score > 80 ? 'critical' : (det.risk_score > 60 ? 'high' : 'medium'),
-              mitre: 'T1190', // Default fallback
+              mitre: 'T1190',
               score: Math.round(det.risk_score) || 50,
-              raw_log: logString
+              raw_log: group.lines[0] || '',
+              aiAnalysis: det.aiAnalysis,
             };
-            this.ingestLog([attackPayload]);
+            await this.ingestLog([attackPayload]);
           }
         }
-      } catch (aiErr) {
-        this.logger.error(`[DetectionEngine] Failed to reach AI: ${aiErr.message}`);
-        // Fallback or ignore
+        // detection-engine returned 200 but no new_detections → still fallback below
+      } catch (aiErr: any) {
+        this.logger.warn(`[DetectionEngine] Unreachable (${aiSource}): ${aiErr.message} — falling back to basic ingest`);
       }
-      
-    } catch (e: any) {
-      this.logger.error(`Error processing syslog from ${sourceName}: ${e.message}`);
+
+      // ── FALLBACK: ถ้า AI ไม่ตอบ หรือไม่พบ detection ใดๆ → ingest raw lines ผ่าน basic parser ──
+      // ทำให้ log ยังโชว์บน dashboard เสมอ แม้ detection-engine จะลงอยู่
+      if (!aiSucceeded) {
+        for (const line of group.lines) {
+          await this.ingestRawLineAsFallback(line, aiSource);
+        }
+      }
     }
+  }
+
+  // ── Fallback Parser: แปลง raw syslog line เป็น attack event แบบ basic ────
+  // ใช้เมื่อ detection-engine ไม่ response เพื่อไม่ให้ log หาย
+  private async ingestRawLineAsFallback(line: string, source: string) {
+    try {
+      const ipRegex = /\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g;
+      const ips = line.match(ipRegex) || [];
+
+      // Extract src/dst IPs from common syslog patterns (FortiGate / Nginx)
+      const srcIpMatch  = line.match(/srcip=([\d\.]+)/)  || line.match(/client=([\d\.]+)/);
+      const dstIpMatch  = line.match(/dstip=([\d\.]+)/)  || line.match(/for ([\d\.]+)/);
+      const srcIp       = srcIpMatch?.[1]  || ips[0] || '0.0.0.0';
+      const dstIp       = dstIpMatch?.[1];
+
+      // Detect severity from common keywords
+      const lower = line.toLowerCase();
+      const severity = /deny|drop|block|attack|exploit|malware|critical/i.test(lower) ? 'high'
+                     : /warning|warn|failed|error/i.test(lower) ? 'medium'
+                     : 'low';
+
+      const type = source === 'firewall' ? 'Firewall Event'
+                 : source === 'nginx'    ? 'Web Access'
+                 : 'Syslog Event';
+
+      await this.ingestLog([{
+        source,
+        src_ip:   srcIp,
+        dst_ip:   dstIp,
+        type,
+        severity,
+        detail:   line.substring(0, 300), // cap at 300 chars
+        mitre:    'Unknown',
+        score:    severity === 'high' ? 60 : 30,
+        timestamp: new Date().toISOString(),
+      }]);
+    } catch (e: any) {
+      this.logger.error(`[Fallback Ingest] Failed: ${e.message}`);
+    }
+  }
+
+  // ── Fix: Cached blocked IPs (อ่านไฟล์ครั้งเดียวต่อนาที แทนทุก event) ──────
+  private getBlockedIps(): Set<string> {
+    const now = Date.now();
+    if (now - this.blockedIpsCacheTime < this.BLOCKED_IPS_CACHE_TTL) {
+      return this.blockedIpsCache;
+    }
+    try {
+      const blockedIpPath = isDocker
+        ? '/app/siem-logs/blocked_ips.json'
+        : path.join(basePath, 'siem-logs', 'blocked_ips.json');
+      const blockedList = JSON.parse(fs.readFileSync(blockedIpPath, 'utf8'));
+      this.blockedIpsCache = new Set(blockedList.map((b: any) => b.ip));
+    } catch { /* file may not exist yet -- keep existing cache */ }
+    this.blockedIpsCacheTime = now;
+    return this.blockedIpsCache;
+  }
+
+  // ── Fix: Cache GC -- clear stale in-memory Map entries every 5 minutes ────
+  @Cron('*/5 * * * *')
+  cleanupStaleCaches() {
+    const now = Date.now();
+    const TTL = 5 * 60 * 1000; // 5 minutes
+
+    // Prune aggregationCache (key = ip-type, TTL = 5 min)
+    let pruned = 0;
+    for (const [key, val] of this.aggregationCache.entries()) {
+      if (now - val.lastSeen > TTL) { this.aggregationCache.delete(key); pruned++; }
+    }
+
+    // Prune ipStats (key = ip, TTL = 5 min)
+    for (const [ip, stat] of this.ipStats.entries()) {
+      if (now - stat.lastTime > TTL) this.ipStats.delete(ip);
+    }
+
+    // Cap sessionToIpMap to last 500 sessions (FIFO eviction)
+    if (this.sessionToIpMap.size > 500) {
+      const excess = this.sessionToIpMap.size - 500;
+      let removed = 0;
+      for (const key of this.sessionToIpMap.keys()) {
+        if (removed >= excess) break;
+        this.sessionToIpMap.delete(key);
+        removed++;
+      }
+    }
+
+    this.logger.log(
+      `[Cache GC] aggregationCache=${this.aggregationCache.size} (-${pruned}), ` +
+      `ipStats=${this.ipStats.size}, sessionMap=${this.sessionToIpMap.size}`,
+    );
   }
 
   // ?? Auto-Prune (Log Rotation) every night at midnight
@@ -587,7 +764,7 @@ export class LogService implements OnModuleInit {
     try {
       this.logger.log(`[Auto-Prune] Deleting logs older than ${dateLimit.toISOString()}`);
       const result = await this.attackRepository.delete({
-        createdAt: require('typeorm').LessThan(dateLimit)
+        createdAt: LessThan(dateLimit)
       });
       this.logger.log(`[Auto-Prune] Successfully deleted ${result.affected} old logs.`);
     } catch (e) {

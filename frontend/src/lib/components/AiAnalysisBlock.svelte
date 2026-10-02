@@ -44,58 +44,87 @@
     font-family: var(--font-body);
     transition: all 0.3s ease;
     margin-bottom: 24px;
+    background: var(--card-bg, var(--bg));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
   }
   
   .cyber-ai-panel.prompt {
-    background: rgba(30, 41, 59, 0.04);
-    border: 1px dashed rgba(100, 116, 139, 0.4);
-    padding: 16px;
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
+    background: var(--bg-secondary, rgba(128, 128, 128, 0.05));
+    border: 1px dashed var(--border);
+    padding: 24px;
     align-items: center;
     text-align: center;
-    gap: 12px;
+    box-shadow: none;
   }
   
   .cyber-ai-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--bg-secondary, rgba(59, 130, 246, 0.1));
+    border-bottom: 1px solid var(--border);
   }
-  
-  .glow-line { flex: 1; height: 1px; background: linear-gradient(90deg, #8e44ad, transparent); opacity: 0.3; }
   
   .cyber-ai-badge {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     display: flex;
     align-items: center;
-    gap: 6px;
-    color: #8e44ad;
+    gap: 8px;
+    color: var(--primary, #60a5fa);
   }
-  .cyber-ai-badge i { font-size: 14px; }
-  .cyber-ai-badge.idle { color: var(--text-secondary); }
+  .cyber-ai-badge i { font-size: 16px; }
   
-  .cyber-ai-action p { color: var(--text-muted); font-size: 13px; margin: 0; }
-  
-  .cyber-ai-body { font-size: 14px; line-height: 1.6; color: var(--text-primary); }
-  
-  .summary-box {
-    background: rgba(142, 68, 173, 0.08);
-    padding: 12px 16px;
-    border-radius: 6px;
-    margin-bottom: 16px;
-    border-left: 3px solid #8e44ad;
-    color: var(--text-primary);
+  .cyber-ai-body { 
+    padding: 20px;
+    font-size: 14.5px; 
+    line-height: 1.7; 
+    color: var(--text-primary); 
   }
   
-  .storyline :global(p) { margin: 0 0 12px 0; }
+  /* Markdown Styling */
+  .storyline :global(p) { margin: 0 0 16px 0; }
   .storyline :global(p:last-child) { margin-bottom: 0; }
-  .storyline :global(strong) { color: #8e44ad; }
-  .storyline :global(ul) { margin: 0 0 12px 0; padding-left: 20px; color: var(--text-secondary); }
-  .storyline :global(li) { margin-bottom: 4px; }
+  
+  .storyline :global(strong) { 
+    color: var(--text-primary);
+    font-weight: 700;
+  }
+  
+  /* Executive Summary Box (Blockquote) */
+  .storyline :global(blockquote) {
+    background: rgba(239, 68, 68, 0.1);
+    border-left: 4px solid #ef4444;
+    padding: 16px;
+    margin: 0 0 20px 0;
+    border-radius: 0 8px 8px 0;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .storyline :global(blockquote p) { margin-bottom: 0; }
+  
+  /* Lists */
+  .storyline :global(ul) { 
+    margin: 0 0 20px 0; 
+    padding-left: 24px; 
+    color: var(--text-secondary); 
+  }
+  .storyline :global(li) { 
+    margin-bottom: 8px; 
+  }
+  
+  /* Code blocks / Inline code */
+  .storyline :global(code) {
+    background: var(--bg-secondary, rgba(128,128,128,0.1));
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 13px;
+    color: #ef4444;
+  }
 </style>
