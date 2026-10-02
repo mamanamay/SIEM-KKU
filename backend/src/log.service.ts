@@ -557,7 +557,7 @@ private async processSyslogMessage(logString: string, sourceIp: string, sourceNa
       if (sourceName === 'forti')   aiSource = 'firewall';
       if (sourceName === 'reproxy') aiSource = 'nginx';
 
-      this.queueLineForDetection(logString, aiSource, sourceIp);
+      await this.queueLineForDetection(logString, aiSource, sourceIp);
 
     } catch (e: any) {
       this.logger.error(`Error processing syslog from ${sourceName}: ${e.message}`);
@@ -567,7 +567,7 @@ private async processSyslogMessage(logString: string, sourceIp: string, sourceNa
   // ── Fix: Queue log line into batch buffer, flush to Detection Engine periodically ──
     private isFlushing = false;
 
-  private queueLineForDetection(line: string, sourceName: string, sourceIp: string) {
+  private async queueLineForDetection(line: string, sourceName: string, sourceIp: string) {
     this.logBatchBuffer.push({ line, sourceName });
 
     if (this.logBatchBuffer.length >= this.BATCH_MAX_SIZE) {
@@ -575,15 +575,25 @@ private async processSyslogMessage(logString: string, sourceIp: string, sourceNa
         clearTimeout(this.batchFlushTimer);
         this.batchFlushTimer = null;
       }
-      this.triggerFlush();
-      return;
-    }
-
-    if (!this.batchFlushTimer) {
+      this.triggerFlush(); // fire and forget
+    } else if (!this.batchFlushTimer) {
       this.batchFlushTimer = setTimeout(() => {
         this.batchFlushTimer = null;
         this.triggerFlush();
       }, this.BATCH_FLUSH_INTERVAL_MS);
+    }
+
+    // BACKPRESSURE: If buffer gets too large, pause reading until it drains
+    const MAX_BUFFER = 2000;
+    if (this.logBatchBuffer.length > MAX_BUFFER) {
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (this.logBatchBuffer.length <= MAX_BUFFER / 2) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
+      });
     }
   }
 
