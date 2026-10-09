@@ -1,9 +1,11 @@
 <script lang="ts">
   import PageHeader from '../../lib/components/PageHeader.svelte';
   import { onDestroy } from 'svelte';
-  import { eventsStore, connectionState } from '../../stores/events';
+  import { lanDetectionsStore as eventsStore, connectionState } from '../../stores/events';
   import { formatEventTime } from '../../lib/formatTime';
   import { getFacultyForIP, isInternalIP, getServerName } from '../../stores/faculties';
+  import { rankTargetFaculties, unassignedTargetHits } from '../../lib/utils/facultyRanking';
+  import { networkRecordsStore } from '../../stores/faculties';
   import { themeStore } from '../../stores/theme';
 
   // ─── Attack entity field reference (from backend/src/entities/attack.entity.ts)
@@ -20,7 +22,6 @@
   // ─── Raw Events ──────────────────────────────────────────────────────────────
   let allEvents: any[] = [];
   let events: any[] = [];
-  let lanOnly = true; // Toggle for showing only attacks directed at internal IPs
 
   const unsub = eventsStore.subscribe(v => { 
     allEvents = v; 
@@ -28,20 +29,11 @@
   });
 
   function filterEvents() {
-    if (lanOnly) {
-      events = allEvents.filter(e => isInternalIP(e.destIp || '10.101.104.234') || isInternalIP(e.ip));
-    } else {
-      events = allEvents;
-    }
+    events = allEvents;
     // Trigger reactivity for charts
     events = [...events];
   }
 
-  $: {
-    // Re-filter when toggle changes
-    lanOnly; 
-    filterEvents();
-  }
   let showModal = false;
   let selectedIncident = null;
 
@@ -118,21 +110,9 @@
   }
 
   // ─── Faculty Ranking (internal IPs via CIDR lookup) ──────────────────────────
-  $: facultyRanking = (() => {
-    const m: Record<string, { name: string; count: number }> = {};
-    events.forEach(e => {
-      // Use destIp for Faculty Ranking since it's the target. If not available, fallback to ip
-      const targetIp = e.destIp || '10.101.104.234'; // Default to honeypot IP if target is missing
-      const fac = getFacultyForIP(targetIp);
-      if (fac && fac.code !== 'UNK') {
-        m[fac.code] = m[fac.code] || { name: fac.name, count: 0 };
-        m[fac.code].count += 1;
-      }
-    });
-    return Object.entries(m).map(([code, v]) => ({ code, ...v }))
-      .sort((a, b) => b.count - a.count).slice(0, 7);
-  })();
+  $: facultyRanking = ($networkRecordsStore, rankTargetFaculties(events, getFacultyForIP, isInternalIP));
   $: facMax = facultyRanking[0]?.count || 1;
+  $: unassignedHits = ($networkRecordsStore, unassignedTargetHits(events, getFacultyForIP, isInternalIP));
 
   // ─── Last event timestamp ─────────────────────────────────────────────────────
   $: lastEventLabel = events.length > 0
@@ -154,6 +134,7 @@
 
   // ─── Charts ──────────────────────────────────────────────────────────────────
   let prevTheme = '';
+  let chartsDestroyed = false;
   $: if (timelineCanvas && typeCanvas && radarCanvas && polarCanvas && events && $themeStore) {
     if ($themeStore !== prevTheme) {
       prevTheme = $themeStore;
@@ -193,6 +174,7 @@
 
     if (!timelineChart) {
       import('chart.js/auto').then(({ default: Chart }) => {
+        if (chartsDestroyed || timelineChart || !timelineCanvas?.isConnected) return;
         const ctx = timelineCanvas.getContext('2d')!;
         const grad = ctx.createLinearGradient(0, 0, 0, 200);
         grad.addColorStop(0, 'rgba(59,130,246,0.40)');
@@ -353,6 +335,7 @@
   }
 
   onDestroy(() => {
+    chartsDestroyed = true;
     unsub();
     timelineChart?.destroy();
     typeChart?.destroy();
@@ -363,6 +346,7 @@
 
 <svelte:head><title>Dashboard – KKUSIEM</title></svelte:head>
 
+<section class="siem-page siem-page--overview" aria-label="overview">
 <div class="dash">
 
   <!-- ── Header ──────────────────────────────────────────────────────────────── -->
@@ -379,13 +363,6 @@
     <span class="hl">Last: <b>{lastEventLabel}</b></span>
     
     <div class="ml-auto" style="display: flex; align-items: center; gap: 12px;">
-      <!-- LAN Filter Toggle -->
-      <label class="lan-toggle">
-        <input type="checkbox" bind:checked={lanOnly}>
-        <span class="lan-toggle-slider"></span>
-        <span class="lan-toggle-text">เป้าหมายในวง LAN มข.</span>
-      </label>
-      
       <span class="hl" style="border-left: 1px solid var(--border); padding-left: 12px;">
         <i class="ti ti-database hl-icon"></i> <b>{totalEvents}</b> events
       </span>
@@ -506,7 +483,7 @@
       </div>
       <div class="rank-body">
         {#if facultyRanking.length === 0}
-          <div class="empty"><i class="ti ti-info-circle"></i> No internal IP data yet</div>
+          <div class="empty"><i class="ti ti-info-circle"></i> ยังไม่มีเหตุการณ์ที่ระบุคณะเป้าหมายได้</div>
         {:else}
           {#each facultyRanking as f, i}
             <div class="rank-row">
@@ -519,6 +496,12 @@
             </div>
           {/each}
         {/if}
+        {#if unassignedHits > 0}
+          <div style="padding:12px 0;color:var(--text-muted);font-size:12px">
+            เป้าหมายอยู่ใน subnet ที่บันทึกไว้ แต่ไม่มีชื่อหน่วยงาน: {unassignedHits} เหตุการณ์
+          </div>
+        {/if}
+        <div style="color:var(--text-muted);font-size:11px">นับจากเหตุการณ์ที่แสดง โดยใช้ IP เป้าหมายและ Network Map ปัจจุบัน</div>
       </div>
     </div>
 
@@ -564,7 +547,8 @@
     </div>
 
   </div><!-- /.row3 -->
-</div><!-- /.dash -->
+</div>
+</section><!-- /.dash -->
 
 <style>
   /* ─── Layout ────────────────────────────────────────────────────────────── */
@@ -590,15 +574,6 @@
   .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
   .dot-green { background: #22c55e; box-shadow: 0 0 5px #22c55e; }
   .dot-red   { background: #ef4444; box-shadow: 0 0 5px #ef4444; }
-
-  /* LAN Toggle */
-  .lan-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .lan-toggle input { display: none; }
-  .lan-toggle-slider { width: 28px; height: 16px; background: var(--border); border-radius: 16px; position: relative; transition: 0.2s; }
-  .lan-toggle-slider::before { content: ''; position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; background: #fff; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
-  .lan-toggle input:checked + .lan-toggle-slider { background: #3b82f6; }
-  .lan-toggle input:checked + .lan-toggle-slider::before { transform: translateX(12px); }
-  .lan-toggle-text { font-weight: 600; color: var(--text-primary); font-size: 11px; }
 
   /* ─── KPI Cards ──────────────────────────────────────────────────────────── */
   .kpi-grid {

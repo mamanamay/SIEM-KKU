@@ -1,104 +1,52 @@
-#!/bin/bash
-# ============================================================
-# KKUSIEM Honeypot Dashboard — Server Deploy Script (Linux)
-# ============================================================
-# Usage:  bash deploy.sh <SERVER_IP> <USERNAME>
-# Example: bash deploy.sh 192.168.1.100 ubuntu
-# ============================================================
-
-set -e
-
-SERVER_IP=${1:-""}
-USERNAME=${2:-""}
-
-echo ""
-echo "╔══════════════════════════════════════════════════╗"
-echo "║    KKUSIEM Honeypot — Deploy to Server           ║"
-echo "╚══════════════════════════════════════════════════╝"
-echo ""
-
-# ── Validate inputs ────────────────────────────────────────
-if [ -z "$SERVER_IP" ]; then
-  read -p "Enter Server IP (e.g. 192.168.1.100): " SERVER_IP
+#!/usr/bin/env bash
+# Usage: bash deploy.sh --pack-only OR bash deploy.sh [--use-existing-package] HOST USER [~/siem_kku]
+set -euo pipefail
+cd "$(dirname "$0")"
+use_existing=false
+upload_only=false
+if [[ "${1:-}" == '--upload-only' ]]; then upload_only=true; shift; fi
+if [[ "${1:-}" == '--use-existing-package' ]]; then use_existing=true; shift; fi
+if [[ "${1:-}" == '--pack-only' ]]; then
+files=()
+while IFS= read -r file || [[ -n "$file" ]]; do
+  file=${file%$'\r'}
+  [[ -z "$file" || "$file" == \#* ]] && continue
+  files+=("$file")
+done < scripts/deploy-files.txt
+for file in "${files[@]}"; do [[ -e "$file" ]] || { echo "Release source missing: $file. Use the updated worktree or --use-existing-package." >&2; exit 1; }; done
+while IFS= read -r file || [[ -n "$file" ]]; do
+  file=${file%$'\r'}
+  [[ -z "$file" || "$file" == \#* ]] && continue
+  [[ -e "$file" ]] || { echo "Required release source missing: $file. Use the updated worktree or --use-existing-package." >&2; exit 1; }
+done < scripts/deploy-required-files.txt
+tar --exclude='__pycache__' --exclude='*.pyc' --exclude='*.spec.ts' --exclude='test-support' --exclude='.jest-cache' --exclude='.env' --exclude='.test-deps' --exclude='release-info.json' -czf deploy.tar.gz "${files[@]}"
+echo 'Release created: deploy.tar.gz (secrets, certificates and live data excluded)'
+sha256sum deploy.tar.gz > deploy.tar.gz.sha256
 fi
-if [ -z "$USERNAME" ]; then
-  read -p "Enter SSH Username (e.g. ubuntu or root): " USERNAME
+bash scripts/check-package.sh deploy.tar.gz
+[[ "${1:-}" != '--pack-only' ]] || exit 0
+host=${1:?Provide HOST USER or --pack-only}
+user=${2:?Provide SSH username}
+remote=${3:-'~/siem_kku'}
+[[ "$host" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ && "$user" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]] || { echo 'Invalid SSH host/user' >&2; exit 1; }
+[[ "$remote" =~ ^(\~/|/)([a-zA-Z0-9_-][a-zA-Z0-9_.-]*/?)+$ ]] || { echo 'Invalid remote directory' >&2; exit 1; }
+[[ "/${remote#\~/}/" != *'/../'* && "/${remote#\~/}/" != *'/./'* ]] || { echo 'Remote directory contains traversal' >&2; exit 1; }
+destination="$user@$host"
+upload_name=".siem-upload-$(date -u +%Y%m%dT%H%M%S)-$RANDOM-$RANDOM"
+installer_hash=$(sha256sum scripts/install-release.py | cut -d ' ' -f 1)
+ssh "$destination" "umask 077; mkdir ~/$upload_name"
+scp deploy.tar.gz deploy.tar.gz.sha256 scripts/install-release.py "$destination:~/$upload_name/"
+if "$upload_only"; then
+  echo 'Run in the server SSH terminal (sudo may prompt for a password):'
+  echo "sudo python3 ~/$upload_name/install-release.py --archive ~/$upload_name/deploy.tar.gz --target $remote --deploy"
+  exit 0
 fi
-
-echo ""
-echo "[1/4] 📦 Packing project files (excluding node_modules, logs, certs)..."
-
-tar --exclude='node_modules' \
-    --exclude='logs' \
-    --exclude='.git' \
-    --exclude='frontend/node_modules' \
-    --exclude='backend/node_modules' \
-    --exclude='.env' \
-    --exclude='backend/.env' \
-    --exclude='frontend/build' \
-    --exclude='frontend/.svelte-kit' \
-    --exclude='backend/dist' \
-    --exclude='siem-logs' \
-    --exclude='detection-engine/__pycache__' \
-    --exclude='trash' \
-    --exclude='nginx/certs/*.pem' \
-    --exclude='nginx/certs/*.key' \
-    --exclude='nginx/certs/*.crt' \
-    --exclude='CLAUDE.md' \
-    -czf deploy.tar.gz .
-
-echo "  ✅ Packed → deploy.tar.gz"
-echo ""
-echo "[2/4] 📤 Uploading to ${USERNAME}@${SERVER_IP}..."
-echo "      (You will be prompted for SSH password)"
-scp deploy.tar.gz ${USERNAME}@${SERVER_IP}:~/deploy.tar.gz
-echo "  ✅ Upload complete"
-
-echo ""
-echo "[3/4] 🚀 Extracting & starting on server..."
-echo "      (You will be prompted for SSH password again)"
-ssh ${USERNAME}@${SERVER_IP} << 'REMOTE'
-  set -e
-  echo "  → Extracting files..."
-  mkdir -p ~/siem_kku
-  tar -xzf ~/deploy.tar.gz -C ~/siem_kku
-  rm ~/deploy.tar.gz
-  cd ~/siem_kku
-
-  echo "  → Setting up .env..."
-  if [ ! -f .env ]; then
-    cp .env.example .env
-    cp backend/.env.example backend/.env
-    echo ""
-    echo "  ⚠️  .env created from template. Please edit .env and backend/.env before continuing:"
-    echo "      nano ~/siem_kku/.env"
-    echo "      nano ~/siem_kku/backend/.env"
-    echo ""
-    echo "  After editing, run: cd ~/siem_kku && bash nginx/generate-ssl.sh && docker builder prune -f ; docker compose up -d --build"
-    exit 0
-  fi
-
-  echo "  → Generating SSL certificate (if needed)..."
-  chmod +x nginx/generate-ssl.sh
-  bash nginx/generate-ssl.sh
-
-  echo "  → Creating required log directories..."
-  mkdir -p logs/siem
-
-  echo "  → Starting Docker containers..."
-  docker builder prune -f ; docker compose up -d --build
-  docker compose ps
+ssh "$destination" bash -s <<REMOTE
+set -euo pipefail
+command -v python3 >/dev/null || { echo 'python3 required for release installation'; exit 1; }
+cd ~/$upload_name
+sha256sum -c deploy.tar.gz.sha256
+echo '$installer_hash  install-release.py' | sha256sum -c -
+python3 install-release.py --archive deploy.tar.gz --target $remote --deploy
 REMOTE
-
-echo ""
-echo "[4/4] 🧹 Cleaning up local deploy package..."
-rm -f deploy.tar.gz
-echo "  ✅ Cleaned"
-
-echo ""
-echo "╔══════════════════════════════════════════════════╗"
-echo "║  ✅ DEPLOYMENT COMPLETE!                         ║"
-echo "╠══════════════════════════════════════════════════╣"
-echo "║  Dashboard : https://${SERVER_IP}               "
-echo "╚══════════════════════════════════════════════════╝"
-echo ""
+echo 'Services healthy. Release archive preserved for review.'

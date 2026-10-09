@@ -1,48 +1,26 @@
-﻿class LogLLMMock:
+import re
+from urllib.parse import unquote
+
+class LogLLMMock:
+    """Deterministic payload signatures; this implementation does not run an LLM."""
     def __init__(self):
-        self.version = "2.2.0"
+        self.version = "3.0.0"
 
     def analyze_sequence(self, event) -> dict:
-        log_str = event.raw_log.lower()
-        
-        pattern_matched = "Normal Traffic"
-        risk_level = "Low"
-        score = 0.1
-        
-        # Enhanced Semantic Recognition
-        if any(kw in log_str for kw in ["sql", "select", "union", "' or '", "--", "'=", "drop table", "insert"]):
-            pattern_matched = "Potential SQL Injection Pattern"
-            risk_level = "Critical"
-            score = 0.98
-        elif any(kw in log_str for kw in ["script", "svg", "onload", "onerror", "prompt(", "alert("]):
-            pattern_matched = "Potential Cross-Site Scripting (XSS)"
-            risk_level = "Critical"
-            score = 0.97
-        elif any(kw in log_str for kw in ["cmd=", "exec", "wget", "/bin/sh", "curl", "ping", "cat /etc/passwd"]):
-            pattern_matched = "OS Command Injection"
-            risk_level = "Critical"
-            score = 0.99
-        elif any(kw in log_str for kw in ["../", "..%2f", "/etc/passwd", "win.ini", "boot.ini"]):
-            pattern_matched = "Potential Path Traversal"
-            risk_level = "Critical"
-            score = 0.96
-        elif "bot/1.0" in log_str or "ddos" in log_str:
-            pattern_matched = "DDoS"
-            risk_level = "Critical"
-            score = 0.95
-            
-        # Network/Firewall Semantic Recognition
-        elif "action=drop" in log_str and "dstport=" in log_str:
-            pattern_matched = "Port Scan"
-            risk_level = "High"
-            score = 0.92
-        elif "action=deny" in log_str and "dstport=22" in log_str:
-            pattern_matched = "SSH Brute-Force"
-            risk_level = "High"
-            score = 0.94
-            
-        return {
-            "pattern_matched": pattern_matched,
-            "risk_level": risk_level,
-            "semantic_anomaly_score": score
-        }
+        # Decode common request encodings, while keeping ordinary JS paths benign.
+        text = (event.uri or "") + "\n" + event.raw_log
+        for _ in range(2):
+            text = unquote(text)
+        signatures = [
+            ("Potential SQL Injection Pattern", r"(?:union\s+(?:all\s+)?select\b|\bselect\b.{0,80}\bfrom\b|['\"]\s*or\s+['\"]?\w+['\"]?\s*=|\bdrop\s+table\b)"),
+            ("Potential Cross-Site Scripting (XSS)", r"(?:<\s*(?:script|svg|iframe)\b|\bon(?:load|error)\s*=|javascript\s*:)"),
+            ("OS Command Injection", r"(?:\b(?:cmd|exec)=.{0,160}(?:/bin/(?:sh|bash)|\b(?:wget|curl)\s)|[;|]\s*(?:wget|curl|cat|bash|sh)\b|\bcat\s+/etc/passwd)"),
+            ("Potential Path Traversal", r"(?:\.\./|/etc/passwd\b|/proc/self/|\b(?:win\.ini|boot\.ini)\b)"),
+        ]
+        for pattern, expression in signatures:
+            if re.search(expression, text, re.IGNORECASE):
+                return {"pattern_matched": pattern, "risk_level": "High",
+                        "semantic_anomaly_score": 0.95}
+        # A single firewall deny/drop is not proof of scanning or brute force.
+        return {"pattern_matched": "Normal Traffic", "risk_level": "Low",
+                "semantic_anomaly_score": 0.1}

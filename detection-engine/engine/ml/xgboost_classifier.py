@@ -20,11 +20,14 @@
         failed_reqs = features.get('failed_requests', 0)
         status_4xx = features.get('status_4xx', 0)
         
-        if failed_reqs > 1:
+        if features.get('failed_auth', 0) >= 5 and features.get('current_auth_failure'):
             probs['BRUTE_FORCE'] = 0.95
             probs['BENIGN'] = 0.05
-        elif status_4xx > 0:
-            probs['WEB_ATTACK'] = 0.91
-            probs['BENIGN'] = 0.02
-            
+        elif features.get('unique_destination_ports', 0) >= 10 and features.get('blocked_requests', 0) >= 10 and features.get('current_blocked'):
+            probs['PORT_SCAN'] = 0.90
+            probs['BENIGN'] = 0.05
+        elif status_4xx >= 20 and features.get('unique_uri_count', 0) >= 10 and features.get('current_4xx'):
+            probs['WEB_ATTACK'] = 0.85
+            probs['BENIGN'] = 0.05
+
         return probs

@@ -1,150 +1,58 @@
 param(
-    [Parameter(Mandatory=$false)][string]$ServerIP,
-    [Parameter(Mandatory=$false)][string]$Username,
-    [Parameter(Mandatory=$false)][string]$RemoteDir = "~/siem_kku"
+    [string]$ServerIP,
+    [string]$Username,
+    [string]$RemoteDir = '~/siem_kku',
+    [switch]$PackOnly,
+    [switch]$UseExistingPackage,
+    [switch]$UploadOnly
 )
-
-Write-Host ""
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "    KKUSIEM Honeypot - Deploy to Server           " -ForegroundColor Cyan
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host ""
-
-if (-not $ServerIP) { $ServerIP = Read-Host "Enter Server IP (e.g. 10.101.104.234)" }
-if (-not $Username) { $Username = Read-Host "Enter SSH Username (e.g. ubuntu)" }
-
-# ────────────────────────────────────────────────────────────
-# [1/4] Pack — เฉพาะไฟล์ที่ใช้รัน production จริงๆ
-# ────────────────────────────────────────────────────────────
-Write-Host "[1/4] Packing production files..." -ForegroundColor Yellow
-
-$includeItems = @(
-    "backend/src",
-    "backend/package.json",
-    "backend/package-lock.json",
-    "backend/tsconfig.json",
-    "backend/tsconfig.build.json",
-    "backend/nest-cli.json",
-    "backend/Dockerfile",
-    "frontend/src",
-    "frontend/static",
-    "frontend/package.json",
-    "frontend/package-lock.json",
-    "frontend/svelte.config.js",
-    "frontend/vite.config.ts",
-    "frontend/tsconfig.json",
-    "frontend/Dockerfile",
-    "detection-engine/api",
-    "detection-engine/core",
-    "detection-engine/engine",
-    "detection-engine/features",
-    "detection-engine/fusion",
-    "detection-engine/parsers",
-    "detection-engine/schemas",
-    "detection-engine/database",
-    "detection-engine/models_registry",
-    "detection-engine/main.py",
-    "detection-engine/requirements.txt",
-    "detection-engine/Dockerfile",
-    "nginx/nginx.conf",
-    "docker-compose.yml"
-)
-
-$excludePatterns = @(
-    "node_modules",
-    "__pycache__",
-    "*.pyc",
-    "*.log",
-    ".svelte-kit",
-    "dist",
-    "build",
-    ".git"
-)
-
-$tarArgs = "-czf deploy.tar.gz "
-foreach ($ex in $excludePatterns) {
-    $tarArgs += "--exclude='$ex' "
+$ErrorActionPreference = 'Stop'
+Set-Location $PSScriptRoot
+if ($PackOnly -and $UseExistingPackage) { throw 'Choose -PackOnly or -UseExistingPackage.' }
+if ($PackOnly -and $UploadOnly) { throw 'Choose -PackOnly or -UploadOnly.' }
+if ($PackOnly) {
+$items = @(Get-Content -LiteralPath scripts/deploy-files.txt | Where-Object { $_.Trim() -and -not $_.StartsWith('#') })
+foreach ($item in $items) {
+    if (-not (Test-Path -LiteralPath $item)) { throw "Release source missing: $item. Package from the updated worktree, or use -UseExistingPackage to upload the verified archive." }
 }
-foreach ($item in $includeItems) {
-    $tarArgs += "$item "
+foreach ($item in (Get-Content -LiteralPath scripts/deploy-required-files.txt)) {
+    if ($item.Trim() -and -not $item.StartsWith('#') -and -not (Test-Path -LiteralPath $item)) { throw "Required release source missing: $item. Use the updated worktree or -UseExistingPackage." }
 }
-
-try {
-    Invoke-Expression "tar $tarArgs"
-    $size = [math]::Round((Get-Item deploy.tar.gz).Length / 1MB, 2)
-    Write-Host "  [OK] deploy.tar.gz ($size MB)" -ForegroundColor Green
-} catch {
-    Write-Host "  [FAIL] tar failed: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+$tarArgs = @('-czf', 'deploy.tar.gz', '--exclude=__pycache__', '--exclude=*.pyc', '--exclude=*.spec.ts', '--exclude=test-support', '--exclude=.jest-cache', '--exclude=.env', '--exclude=.test-deps', '--exclude=release-info.json') + $items
+& tar @tarArgs
+if ($LASTEXITCODE -ne 0) { throw 'Release archive failed' }
+Write-Host 'Release created: deploy.tar.gz (secrets, certificates and live data excluded)'
+$hash = (Get-FileHash -LiteralPath deploy.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant()
+[System.IO.File]::WriteAllText((Join-Path $PSScriptRoot 'deploy.tar.gz.sha256'), "$hash  deploy.tar.gz`n", [System.Text.UTF8Encoding]::new($false))
 }
-
-# ────────────────────────────────────────────────────────────
-# [2/4] Upload
-# ────────────────────────────────────────────────────────────
-Write-Host ""
-Write-Host "[2/4] Uploading to ${Username}@${ServerIP}..." -ForegroundColor Yellow
-scp deploy.tar.gz "${Username}@${ServerIP}:~/deploy.tar.gz"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "  [FAIL] SCP upload failed" -ForegroundColor Red
-    Remove-Item deploy.tar.gz -ErrorAction SilentlyContinue
-    exit 1
+& (Join-Path $PSScriptRoot 'scripts/check-package.ps1') -Archive (Join-Path $PSScriptRoot 'deploy.tar.gz')
+if ($PackOnly) { return }
+if (-not $ServerIP -or -not $Username) { throw 'Provide -ServerIP and -Username, or use -PackOnly.' }
+if ($ServerIP -notmatch '^[a-zA-Z0-9][a-zA-Z0-9.-]*$' -or $Username -notmatch '^[a-zA-Z_][a-zA-Z0-9_-]*$') { throw 'Invalid SSH host/user' }
+if ($RemoteDir -notmatch '^(~/|/)([a-zA-Z0-9_-][a-zA-Z0-9_.-]*/?)+$') { throw 'RemoteDir must name a specific directory without traversal' }
+$segments=$RemoteDir.Replace('~/','').Split('/')
+if ($segments -contains '..' -or $segments -contains '.') { throw 'RemoteDir contains traversal.' }
+$destination = "${Username}@${ServerIP}"
+$uploadName='.siem-upload-'+[Guid]::NewGuid().ToString('N')
+& ssh $destination "umask 077; mkdir ~/$uploadName"
+if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare remote upload directory' }
+& scp deploy.tar.gz deploy.tar.gz.sha256 scripts/install-release.py "${destination}:~/$uploadName/"
+if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
+if ($UploadOnly) {
+    Write-Host 'Upload verified locally. Run the following in the server SSH terminal (sudo may prompt for a password):'
+    Write-Output "sudo python3 ~/$uploadName/install-release.py --archive ~/$uploadName/deploy.tar.gz --target $RemoteDir --deploy"
+    return
 }
-Write-Host "  [OK] Upload complete" -ForegroundColor Green
-
-# ────────────────────────────────────────────────────────────
-# [3/4] Extract + Restart containers บน server
-# ────────────────────────────────────────────────────────────
-Write-Host ""
-Write-Host "[3/4] Extracting and restarting on server..." -ForegroundColor Yellow
-
 $remoteScript = @"
-set -e
-echo '  -> Extracting...'
-mkdir -p $RemoteDir
-tar -xzf ~/deploy.tar.gz -C $RemoteDir
-rm -f ~/deploy.tar.gz
-
-cd $RemoteDir
-
-# ตรวจว่า .env มีอยู่แล้ว (ต้องวางไว้บน server ก่อน deploy)
-if [ ! -f .env ]; then
-  echo '[ERROR] .env not found in $RemoteDir — วาง .env บน server ก่อนแล้วค่อย deploy ใหม่'
-  exit 1
-fi
-
-echo '  -> Building and restarting containers...'
-docker compose build --no-cache
-docker compose up -d
-docker compose restart nginx
-
-echo ''
-echo '  -> Container status:'
-docker compose ps
-
-echo ''
-echo '  -> Backend Logs (Crash Check):'
-docker compose logs --tail=50 backend
+set -euo pipefail
+command -v python3 >/dev/null || { echo 'python3 required for release installation'; exit 1; }
+cd ~/$uploadName
+sha256sum -c deploy.tar.gz.sha256
+echo '$((Get-FileHash -LiteralPath scripts/install-release.py -Algorithm SHA256).Hash.ToLowerInvariant())  install-release.py' | sha256sum -c -
+python3 install-release.py --archive deploy.tar.gz --target $RemoteDir --deploy
 "@
-
-ssh "${Username}@${ServerIP}" $remoteScript
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "  [FAIL] Remote script failed" -ForegroundColor Red
-    Remove-Item deploy.tar.gz -ErrorAction SilentlyContinue
-    exit 1
-}
-Write-Host "  [OK] Server updated" -ForegroundColor Green
-
-# ────────────────────────────────────────────────────────────
-# [4/4] Cleanup local tar
-# ────────────────────────────────────────────────────────────
-Write-Host ""
-Write-Host "[4/4] Cleaning up local temp file..." -ForegroundColor Yellow
-Remove-Item deploy.tar.gz -ErrorAction SilentlyContinue
-Write-Host "  [OK] Done" -ForegroundColor Green
-
-Write-Host ""
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  DEPLOYMENT COMPLETE                             " -ForegroundColor Cyan
-Write-Host "  Dashboard : https://$ServerIP                  " -ForegroundColor Green
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host ""
+# Windows PowerShell can append CRLF when converting pipeline strings to native
+# stdin even after Replace(). Normalize at the SSH receiver before Bash parses it.
+$remoteScript.Replace("`r`n", "`n") | & ssh $destination "tr -d '\r' | bash -s"
+if ($LASTEXITCODE -ne 0) { throw 'Deployment failed; inspect migration/health logs. The local archive is preserved.' }
+Write-Host 'Services healthy. Release archive preserved for review.'

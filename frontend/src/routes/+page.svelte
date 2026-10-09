@@ -1,52 +1,72 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { themeStore } from '../stores/theme';
+  import { onMount, tick } from 'svelte';
+  import AuthShell from '../lib/components/auth/AuthShell.svelte';
+  import AuthIcon from '../lib/components/auth/AuthIcon.svelte';
 
+  type AuthStage = 'login' | 'verify' | 'reset_password';
+  let authStage: AuthStage = 'login';
   let username = '';
   let password = '';
   let error = '';
-
-  function toggleTheme() {
-    $themeStore = $themeStore === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', $themeStore);
-    localStorage.setItem('theme', $themeStore);
-  }
   let isSessionExpired = false;
   let isLoading = false;
   let showPassword = false;
-
-  type AuthStage = 'login' | 'verify';
-  let authStage: AuthStage = 'login';
+  let showNewPassword = false;
+  let capsLock = false;
   let totpCode = '';
-
+  let useBackupCode = false;
+  let codeInput: HTMLInputElement;
+  let newPasswordInput: HTMLInputElement;
   let newPassword = '';
   let confirmPassword = '';
   let tempToken = '';
   let tempRole = '';
   let tempUsername = '';
 
-  function finalizeLogin(data: any) {
-    if (data.requirePasswordChange) {
-      tempToken = data.access_token;
-      tempRole = data.role;
-      tempUsername = data.username;
-      authStage = 'reset_password' as any;
-      return;
-    }
-    localStorage.setItem('token', data.access_token);
-    localStorage.setItem('role', data.role);
-    localStorage.setItem('username', data.username);
+  $: passwordRules = [
+    { label: 'อย่างน้อย 12 ตัวอักษร', valid: newPassword.length >= 12 },
+    { label: 'ตัวพิมพ์ใหญ่ (A–Z)', valid: /[A-Z]/.test(newPassword) },
+    { label: 'ตัวพิมพ์เล็ก (a–z)', valid: /[a-z]/.test(newPassword) },
+    { label: 'ตัวเลข (0–9)', valid: /[0-9]/.test(newPassword) },
+    { label: 'ไม่มีชื่อผู้ใช้ในรหัสผ่าน', valid: !!newPassword && (!(tempUsername || username) || !newPassword.toLowerCase().includes((tempUsername || username).toLowerCase())) },
+  ];
+  $: passwordReady = passwordRules.every(rule => rule.valid);
+  $: codeReady = useBackupCode ? /^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}$/.test(totpCode) : /^\d{6}$/.test(totpCode);
+
+  function message(data: { message?: string | string[] }, fallback: string) {
+    return Array.isArray(data.message) ? data.message.join(' · ') : data.message || fallback;
+  }
+
+  async function switchStage(stage: AuthStage) {
+    authStage = stage;
+    await tick();
+    if (stage === 'verify') codeInput?.focus();
+    if (stage === 'reset_password') newPasswordInput?.focus();
+  }
+
+  function storeSession(token: string, role: string, name: string) {
+    localStorage.setItem('token', token);
+    localStorage.setItem('role', role);
+    localStorage.setItem('username', name);
     localStorage.setItem('lastActive', Date.now().toString());
     window.location.href = '/dashboard';
   }
 
-  async function handleForceReset() {
-    if (newPassword !== confirmPassword) {
-      error = "รหัสผ่านไม่ตรงกัน";
+  function finalizeLogin(data: { requirePasswordChange?: boolean; access_token: string; role: string; username: string }) {
+    if (data.requirePasswordChange) {
+      tempToken = data.access_token;
+      tempRole = data.role;
+      tempUsername = data.username;
+      switchStage('reset_password');
       return;
     }
-    if (newPassword.length < 12) {
-      error = "รหัสผ่านต้องมีความยาวอย่างน้อย 12 ตัวอักษร";
+    storeSession(data.access_token, data.role, data.username);
+  }
+
+  async function handleForceReset() {
+    if (isLoading) return;
+    if (!passwordReady || newPassword !== confirmPassword) {
+      error = 'กรุณาตั้งรหัสผ่านตามเงื่อนไขและยืนยันให้ตรงกัน';
       return;
     }
     isLoading = true;
@@ -54,311 +74,163 @@
     try {
       const res = await fetch('/api/auth/change-password', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${tempToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ currentPassword: password, newPassword })
+        headers: { Authorization: `Bearer ${tempToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: password, newPassword }),
       });
       const data = await res.json();
-      if (res.ok) {
-        localStorage.setItem('token', tempToken);
-        localStorage.setItem('role', tempRole);
-        localStorage.setItem('username', tempUsername);
-        localStorage.setItem('lastActive', Date.now().toString());
-        window.location.href = '/dashboard';
-      } else {
-        error = data.message || "เปลี่ยนรหัสผ่านไม่สำเร็จ";
-      }
+      if (res.ok) storeSession(tempToken, tempRole, tempUsername);
+      else error = message(data, 'เปลี่ยนรหัสผ่านไม่สำเร็จ');
     } catch {
-      error = "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้";
-    }
-    isLoading = false;
+      error = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองอีกครั้ง';
+    } finally { isLoading = false; }
   }
 
   async function handleLogin() {
+    if (isLoading) return;
     error = '';
     isLoading = true;
     try {
       const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
       if (res.ok) {
+        isSessionExpired = false;
         if (data.stage === 'verify') {
-          authStage = 'verify';
           totpCode = '';
-        } else {
-          finalizeLogin(data);
-        }
-      } else {
-        error = data.message || 'Login failed';
-      }
-    } catch (err) {
-      error = 'Cannot connect to server';
-    }
-    isLoading = false;
+          useBackupCode = false;
+          switchStage('verify');
+        } else finalizeLogin(data);
+      } else error = message(data, 'เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจสอบบัญชีผู้ใช้');
+    } catch {
+      error = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองอีกครั้ง';
+    } finally { isLoading = false; }
   }
 
   async function handleVerify2FA() {
+    if (isLoading || !codeReady) return;
     error = '';
     isLoading = true;
     try {
       const res = await fetch('/api/auth/2fa/verify', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: totpCode.replace(/\s+/g, '') })
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: totpCode.replace(/\s+/g, '') }),
       });
       const data = await res.json();
-      if (res.ok) {
-        finalizeLogin(data);
-      } else {
-        error = data.message || 'Invalid 2FA code';
-        totpCode = '';
-      }
-    } catch (err) {
-      error = 'Cannot connect to server';
-    }
-    isLoading = false;
+      if (res.ok) finalizeLogin(data);
+      else { error = message(data, 'รหัสยืนยันไม่ถูกต้อง กรุณาลองอีกครั้ง'); totpCode = ''; codeInput?.focus(); }
+    } catch {
+      error = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองอีกครั้ง';
+    } finally { isLoading = false; }
   }
 
   function goBackToLogin() {
+    if (isLoading) return;
     authStage = 'login';
-    totpCode = '';
-    error = '';
+    totpCode = ''; error = ''; password = ''; newPassword = ''; confirmPassword = '';
+    tempToken = ''; tempRole = ''; tempUsername = ''; capsLock = false;
+    showPassword = false; showNewPassword = false; useBackupCode = false;
   }
 
-  onMount(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) { $themeStore = savedTheme; } else { $themeStore = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
-    document.documentElement.setAttribute('data-theme', $themeStore);
+  function checkCapsLock(event: KeyboardEvent) { capsLock = event.getModifierState('CapsLock'); }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('expired') === 'true') {
-      isSessionExpired = true;
-      window.history.replaceState({}, document.title, '/');
-    }
-    if (urlParams.get('token')) {
-      // SSO redirect logic handled in login
+  function updateCode(event: Event) {
+    const value = (event.currentTarget as HTMLInputElement).value;
+    totpCode = useBackupCode ? value.replace(/\s/g, '') : value.replace(/\D/g, '').slice(0, 6);
+    (event.currentTarget as HTMLInputElement).value = totpCode;
+  }
+
+  async function toggleBackupCode() { useBackupCode = !useBackupCode; totpCode = ''; error = ''; await tick(); codeInput?.focus(); }
+
+  onMount(() => {
+    const url = new URL(window.location.href);
+    isSessionExpired = url.searchParams.get('expired') === 'true';
+    if (url.searchParams.get('verify') === 'true') switchStage('verify');
+    if (url.searchParams.has('expired') || url.searchParams.has('verify')) {
+      url.searchParams.delete('expired'); url.searchParams.delete('verify');
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
     }
   });
 </script>
 
-<div class="login-wrapper">
-  <div class="theme-toggle">
-    <button class="btn-icon" on:click={() => toggleTheme()}>
-      {#if $themeStore === 'dark'}
-        <i class="ti ti-sun"></i>
-      {:else}
-        <i class="ti ti-moon"></i>
-      {/if}
-    </button>
-  </div>
+<svelte:head><title>เข้าสู่ระบบ · SIEM KKU</title><meta name="description" content="เข้าสู่ SIEM KKU พื้นที่ทำงานด้านความปลอดภัยไซเบอร์ มหาวิทยาลัยขอนแก่น" /></svelte:head>
 
-  <div class="login-box">
-    <div class="brand">
-      <div class="logo"><i class="ti ti-shield-lock"></i></div>
-      <h1>KKUSIEM <span>3.0</span></h1>
-      <p>Security Information & Event Management</p>
-    </div>
+<AuthShell stage={authStage}>
+  {#if authStage === 'login'}
+    <h2 class="auth-heading">Welcome back.</h2>
+    <p class="auth-description">เข้าสู่พื้นที่ทำงานด้านความปลอดภัยของคุณ<br />ด้วยบัญชีผู้ใช้ หรือบัญชีมหาวิทยาลัยขอนแก่น</p>
+  {:else if authStage === 'verify'}
+    <div class="auth-stage-icon"><AuthIcon name="shield" size={26} /></div>
+    <h2 class="auth-heading">ยืนยันว่าเป็นคุณ</h2>
+    <p class="auth-description">{useBackupCode ? 'กรอกรหัสสำรองที่คุณบันทึกไว้ รหัสแต่ละชุดใช้ได้ครั้งเดียว' : 'กรอกรหัส 6 หลักจากแอป Authenticator เพื่อเข้าใช้งานอย่างปลอดภัย'}</p>
+  {:else}
+    <div class="auth-stage-icon"><AuthIcon name="key" size={26} /></div>
+    <h2 class="auth-heading">เริ่มต้นอย่างปลอดภัย</h2>
+    <p class="auth-description">ตั้งรหัสผ่านใหม่สำหรับบัญชีของคุณ<br />ก่อนเข้าใช้งาน SIEM KKU ครั้งนี้</p>
+  {/if}
 
-    {#if isSessionExpired}
-      <div class="alert warning">
-        <i class="ti ti-alert-circle"></i> Your session has expired. Please log in again.
+  {#if isSessionExpired}<div class="auth-alert warning" role="status"><AuthIcon name="alert" />Session หมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง</div>{/if}
+  {#if error}<div class="auth-alert" role="alert"><AuthIcon name="alert" />{error}</div>{/if}
+
+  {#if authStage === 'login'}
+    <form on:submit|preventDefault={handleLogin} aria-busy={isLoading}>
+      <div class="auth-field">
+        <label for="username">ชื่อผู้ใช้ <span class="field-english">Username</span></label>
+        <div class="auth-input-wrap"><AuthIcon name="user" size={18} /><input class="auth-input" id="username" bind:value={username} required autocomplete="username" placeholder="กรอกชื่อผู้ใช้ของคุณ" disabled={isLoading} /></div>
       </div>
-    {/if}
-    {#if error}
-      <div class="alert error">
-        <i class="ti ti-alert-triangle"></i> {error}
+      <div class="auth-field">
+        <label for="password">รหัสผ่าน <span class="field-english">Password</span></label>
+        <div class="auth-input-wrap">
+          <AuthIcon name="lock" size={18} />
+          <input class="auth-input" id="password" type={showPassword ? 'text' : 'password'} value={password} on:input={(e) => password = e.currentTarget.value} required autocomplete="current-password" placeholder="กรอกรหัสผ่านของคุณ" on:keydown={checkCapsLock} on:keyup={checkCapsLock} on:blur={() => capsLock = false} aria-describedby={capsLock ? 'caps-lock-hint' : undefined} disabled={isLoading} />
+          <button class="auth-eye" type="button" aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'} aria-pressed={showPassword} on:click={() => showPassword = !showPassword}><AuthIcon name={showPassword ? 'hidden' : 'eye'} size={18} /></button>
+        </div>
+        {#if capsLock}<p class="auth-hint warning" id="caps-lock-hint" role="status">Caps Lock เปิดอยู่ ตรวจสอบตัวพิมพ์ใหญ่ก่อนเข้าสู่ระบบ</p>{/if}
       </div>
-    {/if}
-
-    {#if authStage === 'login'}
-      <form on:submit|preventDefault={handleLogin}>
-        <div class="form-group">
-          <label for="username">Username</label>
-          <div class="input-wrapper">
-            <i class="ti ti-user input-icon"></i>
-            <input type="text" id="username" bind:value={username} required autocomplete="username" placeholder="Enter username" />
-          </div>
+      <button class="auth-button" type="submit" disabled={isLoading}>{#if isLoading}<span class="auth-spinner"></span>กำลังเข้าสู่ระบบ…{:else}เข้าสู่ระบบ <AuthIcon name="arrow" size={17} />{/if}</button>
+      <div class="auth-divider">หรือใช้บัญชีมหาวิทยาลัย</div>
+      <a class="auth-button secondary" href="/api/auth/sso/login" data-sveltekit-reload><AuthIcon name="building" size={19} /> เข้าสู่ระบบด้วย KKU SSO</a>
+      <div class="auth-help"><strong>ใช้บัญชี KKU ของคุณได้เลย</strong><br />เลือก KKU SSO เพื่อยืนยันตัวตนผ่านระบบของมหาวิทยาลัย หากไม่มีสิทธิ์เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ</div>
+    </form>
+  {:else if authStage === 'verify'}
+    <form on:submit|preventDefault={handleVerify2FA} aria-busy={isLoading}>
+      <div class="auth-field">
+        <label for="verification-code">{useBackupCode ? 'รหัสสำรอง' : 'รหัสยืนยัน 6 หลัก'}</label>
+        <input bind:this={codeInput} class="auth-input verification-input" class:backup={useBackupCode} id="verification-code" type="text" value={totpCode} on:input={updateCode} placeholder={useBackupCode ? 'ABCDE-12345' : '000000'} inputmode={useBackupCode ? 'text' : 'numeric'} autocomplete="one-time-code" maxlength={useBackupCode ? 32 : 12} required disabled={isLoading} aria-describedby="code-hint" />
+        <p class="auth-hint" id="code-hint">{useBackupCode ? 'ใช้รหัสสำรองแทนได้เมื่อไม่สามารถเข้าถึงแอป Authenticator' : 'วางรหัสทั้ง 6 หลักได้ทันที หากรหัสหมดอายุให้ใช้รหัสใหม่ในแอป'}</p>
+      </div>
+      <button class="auth-button" type="submit" disabled={isLoading || !codeReady}>{#if isLoading}<span class="auth-spinner"></span>กำลังตรวจสอบ…{:else}ยืนยันและเข้าใช้งาน <AuthIcon name="arrow" size={17} />{/if}</button>
+      <button class="text-button" type="button" disabled={isLoading} on:click={toggleBackupCode}>{useBackupCode ? 'ใช้รหัสจากแอป Authenticator' : 'เข้าแอปไม่ได้? ใช้รหัสสำรอง'}</button>
+      <button class="auth-back" type="button" disabled={isLoading} on:click={goBackToLogin}><AuthIcon name="back" size={15} /> กลับสู่หน้าเข้าสู่ระบบ</button>
+    </form>
+  {:else}
+    <form on:submit|preventDefault={handleForceReset} aria-busy={isLoading}>
+      <div class="auth-field">
+        <label for="new-password">รหัสผ่านใหม่</label>
+        <div class="auth-input-wrap">
+          <AuthIcon name="lock" size={18} />
+          <input bind:this={newPasswordInput} class="auth-input" id="new-password" type={showNewPassword ? 'text' : 'password'} value={newPassword} on:input={(e) => newPassword = e.currentTarget.value} required minlength="12" autocomplete="new-password" placeholder="ตั้งรหัสผ่านใหม่ของคุณ" aria-describedby="password-rules" disabled={isLoading} />
+          <button class="auth-eye" type="button" aria-label={showNewPassword ? 'ซ่อนรหัสผ่านใหม่' : 'แสดงรหัสผ่านใหม่'} aria-pressed={showNewPassword} on:click={() => showNewPassword = !showNewPassword}><AuthIcon name={showNewPassword ? 'hidden' : 'eye'} size={18} /></button>
         </div>
-        <div class="form-group">
-          <label for="password">Password</label>
-          <div class="input-wrapper">
-            <i class="ti ti-lock input-icon"></i>
-            <input type={showPassword ? 'text' : 'password'} id="password" value={password} on:input={(e) => password = e.target.value} required autocomplete="current-password" placeholder="Enter password" />
-            <button type="button" class="btn-toggle-pwd" on:click={() => showPassword = !showPassword}>
-              <i class="ti {showPassword ? 'ti-eye-off' : 'ti-eye'}"></i>
-            </button>
-          </div>
-        </div>
-        
-        <button type="submit" class="btn-primary" disabled={isLoading}>
-          {#if isLoading}<span class="spinner"></span>{/if}
-          Sign In
-        </button>
-
-        <div class="divider"><span>OR</span></div>
-        <a href="/api/auth/sso/login" class="btn-sso">
-          <i class="ti ti-brand-windows"></i> Login with KKU SSO
-        </a>
-      </form>
-    
-    {:else if authStage === 'reset_password'}
-      <form on:submit|preventDefault={handleForceReset} class="mfa-form">
-        <div class="mfa-icon"><i class="ti ti-lock"></i></div>
-        <h3>เปลี่ยนรหัสผ่านครั้งแรก</h3>
-        <p>เพื่อความปลอดภัย กรุณาตั้งรหัสผ่านใหม่ก่อนเข้าใช้งาน</p>
-        
-        <div class="form-group">
-          <label for="new-pwd">รหัสผ่านใหม่ (อย่างน้อย 12 ตัวอักษร)</label>
-          <input type="password" id="new-pwd" bind:value={newPassword} required class="input-totp" style="font-size: 16px; letter-spacing: 2px;" placeholder="รหัสผ่านใหม่" />
-        </div>
-        <div class="form-group">
-          <label for="conf-pwd">ยืนยันรหัสผ่านใหม่</label>
-          <input type="password" id="conf-pwd" bind:value={confirmPassword} required class="input-totp" style="font-size: 16px; letter-spacing: 2px;" placeholder="ยืนยันรหัสผ่านใหม่" />
-        </div>
-
-        <button type="submit" class="btn-primary" disabled={isLoading || newPassword.length < 12}>
-          {#if isLoading}<span class="spinner"></span>{/if}
-          ยืนยันการเปลี่ยนรหัสผ่าน
-        </button>
-        <button type="button" class="btn-secondary" on:click={goBackToLogin}>กลับสู่หน้าล็อคอิน</button>
-      </form>
-
-      {:else}
-      <form on:submit|preventDefault={handleVerify2FA} class="mfa-form">
-        <div class="mfa-icon"><i class="ti ti-shield-check"></i></div>
-        <h3>Two-Factor Authentication</h3>
-        <p>Enter the 6-digit code from your authenticator app.</p>
-        
-        <div class="form-group">
-          <input type="text" class="input-totp" bind:value={totpCode} placeholder="000 000" maxlength="10" inputmode="numeric" autocomplete="one-time-code" required autofocus />
-        </div>
-
-        <button type="submit" class="btn-primary" disabled={isLoading || totpCode.length < 6}>
-          {#if isLoading}<span class="spinner"></span>{/if}
-          Verify Code
-        </button>
-        <button type="button" class="btn-secondary" on:click={goBackToLogin}>Back to Login</button>
-      </form>
-    {/if}
-  </div>
-</div>
+      </div>
+      <div class="password-rules" id="password-rules" aria-label="เงื่อนไขรหัสผ่าน">{#each passwordRules as rule}<span class:valid={rule.valid}><span class="rule-mark"><AuthIcon name="check" size={11} /></span>{rule.label}</span>{/each}</div>
+      <div class="auth-field">
+        <label for="confirm-password">ยืนยันรหัสผ่านใหม่</label>
+        <div class="auth-input-wrap"><AuthIcon name="lock" size={18} /><input class="auth-input" id="confirm-password" type={showNewPassword ? 'text' : 'password'} value={confirmPassword} on:input={(e) => confirmPassword = e.currentTarget.value} required autocomplete="new-password" placeholder="กรอกรหัสผ่านใหม่อีกครั้ง" aria-describedby={confirmPassword ? 'password-match' : undefined} aria-invalid={!!confirmPassword && confirmPassword !== newPassword} disabled={isLoading} /></div>
+        {#if confirmPassword}<p id="password-match" class="auth-hint" class:success={confirmPassword === newPassword} class:warning={confirmPassword !== newPassword} aria-live="polite">{confirmPassword === newPassword ? 'รหัสผ่านตรงกัน' : 'รหัสผ่านยังไม่ตรงกัน'}</p>{/if}
+      </div>
+      <button class="auth-button" type="submit" disabled={isLoading || !passwordReady || newPassword !== confirmPassword}>{#if isLoading}<span class="auth-spinner"></span>กำลังบันทึก…{:else}บันทึกและเข้าใช้งาน <AuthIcon name="arrow" size={17} />{/if}</button>
+      <button class="auth-back" type="button" disabled={isLoading} on:click={goBackToLogin}><AuthIcon name="back" size={15} /> กลับสู่หน้าเข้าสู่ระบบ</button>
+    </form>
+  {/if}
+</AuthShell>
 
 <style>
-  .login-wrapper {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg);
-    padding: 20px;
-    font-family: var(--font-sans, 'Inter', sans-serif);
-  }
-  .theme-toggle {
-    position: absolute;
-    top: 24px;
-    right: 24px;
-  }
-  .btn-icon {
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    cursor: pointer;
-    transition: 0.2s;
-  }
-  .btn-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
-  
-  .login-box {
-    width: 100%;
-    max-width: 400px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 40px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-  }
-  .brand { text-align: center; margin-bottom: 32px; }
-  .logo { 
-    width: 64px; height: 64px; background: rgba(29,158,117,0.1); color: var(--green);
-    border-radius: 16px; display: flex; align-items: center; justify-content: center;
-    font-size: 32px; margin: 0 auto 16px;
-  }
-  .brand h1 { font-size: 24px; font-weight: 800; color: var(--text-primary); margin: 0 0 8px; }
-  .brand h1 span { color: var(--green); }
-  .brand p { font-size: 14px; color: var(--text-muted); margin: 0; }
-
-  .alert {
-    padding: 12px 16px; border-radius: 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px;
-  }
-  .alert.error { background: rgba(239,68,68,0.1); color: var(--red, #ef4444); border: 1px solid rgba(239,68,68,0.2); }
-  .alert.warning { background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
-
-  .form-group { margin-bottom: 20px; }
-  label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
-  .input-wrapper { position: relative; }
-  .input-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 18px; }
-  input {
-    width: 100%; padding: 12px 12px 12px 42px; background: var(--bg); border: 1px solid var(--border);
-    color: var(--text-primary); border-radius: 8px; font-size: 14px; transition: 0.2s;
-  }
-  input:focus { border-color: var(--green); outline: none; box-shadow: 0 0 0 3px rgba(29,158,117,0.15); }
-  
-  .btn-toggle-pwd {
-    position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: transparent; border: none;
-    color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 4px;
-  }
-  .btn-toggle-pwd:hover { color: var(--text-primary); }
-
-  .btn-primary {
-    width: 100%; padding: 12px; background: var(--green); color: white; border: none; border-radius: 8px;
-    font-size: 15px; font-weight: 600; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
-  }
-  .btn-primary:hover:not(:disabled) { background: #168863; }
-  .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
-  
-  .btn-secondary {
-    width: 100%; padding: 12px; background: transparent; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px;
-    font-size: 15px; font-weight: 600; cursor: pointer; transition: 0.2s; margin-top: 12px;
-  }
-  .btn-secondary:hover { background: var(--bg-hover); color: var(--text-primary); }
-
-  .divider { display: flex; align-items: center; text-align: center; margin: 24px 0; color: var(--text-muted); font-size: 12px; }
-  .divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--border); }
-  .divider span { padding: 0 12px; }
-
-  .btn-sso {
-    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px;
-    background: rgba(59,130,246,0.1); color: #3b82f6; border: 1px solid rgba(59,130,246,0.2); border-radius: 8px;
-    font-size: 15px; font-weight: 600; text-decoration: none; transition: 0.2s;
-  }
-  .btn-sso:hover { background: rgba(59,130,246,0.2); }
-
-  .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  .mfa-form { text-align: center; }
-  .mfa-icon { width: 64px; height: 64px; border-radius: 50%; background: rgba(29,158,117,0.1); color: var(--green); display: flex; align-items: center; justify-content: center; font-size: 32px; margin: 0 auto 16px; }
-  .mfa-form h3 { font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; }
-  .mfa-form p { font-size: 14px; color: var(--text-muted); margin: 0 0 24px; }
-  .input-totp { text-align: center; font-size: 24px; letter-spacing: 4px; padding: 16px; font-weight: 700; padding-left: 16px; }
-@media (max-width: 768px) {
-      .login-box { flex-direction: column !important; }
-      .login-box > div { padding: 20px !important; }
-      .login-box > div:nth-child(2) { width: 100% !important; height: 1px !important; margin: 0 !important; }
-    }
+  .field-english { font-size: 10px; color: var(--text-secondary); margin-left: 7px; font-weight: 400; }
+  .verification-input { padding: 17px; min-height: 68px; text-align: center; font-size: 28px; letter-spacing: 12px; font-weight: 500; }.verification-input.backup { font-size: 17px; letter-spacing: 2px; }.verification-input::placeholder { opacity: .45; }
+  .text-button { display: block; margin: 19px auto 0; padding: 5px; background: transparent; border: none; color: var(--green); font-size: 11px; cursor: pointer; }
+  .password-rules { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; margin: -5px 0 23px; }.password-rules > span { display: flex; gap: 6px; align-items: center; color: var(--text-secondary); font-size: 10px; }.password-rules > span.valid { color: var(--green); }.rule-mark { display: grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border); }.valid .rule-mark { background: var(--green-bg); border-color: #1d9e7533; }
 </style>
 
 

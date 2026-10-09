@@ -1,4 +1,7 @@
 <script>
+    import AlertPolicyPanel from '../../../../lib/components/settings/AlertPolicyPanel.svelte';
+    import { roleStore } from '../../../../stores/events';
+    import ChangeSummary from '../../../../lib/components/workspace/ChangeSummary.svelte';
     import { onMount } from 'svelte';
     import { showNotification } from '../../../../stores/notificationStore';
     import ConfirmModal from '$lib/components/ConfirmModal.svelte';
@@ -142,6 +145,7 @@
     }
 </script>
 
+<section class="siem-page siem-page--integrations" aria-label="integrations">
 <div class="page-container">
         <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
         <div style="width: 56px; height: 56px; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px;">
@@ -156,6 +160,7 @@
     {#if loading}
         <div class="loading">Loading...</div>
     {:else}
+        <aside class="siem-form-intro"><span class="siem-eyebrow">CONNECTED SERVICES</span><h3>ตั้งค่าและทดสอบบริการ</h3><p>ปุ่ม Test จะใช้ค่าฟอร์มปัจจุบัน เมื่อทดสอบสำเร็จระบบเดิมจะบันทึกการตั้งค่าทั้งชุด การทดสอบ Slack และ Teams จะส่งข้อความจริงไปยังปลายทางที่ระบุ</p></aside>
         <div class="cards">
             <!-- KKU AI Copilot -->
             <div class="card">
@@ -234,6 +239,7 @@
             </div>
         </div>
 
+        <div class="siem-form-review"><ChangeSummary values={{ 'AI API URL': apiConfig.aiApiUrl, 'API Key': apiConfig.aiKey, 'AI Model': apiConfig.aiModel, 'Slack URL': apiConfig.slackUrl, 'Teams URL': apiConfig.teamsUrl }} secrets={['API Key', 'Slack URL', 'Teams URL']} ready={!loading} /></div>
         <div class="actions">
             <button on:click={() => promptConfirm('บันทึกการตั้งค่า', 'คุณต้องการบันทึกการตั้งค่าการเชื่อมต่อทั้งหมดหรือไม่?', 'ti-device-floppy', handleSave)} disabled={saving} class="btn-primary">
                 {saving ? 'Saving...' : 'Save Integrations'}
@@ -241,8 +247,10 @@
         </div>
     {/if}
 
+    {#if $roleStore === 'admin'}<div class="alert-policy-region" style="grid-column:2;min-width:0;"><AlertPolicyPanel /></div>{/if}
     <ConfirmModal bind:visible={showConfirmModal} title={confirmTitle} message={confirmMessage} icon={confirmIcon} on:confirm={executeConfirmAction} on:cancel={() => showConfirmModal = false} />
 </div>
+</section>
 
 <style>
     .page-container {

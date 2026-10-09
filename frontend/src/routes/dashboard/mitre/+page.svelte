@@ -1,6 +1,6 @@
 <svelte:head><title>MITRE ATT&CK&reg; Matrix - KKUSIEM</title></svelte:head>
 <script lang="ts">
-  import { eventsStore } from '../../../stores/events';
+  import { lanDetectionsStore as eventsStore } from '../../../stores/events';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   
   
@@ -61,6 +61,7 @@
   const mitreExportCols = ['Tactic', 'Technique ID', 'Technique Name', 'Hits'];
 </script>
 
+<section class="siem-page siem-page--mitre" aria-label="mitre">
 <div class="mitre-page">
   <PageHeader title="MITRE ATT&CK® Enterprise Matrix" description="Mapping observed threat events to the globally accessible knowledge base of adversary tactics and techniques." icon="ti-target">
     <div slot="actions" style="display:flex; gap:12px;">
@@ -113,6 +114,7 @@
     </table>
   </div>
 </div>
+</section>
 
 <style>
   .mitre-page { display: flex; flex-direction: column; flex: 1; padding: 24px; gap: 24px; overflow: hidden; font-family: 'Inter', sans-serif; color: var(--text-primary); }

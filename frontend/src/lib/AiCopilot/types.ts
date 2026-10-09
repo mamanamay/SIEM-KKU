@@ -1,4 +1,4 @@
-﻿export type AiMode = 'local' | 'api';
+export type AiMode = 'local' | 'api';
 export type MessageSource = 'Security Intelligence' | 'KKU AI API' | 'User' | 'System';
 export type ConfidenceLevel = 'High' | 'Medium' | 'Low' | 'Limited';
 
@@ -35,12 +35,22 @@ export interface StructuredResponse {
   graphData?: any; // For Evidence Graph
 }
 
+export interface InvestigationReportScope {
+  version: 1;
+  selectedIP?: string;
+  events: any[];
+  totalAvailable: number;
+  restored: boolean;
+  dateRange?: { from: string; to: string };
+}
+
 export interface Message {
   id: string;
   source: MessageSource;
   role: 'user' | 'assistant' | 'system';
   content: string; // Raw text for user/system, or fallback
   structuredData?: StructuredResponse;
+  reportScope?: InvestigationReportScope;
   timestamp: string;
   intent?: Intent;
 }

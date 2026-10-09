@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { showUiMessage } from '../../../lib/workspace/feedback';
   import { onMount, onDestroy } from 'svelte';
   import { systemHealthStore } from '../../../stores/events';
   import Chart from 'chart.js/auto';
@@ -21,7 +22,7 @@
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       if (res.ok) {
-        alert('Memory pruned successfully!');
+        await showUiMessage('Memory pruned successfully!');
         // Force refresh health
         setTimeout(() => window.location.reload(), 1000);
       } else {
@@ -139,6 +140,7 @@
   <title>System Health | KKUSIEM</title>
 </svelte:head>
 
+<section class="siem-page siem-page--health" aria-label="health">
 <div class="page-container">
   <PageHeader 
     title="System Health Monitor" 
@@ -254,6 +256,7 @@
     </div>
   </div>
 </div>
+</section>
 
 <style>
   .page-container { padding: 24px; max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }

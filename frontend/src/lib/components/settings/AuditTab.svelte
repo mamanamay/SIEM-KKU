@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { eventsStore, roleStore, usernameStore } from '../../../stores/events';
+  import { lanEventsStore as eventsStore, roleStore, usernameStore } from '../../../stores/events';
 
   $: currentUser = $usernameStore || 'admin';
   $: currentRole = $roleStore || 'admin';

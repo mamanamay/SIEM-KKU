@@ -3,6 +3,7 @@
   import ConfirmModal from '../ConfirmModal.svelte';
   
   export let onCloseMobile: () => void = () => {};
+  export let onClose: () => void = () => {};
 
   $: sessions = $aiCopilotStore.sessions;
   $: activeId = $aiCopilotStore.activeSessionId;
@@ -101,7 +102,8 @@
 
 <div class="history-panel">
   <div class="history-header">
-    Investigation History
+    <span>ประวัติการสืบสวน</span>
+    <button class="copilot-icon-button" on:click={onClose} aria-label="ปิดประวัติ" title="ปิดประวัติ"><i class="ti ti-x"></i></button>
   </div>
   <div class="history-list custom-scrollbar">
     {#if sessions.length === 0}

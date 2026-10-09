@@ -18,7 +18,7 @@ export class SystemController {
     return this.systemService.getCurrentHealth();
   }
 
-  @Post('health/gc')
+  @Post('gc')
   async forceGarbageCollection() {
     if (global.gc) {
       global.gc();

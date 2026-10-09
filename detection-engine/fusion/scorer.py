@@ -28,8 +28,7 @@ class AIAnalystEngine:
             
         if logllm and logllm.risk_level in ['High', 'Critical']:
             risk_score = max(risk_score, 85.0)
-            if attack_type == "Unknown Anomaly":
-                attack_type = logllm.pattern_matched
+            attack_type = logllm.pattern_matched
                 
         if iso and iso.is_anomaly:
             risk_score = max(risk_score, iso.anomaly_score * 100)

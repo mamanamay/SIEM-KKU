@@ -42,11 +42,12 @@ Return ONLY a valid JSON object matching this TypeScript interface. Do NOT use m
         { role: 'user', content: prompt }
       ]);
       
-      // Parse the JSON
+      // Extract the first JSON object using a regex just in case LLM added extra text
       let cleaned = responseStr.trim();
-      if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json/m, '');
-      if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```/m, '');
-      if (cleaned.endsWith('```')) cleaned = cleaned.replace(/```$/m, '');
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) {
+        cleaned = match[0];
+      }
       
       const data = JSON.parse(cleaned);
       

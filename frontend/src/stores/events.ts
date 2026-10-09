@@ -1,6 +1,7 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { io, Socket } from 'socket.io-client';
-import { getFacultyForIP } from './faculties';
+import { isActionableDetection } from '../lib/utils/incidentQueue';
+import { getFacultyForIP, networkPolicyState, refreshNetworkPolicy } from './faculties';
 
 
 export function enrichEventWithCVE(e: any) {
@@ -15,10 +16,8 @@ export function enrichEventWithCVE(e: any) {
     e.payload = JSON.stringify(e);
   }
   
-  const fac = getFacultyForIP(e.ip);
-  if (fac) {
-    e.organization = fac.name;
-  }
+  const fac = getFacultyForIP(e.destIp || e.dst_ip || '');
+  e.organization = fac?.name || null;
   return e;
 }
 
@@ -39,6 +38,14 @@ export const selectedDateStore = writable<string>(new Date().toISOString().split
 export const systemHealthStore = writable<any>(null);
 
 let socket: Socket | null = null;
+let networkPolicyTimer: ReturnType<typeof setInterval> | null = null;
+async function refreshEventScope() {
+  const previous = get(networkPolicyState).version;
+  if (await refreshNetworkPolicy() && previous !== get(networkPolicyState).version && socket?.connected) {
+    if (get(isHistoricalMode)) await fetchHistoricalEvents(get(selectedDateStore));
+    else socket.emit('refresh_scope');
+  }
+}
 
 export function initSocket() {
   const token = localStorage.getItem('token');
@@ -62,10 +69,12 @@ export function initSocket() {
   usernameStore.set(username);
 
   if (socket) return; // already connected
+  void refreshEventScope();
+  if (!networkPolicyTimer) networkPolicyTimer = setInterval(() => { void refreshEventScope(); }, 30000);
 
   socket = io({
     path: '/socket.io/',
-    auth: { token },
+    auth: { token, scope: window.location.pathname.startsWith('/wallboard') ? 'legacy' : 'lan' },
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 2000,
@@ -107,7 +116,9 @@ export function initSocket() {
     if (!isHistorical) {
       const enriched = enrichEventWithCVE(data);
       eventsStore.update(events => {
-        const newEvents = [enriched, ...events].slice(0, 1000); // Prevent memory leak and localStorage quota errors
+        const previous = enriched.id == null ? null : events.find(event => event.id === enriched.id);
+        const merged = { ...previous, ...enriched, hitCount: Math.max(Number(previous?.hitCount || 1), Number(enriched.hitCount || 1)) };
+        const newEvents = [merged, ...events.filter(event => enriched.id == null || event.id !== enriched.id)].slice(0, 1000); // Prevent memory leak and localStorage quota errors
         if (typeof localStorage !== 'undefined') {
           try {
             localStorage.setItem('cachedEvents', JSON.stringify(newEvents));
@@ -117,8 +128,14 @@ export function initSocket() {
         }
         return newEvents;
       });
-      latestAttackStore.set(enriched);
+      if (get(networkPolicyState).loaded && isInternalIP(enriched.destIp || '')
+          && isActionableDetection(enriched)) latestAttackStore.set(enriched);
     }
+  });
+
+  socket.on('attack_count_updated', (data: { id: number; hitCount: number }) => {
+    eventsStore.update(events => events.map(event => event.id === data.id
+      ? { ...event, hitCount: Math.max(Number(event.hitCount || 1), data.hitCount) } : event));
   });
 
   socket.on('status_updated', (data: { id: number; status: string }) => {
@@ -150,6 +167,7 @@ export function initSocket() {
 }
 
 export function disconnectSocket() {
+  if (networkPolicyTimer) { clearInterval(networkPolicyTimer); networkPolicyTimer = null; }
   if (socket) {
     socket.disconnect();
     socket = null;
@@ -163,14 +181,14 @@ export async function fetchHistoricalEvents(dateStr: string) {
   selectedDateStore.set(dateStr);
   
   try {
-    const res = await fetch(`/api/attacks/history?date=${dateStr}`, {
+    const res = await fetch(`/api/attacks/history?date=${dateStr}&scope=lan`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
     });
     if (res.ok) {
       const data = await res.json();
-      eventsStore.set(data);
+      eventsStore.set(data.map(enrichEventWithCVE));
     }
   } catch (err) {
     console.error('Failed to fetch historical events:', err);
@@ -191,12 +209,13 @@ export function resumeLiveEvents() {
 import { derived } from 'svelte/store';
 import { isInternalIP } from './faculties';
 
-export const lanEventsStore = derived(eventsStore, ($events) =>
+export const lanEventsStore = derived([eventsStore, networkPolicyState], ([$events, policy]) =>
   $events.filter((e) => {
-    const destIsLan = isInternalIP(e.destIp || '10.101.104.234'); // Assume honeypot if missing
-    const srcIsLan  = e.ip && isInternalIP(e.ip);
-    return destIsLan || srcIsLan;
-  }).sort((a, b) => {
+    if (!policy.loaded) return false;
+    return isInternalIP(e.destIp || e.dst_ip || '');
+  }).map(event => enrichEventWithCVE({ ...event })).sort((a, b) => {
     return new Date(b.createdAt || b.timestampMs).getTime() - new Date(a.createdAt || a.timestampMs).getTime();
   })
 );
+
+export const lanDetectionsStore = derived(lanEventsStore, events => events.filter(isActionableDetection));

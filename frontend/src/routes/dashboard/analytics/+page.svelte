@@ -1,27 +1,16 @@
 <script lang="ts">
-  import { eventsStore } from '../../../stores/events';
+  import { lanDetectionsStore as eventsStore } from '../../../stores/events';
   import { downloadHTML, downloadPDF, downloadCSV } from '../../../lib/utils/export';
   import Chart from 'chart.js/auto';
-  import { onMount, onDestroy } from 'svelte';
-  import { get } from 'svelte/store';
+  import CountryFlag from '../../../lib/components/CountryFlag.svelte';
+  import { onDestroy } from 'svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte'; 
 
   let events: any[] = [];
-  
-  const REFRESH_INTERVAL_MS = 90000;
-  let intervalId: any;
+  $: events = $eventsStore;
+  onDestroy(() => { chartType?.destroy(); chartIp?.destroy(); });
 
-  onMount(() => {
-    events = get(eventsStore);
-    intervalId = setInterval(() => {
-      events = get(eventsStore);
-    }, REFRESH_INTERVAL_MS);
-  });
-
-  onDestroy(() => {
-    if (intervalId) clearInterval(intervalId);
-  });
 
 
   let activeTab = 'overview';
@@ -50,7 +39,7 @@
   $: topCountries = (() => {
     const counts: Record<string, number> = {};
     events.forEach(e => {
-      const c = e.country || 'Local Network';
+      const c = e.country || 'Unknown';
       counts[c] = (counts[c] || 0) + 1;
     });
     const total = events.length || 1;
@@ -78,7 +67,7 @@
           borderWidth: 0
         }]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#9ca3af' } } } }
+      options: { animation: false, responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
   }
 
@@ -106,6 +95,9 @@
     });
   }
 
+
+  $: if (activeTab !== 'overview' || !topTypes.length) { chartType?.destroy(); chartType = null; }
+  $: if (activeTab !== 'overview' || !topIps.length) { chartIp?.destroy(); chartIp = null; }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
   const TYPE_COLORS: Record<string, string> = {
@@ -149,14 +141,7 @@
     return '#8b5cf6';
   }
 
-  function getFlagEmoji(country: string) {
-    const flags: Record<string, string> = {
-      'Russia': '🇷🇺', 'China': '🇨🇳', 'Brazil': '🇧🇷',
-      'United States': '🇺🇸', 'USA': '🇺🇸', 'Germany': '🇩🇪',
-      'Local Network': '🖥️'
-    };
-    return flags[country] || '🏳️';
-  }
+
 
   function shortType(type: string) {
     if (type === 'Aggressive Brute Force' || type === 'SSH Brute Force') return 'SSH Brute';
@@ -185,6 +170,7 @@
 
 <svelte:head><title>Attacker Analytics - KKUSIEM</title></svelte:head>
 
+<section class="siem-page siem-page--analytics" aria-label="analytics">
 <div style="display:flex;flex-direction:column;gap:16px;padding:24px 32px 2rem;max-width:1400px;margin:0 auto;">
   <!-- Page Header -->
   <PageHeader title="Analyst Center" description="Analyze attacker IPs, countries, attack vectors, and payload activity." icon="ti-chart-bar">
@@ -282,7 +268,7 @@
         {#if topTypes.length === 0}
           <div class="empty-state"><i class="ti ti-database-off"></i><br>ไม่พบข้อมูล</div>
         {:else}
-          <div style="height: 200px; padding: 16px;"><canvas bind:this={chartCanvasType}></canvas></div>
+          <div class="distribution-chart"><canvas bind:this={chartCanvasType} aria-label="สัดส่วนประเภทการโจมตี"></canvas></div>
           <div class="type-chips" style="border-top:1px solid var(--border);">
             {#each topTypes as item}
               <div class="type-chip" style="border-color:{getTypeColor(item.type)}22; background:{getTypeBg(item.type)}">
@@ -316,7 +302,7 @@
           {#each topCountries as item, i}
             <div class="geo-row">
               <div class="geo-rank">{i + 1}</div>
-              <div class="geo-flag">{getFlagEmoji(item.country)}</div>
+              <div class="geo-flag"><CountryFlag country={item.country} /></div>
               <div class="geo-info">
                 <div class="geo-name">{item.country}</div>
                 <div class="geo-bar-wrap">
@@ -376,6 +362,7 @@
   {/if}
 
 </div>
+</section>
 <style>
 /* ─── Page ──────────────────────────────────────────────────────────────────── */
 .analytics-page {
@@ -533,7 +520,9 @@
 .rv-unit { font-size: 10px; color: var(--text-muted); font-weight: 500; }
 
 /* ─── Type Chips (Attack Distribution) ──────────────────────────────────────── */
-.type-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 0 16px 16px; }
+.distribution-chart { position:relative; height:240px; width:100%; min-width:0; padding:20px; box-sizing:border-box; }
+  .distribution-chart canvas { display:block; max-width:100%; }
+.type-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 0; padding: 16px; }
 .type-chip {
   display: flex;
   align-items: center;
@@ -544,7 +533,7 @@
   transition: opacity 0.18s;
 }
 .type-chip i { font-size: 16px; flex-shrink: 0; }
-.tc-name { flex: 1; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.tc-name { flex: 1; min-width:0; overflow-wrap:anywhere; font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .tc-count { font-size: 14px; font-weight: 800; }
 .tc-pct { font-size: 11px; color: var(--text-muted); font-weight: 600; min-width: 36px; text-align: right; }
 
@@ -559,7 +548,7 @@
 }
 .geo-row:last-child { border-bottom: none; }
 .geo-rank { width: 24px; font-size: 12px; font-weight: 700; color: var(--text-muted); text-align: center; flex-shrink: 0; }
-.geo-flag { font-size: 24px; width: 32px; text-align: center; flex-shrink: 0; }
+.geo-flag { display:flex; align-items:center; justify-content:center; font-size: 24px; width: 32px; text-align: center; flex-shrink: 0; }
 .geo-info { flex: 1; min-width: 0; }
 .geo-name { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
 .geo-bar-wrap { height: 7px; background: var(--bg-secondary); border-radius: 99px; overflow: hidden; }

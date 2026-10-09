@@ -3,10 +3,15 @@
 </svelte:head>
 
 <script lang="ts">
+  import { showUiMessage } from '../../../lib/workspace/feedback';
+  import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
+  import ChangeSummary from '../../../lib/components/workspace/ChangeSummary.svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
-  import { eventsStore } from '../../../stores/events';
-  import { getFacultyForIP } from '../../../stores/faculties';
+  import { lanDetectionsStore as eventsStore } from '../../../stores/events';
+  import { getFacultyForIP, getFacultyCode, getNetworkRouteForIP, networkRecordsStore, networkPolicyState, refreshNetworkPolicy } from '../../../stores/faculties';
+  import { roleStore } from '../../../stores/events';
   import { isIpInCidr } from '../../../lib/utils/ip';
   // @ts-ignore
   import ipRecordsRaw from '$lib/data/ip_records.json';
@@ -14,7 +19,12 @@
   let editableRecords = [...ipRecordsRaw].map((r, i) => ({ ...r, _id: i })); 
   
   // We are using it for real now, so Admin is permanently true for this page
-  let isAdmin = true; 
+  let isAdmin = false;
+  $: isAdmin = $roleStore === 'admin' && $networkPolicyState.loaded && !$networkPolicyState.error;
+  onMount(() => {
+    void refreshNetworkPolicy();
+    return networkRecordsStore.subscribe(records => { editableRecords = records.map((r, i) => ({ ...r, _id: i })); });
+  });
 
   // --- Modal State ---
   let showModal = false;
@@ -34,21 +44,21 @@
 
   // Extract unique faculties dynamically from the current editableRecords
   $: dynamicFaculties = Array.from(new Set(editableRecords.map((r: any) => r['Faculty/Dept']).filter(Boolean))).map(name => {
-    let code = String(name).split('â€”')[0].trim().toUpperCase();
+    let code = getFacultyCode(String(name));
     if (!code) code = 'UNASSIGNED';
     if (code === 'MS/KKBS') code = 'MS/KKBS';
     return { code, name: String(name) };
   });
 
   // Map events dynamically
-  $: mappedEvents = $eventsStore.map(e => {
-    return { ...e, faculty: getFacultyForIP(e.ip) };
-  });
+  $: mappedEvents = ($networkRecordsStore, $eventsStore.map(e => {
+    return { ...e, faculty: getFacultyForIP(e.destIp || e.dst_ip || '') };
+  }));
 
   $: filteredEvents = (() => {
     let base = selectedFacultyCode === 'ALL' 
       ? mappedEvents 
-      : mappedEvents.filter(e => e.faculty && e.faculty.code === selectedFacultyCode);
+      : mappedEvents.filter(e => selectedFacultyCode === 'UNASSIGNED' ? !e.faculty : e.faculty?.code === selectedFacultyCode);
     if (searchTopIP) base = base.filter(e => e.ip && e.ip.includes(searchTopIP));
     return base;
   })();
@@ -56,9 +66,9 @@
   $: facultyStats = (() => {
     if (selectedFacultyCode !== 'ALL') {
       const f = dynamicFaculties.find(x => x.code === selectedFacultyCode);
-      return { total: filteredEvents.length, name: f ? f.name : 'Unknown' };
+      return { total: filteredEvents.reduce((sum, event) => sum + (Number(event.hitCount) > 0 ? Number(event.hitCount) : 1), 0), name: f ? f.name : 'Unknown' };
     }
-    return { total: filteredEvents.length, name: 'ทุกคณะ / ส่วนงาน' };
+    return { total: filteredEvents.reduce((sum, event) => sum + (Number(event.hitCount) > 0 ? Number(event.hitCount) : 1), 0), name: 'ทุกคณะ / ส่วนงาน' };
   })();
 
   // --- Events Pagination ---
@@ -81,7 +91,7 @@
 
     // Filter Faculty Code
     if (selectedFacultyCode !== 'ALL') {
-      let rCode = String(r['Faculty/Dept']).split('â€”')[0].trim().toUpperCase();
+      let rCode = getFacultyCode(String(r['Faculty/Dept'] || ''));
       if (!rCode) rCode = 'UNASSIGNED';
       if (rCode !== selectedFacultyCode) return false;
     }
@@ -134,7 +144,7 @@
   // --- Actions ---
   function hasMatch(cidr: any) {
     if (!cidr || cidr === '0.0.0.0/0') return false;
-    return $eventsStore.some(e => isIpInCidr(e.ip, cidr));
+    return $eventsStore.some(e => getNetworkRouteForIP(e.destIp || e.dst_ip || '') === cidr);
   }
 
   function openAddModal() {
@@ -166,7 +176,7 @@
   let successMessage = '';
 
   async function saveRecord() {
-    if (!formData.Route.trim()) { alert('Route/CIDR is required!'); return; }
+    if (!formData.Route.trim()) { void showUiMessage('Route/CIDR is required!'); return; }
     
     if (modalMode === 'ADD') {
       // Add to front
@@ -178,8 +188,7 @@
       successMessage = 'อัปเดต IP สำเร็จแล้ว';
     }
     showModal = false;
-    await persistData();
-    
+    if (!await persistData()) return;
     showSuccessPopup = true;
     setTimeout(() => showSuccessPopup = false, 3000);
   }
@@ -188,13 +197,19 @@
     try {
       // Clean up internal _id before saving
       const dataToSave = editableRecords.map(({ _id, ...rest }) => rest);
-      await fetch('/api/network-map', {
+      const response = await fetch('/api/network-map', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
         body: JSON.stringify(dataToSave)
       });
+      if (!response.ok) { const data = await response.json(); throw new Error(data.message || 'บันทึกกฎเครือข่ายไม่สำเร็จ'); }
+      await refreshNetworkPolicy();
+      return true;
     } catch (err) {
       console.error('Failed to save network map data', err);
+      editableRecords = get(networkRecordsStore).map((r, i) => ({ ...r, _id: i }));
+      void showUiMessage(err instanceof Error ? err.message : 'บันทึกกฎเครือข่ายไม่สำเร็จ');
+      return false;
     }
   }
 
@@ -293,6 +308,7 @@
   .btn-danger:hover { filter: brightness(1.1); transform: translateY(-1px); }
 </style>
 
+<section class="siem-page siem-page--network-map" aria-label="network-map">
 <div class="page-container">
   
   <PageHeader title="Network Map Management" description="Monitor internal network zones and host communications." icon="ti-map-2">
@@ -462,7 +478,7 @@
 <!-- Admin Modal (Add/Edit) -->
 {#if showModal}
   <div class="modal-overlay">
-    <div class="modal-content">
+    <div class="modal-content siem-split-modal">
       <div class="modal-header">
         <div style="display:flex; align-items:center; gap:8px;">
           <i class={modalMode === 'ADD' ? 'ti ti-plus' : 'ti ti-pencil'}></i> 
@@ -471,6 +487,8 @@
         <button class="modal-close" on:click={() => showModal = false}><i class="ti ti-x"></i></button>
       </div>
 
+      <aside class="siem-modal-context"><span class="siem-eyebrow">NETWORK ROUTE</span><i class="ti ti-route"></i><h3>{modalMode === 'ADD' ? 'เพิ่มเครือข่าย' : 'แก้ไขเครือข่าย'}</h3><p>ตรวจทาน Route หน่วยงาน และประเภทการเชื่อมต่อก่อนบันทึก</p></aside>
+      <div class="siem-modal-fields">
       <div class="form-group">
         <label>IP Route / CIDR <span style="color:#ef4444">*</span></label>
         <input type="text" bind:value={formData.Route} placeholder="e.g. 10.0.0.0/24" class="text-box" style="font-family:'JetBrains Mono'; font-size:14px;">
@@ -499,9 +517,11 @@
         <input type="text" bind:value={formData.Description} placeholder="e.g. อาคาร A ชั้น 2" class="text-box">
       </div>
 
+      <ChangeSummary values={{ 'Route': formData.Route, 'หน่วยงาน': formData['Faculty/Dept'], 'ประเภท': formData.Type, 'คำอธิบาย': formData.Description }} />
       <div class="modal-actions">
         <button class="btn-cancel" on:click={() => showModal = false}>Cancel</button>
         <button class="btn-primary" on:click={saveRecord}><i class="ti ti-device-floppy"></i> Save Record</button>
+      </div>
       </div>
     </div>
   </div>
@@ -539,3 +559,4 @@
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
   </style>
 {/if}
+</section>

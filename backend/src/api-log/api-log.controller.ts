@@ -1,10 +1,12 @@
-import { Controller, Get, Query, Res } from '@nestjs/common';
+import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Like, MoreThanOrEqual } from 'typeorm';
 import { ApiLog } from '../entities/api-log.entity';
 import type { Response } from 'express';
+import { ApiHistoryAdminGuard } from '../developer-api/api-history.guard';
 
 @Controller('api/admin/api-logs')
+@UseGuards(ApiHistoryAdminGuard)
 export class ApiLogController {
   constructor(
     @InjectRepository(ApiLog)

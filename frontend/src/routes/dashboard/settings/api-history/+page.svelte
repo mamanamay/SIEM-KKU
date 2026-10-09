@@ -48,6 +48,7 @@
   }
 </script>
 
+<section class="siem-page siem-page--api-history" aria-label="api-history">
 <div class="settings-page">
   <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
       <div style="width: 56px; height: 56px; background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px;">
@@ -124,6 +125,7 @@
     {/if}
   </div>
 </div>
+</section>
 
 <style>
   .settings-page { padding: 24px; max-width: 1200px; margin: 0 auto; }

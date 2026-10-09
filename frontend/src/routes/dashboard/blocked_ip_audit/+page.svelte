@@ -107,13 +107,14 @@
 </script>
 <svelte:head><title>Blocked IP Audit - KKUSIEM</title></svelte:head>
 
+<section class="siem-page siem-page--blocked" aria-label="blocked">
 <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:2rem">
 
   <PageHeader title="Blocked IP Audit" description="Review and manage historically blocked external IPs." icon="ti-ban" />
 
   <!-- ── Manual Block Form (Admin only) ────────────────────────────── -->
   {#if $roleStore === 'admin'}
-  <div class="ds-card" style="padding: 16px;">
+  <div class="ds-card manual-block-panel" style="padding: 20px;">
     <div class="ds-card-head" style="margin-bottom: 12px;">
       <span class="ds-card-title"><i class="ti ti-shield-plus"></i> Manual Block IP</span>
     </div>
@@ -257,6 +258,7 @@
   </div>
 </div>
 {/if}
+</section>
 
 <style>
   .table-note {

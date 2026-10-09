@@ -1,7 +1,7 @@
-﻿export class CorrelationEngine {
+export class CorrelationEngine {
   static correlateByIp(events: any[], ip: string) {
     if (!events || !ip) return [];
-    return events.filter(e => e.ip === ip || e.targetIp === ip);
+    return events.filter(e => e.ip === ip || e.srcIp === ip || e.src_ip === ip || e.targetIp === ip || e.destIp === ip || e.dst_ip === ip);
   }
 
   static findAttackPatterns(events: any[]) {

@@ -4,7 +4,7 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { eventsStore } from '../../../stores/events';
+  import { lanDetectionsStore as eventsStore } from '../../../stores/events';
   import type { AiBriefingContext } from '../../../lib/ReportEngine/types';
   
   import AiSecuritySituation from '../../../lib/components/ai-analyst/AiSecuritySituation.svelte';
@@ -129,6 +129,7 @@
   });
 </script>
 
+<section class="siem-page siem-page--ai-briefing" aria-label="ai-briefing">
 <div class="page-container">
   <div style="max-width: 1400px; margin: 0 auto; width: 100%;">
     <PageHeader title="AI Daily Briefing" description="Automated daily security summary and actionable intelligence." icon="ti-brain">
@@ -174,6 +175,7 @@
     </div>
   </div>
 </div>
+</section>
 
 <style>
   .page-container {

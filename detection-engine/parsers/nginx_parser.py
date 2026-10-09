@@ -1,13 +1,23 @@
+import json
 import uuid
 import re
 from datetime import datetime
 from schemas.event import NormalizedEvent
+from parsers.target_ip import target_ip
 
 class NginxParser:
     def __init__(self, version="2.0"):
         self.version = version
 
     def parse(self, raw_log: str) -> NormalizedEvent:
+        original_raw_log = raw_log
+        if isinstance(raw_log, str):
+            try:
+                decoded = json.loads(raw_log)
+                if isinstance(decoded, dict):
+                    raw_log = decoded
+            except (ValueError, TypeError):
+                pass
         event_id = f"WEB-{uuid.uuid4().hex[:8]}"
         
         parsed_log = {}
@@ -44,7 +54,7 @@ class NginxParser:
             timestamp=datetime.utcnow(),
             source_type="nginx",
             src_ip=parsed_log.get("remote_addr", "0.0.0.0"),
-            dst_ip=parsed_log.get("host", "127.0.0.1"), # Nginx usually target is the host itself or upstream
+            dst_ip=target_ip(parsed_log, raw_log),
             dst_port=443,
             protocol="HTTP",
             action="ALLOW",
@@ -53,5 +63,5 @@ class NginxParser:
             http_status=status,
             user_agent=parsed_log.get("http_user_agent", ""),
             bytes_sent=bytes_sent,
-            raw_log=str(raw_log)
+            raw_log=str(original_raw_log)
         )

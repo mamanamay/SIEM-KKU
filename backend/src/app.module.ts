@@ -39,6 +39,17 @@ import { ApiLog } from './entities/api-log.entity';
 import { SeedService } from './seed.service';
 import { ApiLogModule } from './api-log/api-log.module';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ApiToken } from './entities/api-token.entity';
+import { IntegrationObservation } from './entities/integration-observation.entity';
+import { ApiAccessService } from './developer-api/access.service';
+import { DeveloperSessionGuard, DeveloperTokenGuard } from './developer-api/access.guard';
+import { IntegrationCatalogService } from './developer-api/catalog.service';
+import { DeveloperApiController, DeveloperManagementController } from './developer-api/developer-api.controller';
+import { NetworkPolicy } from './entities/network-policy.entity';
+import { NetworkPolicyController } from './developer-api/network-policy.controller';
+import { AlertNotification, AlertPolicy } from './entities/alert-notification.entity';
+import { SlackAlertService } from './developer-api/slack-alert.service';
+import { AlertPolicyController } from './developer-api/alert-policy.controller';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Database Configuration
@@ -52,7 +63,7 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Production: PostgreSQL ─────────────────────────────────────────
       type: 'postgres',
       url: DATABASE_URL,
-      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric],
+      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, NetworkPolicy, AlertNotification, AlertPolicy],
       synchronize: true, // กลับมาเปิด Auto-sync เพราะไม่มี Migrations
       ssl: process.env.DB_SSL === 'true'
         ? { rejectUnauthorized: false }
@@ -62,7 +73,7 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Development: SQLite (fallback เมื่อรัน local โดยไม่มี .env) ──
       type: 'sqlite',
       database: 'database.sqlite',
-      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric],
+      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, NetworkPolicy, AlertNotification, AlertPolicy],
       synchronize: true,
     };
 
@@ -75,12 +86,12 @@ const typeOrmConfig: any = DATABASE_URL
       limit: 100, // 100 requests per minute
     }]),
     TypeOrmModule.forRoot(typeOrmConfig),
-    TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric]),
+    TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, NetworkPolicy, AlertNotification, AlertPolicy]),
     ApiLogModule,
   ],
   // WazuhController — Legacy compatibility shim (ยังคง /api/wazuh ไว้เพื่อ backward compat)
-  controllers: [AuthController, AttacksController, IngestController, WazuhController, SettingsController, AuditController, ExportController, CVEController, WebhookController, SystemController],
+  controllers: [AuthController, AttacksController, IngestController, WazuhController, SettingsController, AuditController, ExportController, CVEController, WebhookController, SystemController, DeveloperApiController, DeveloperManagementController, NetworkPolicyController, AlertPolicyController],
   providers: [NetworkMapService,
-    LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService, AuditService, ExportService, WebhookService, SystemService],
+    LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService, AuditService, ExportService, WebhookService, SystemService, ApiAccessService, DeveloperSessionGuard, DeveloperTokenGuard, IntegrationCatalogService, SlackAlertService],
 })
 export class AppModule {}

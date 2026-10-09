@@ -7,7 +7,7 @@ export class IngestController {
 
   // ── Single-Ingest Endpoint ────────────────────────────────────────────────
   @Post()
-  ingestLog(
+  async ingestLog(
     @Body() body: any,
     @Headers('x-ingest-key') apiKey?: string,
     @Headers('authorization') authHeader?: string,
@@ -29,7 +29,7 @@ export class IngestController {
     }
 
     try {
-      this.logService.ingestLog(body);
+      await this.logService.ingestLog(body);
       const count = Array.isArray(body) ? body.length : 1;
       return { status: 'ok', accepted: count, endpoint: '/api/ingest' };
     } catch (err) {
@@ -39,6 +39,11 @@ export class IngestController {
 
   // ── Ingest Health Monitor ─────────────────────────────────────────────────
   // GET /api/ingest/status — SOC ใช้ดูว่าต้นทางไหนยังส่งข้อมูลมาอยู่
+  @Get('diagnostics')
+  getIngestDiagnostics() {
+    return this.logService.getIngestDiagnostics();
+  }
+
   @Get('status')
   getIngestStatus() {
     return this.logService.getIngestHealth();

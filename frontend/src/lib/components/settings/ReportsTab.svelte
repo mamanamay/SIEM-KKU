@@ -1,6 +1,6 @@
 <script lang="ts">
       import { onMount } from "svelte";
-  import { eventsStore } from "../../../stores/events";
+  import { lanDetectionsStore as eventsStore } from "../../../stores/events";
   import ReportPreviewDrawer from "./ReportPreviewDrawer.svelte";
   import { showNotification } from "../../../stores/notificationStore";
   import { openReportWizard } from "../../../stores/globalReportStore";

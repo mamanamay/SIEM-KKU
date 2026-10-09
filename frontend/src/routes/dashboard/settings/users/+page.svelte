@@ -1,4 +1,5 @@
 <script>
+    import ChangeSummary from '../../../../lib/components/workspace/ChangeSummary.svelte';
     import { onMount } from 'svelte';
     import { showNotification } from '../../../../stores/notificationStore';
     import ConfirmModal from '$lib/components/ConfirmModal.svelte';
@@ -224,6 +225,7 @@
     }
 </script>
 
+<section class="siem-page siem-page--users" aria-label="users">
 <div class="users-page">
     <div class="header-section">
         <div class="page-title">
@@ -320,11 +322,12 @@
 
     {#if showResetModal}
         <div class="modal-backdrop">
-            <div class="modal">
+            <div class="modal siem-split-modal">
                 <div class="modal-header">
                     <h3>Reset Password ({resetTargetUsername})</h3>
                     <button class="close-btn" on:click={() => showResetModal = false}>&times;</button>
                 </div>
+                <aside class="siem-modal-context"><span class="siem-eyebrow">PASSWORD RESET</span><i class="ti ti-key"></i><h3>{resetTargetUsername}</h3><p>ตั้งรหัสผ่านใหม่ให้บัญชีที่เลือกตามขั้นตอนเดิมของระบบ</p></aside>
                 <form on:submit|preventDefault={submitResetPassword} class="modal-body">
                     <div class="form-group">
                         <label for="resetPwd">New Password</label>
@@ -342,11 +345,12 @@
 
     {#if showModal}
         <div class="modal-backdrop">
-            <div class="modal">
+            <div class="modal siem-split-modal">
                 <div class="modal-header">
                     <h3>{isEditing ? 'Edit User' : 'Add New User'}</h3>
                     <button class="close-btn" on:click={() => showModal = false}>&times;</button>
                 </div>
+                <aside class="siem-modal-context"><span class="siem-eyebrow">USER ACCESS</span><i class="ti ti-user-shield"></i><h3>{isEditing ? 'รายละเอียดบัญชี' : 'เพิ่มผู้ใช้งาน'}</h3><p>เลือกบทบาทและวิธีเข้าสู่ระบบให้ตรงกับผู้ใช้งาน ตรวจทานข้อมูลด้านขวาก่อนบันทึก</p></aside>
                 <form on:submit|preventDefault={addUser} class="modal-body">
                     <div class="form-group">
                         <label for="username">Username *</label>
@@ -417,6 +421,7 @@
                         <small style="color: var(--text-muted, #6b7280);">ผู้ใช้จะถูกบังคับให้เปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งแรก</small>
                     </div>
                     {/if}
+                    <ChangeSummary values={{ 'ชื่อผู้ใช้': newUser.username, 'ชื่อ': newUser.firstName, 'นามสกุล': newUser.lastName, 'อีเมล': newUser.email, 'บทบาท': newUser.role, 'เข้าสู่ระบบ': newUser.authMethod, 'กำหนดให้ใช้ 2FA': newUser.require2fa }} />
                     <div class="modal-actions">
                         <button type="button" class="cancel-btn" on:click={() => showModal = false}>Cancel</button>
                         <button type="submit" class="save-btn" disabled={saving}>{saving ? 'Saving...' : (isEditing ? 'Save Changes' : 'Add User')}</button>
@@ -428,6 +433,7 @@
 
     <ConfirmModal bind:visible={showConfirmModal} title={confirmTitle} message={confirmMessage} icon={confirmIcon} confirmColor={confirmColor} iconColor={confirmColor} on:confirm={executeConfirmAction} on:cancel={() => showConfirmModal = false} />
 </div>
+</section>
 
 <style>
     .users-page {

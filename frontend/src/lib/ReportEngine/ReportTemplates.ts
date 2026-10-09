@@ -1,3 +1,4 @@
+import { escapeReportData } from './reportEscape';
 import type { ExportSession, IpSummary, ExportLanguage, AiBriefingContext } from "./types";
 import { getAttackTypeMeaning, getMitreTechniqueInfo, getTacticBadge } from "./mitreMapping";
 
@@ -585,6 +586,7 @@ function renderThreeLevelRecs(session: ExportSession, lbl: typeof L.th, sectionN
 // PUBLIC: GENERATE INCIDENT DEEP DIVE HTML (SANGFOR STYLE)
 // ═══════════════════════════════════════════════════════════════════════════════
 export function generateIncidentDeepDiveHtml(session: ExportSession, hash?: string): string {
+  session = escapeReportData(session);
   const lang = session.language;
   const lbl = lang === "en" ? L.en : L.th;
   
@@ -729,6 +731,7 @@ export function generateIncidentDeepDiveHtml(session: ExportSession, hash?: stri
 
 // ═══════════════════════════════════════════════════════════════════════════════
 export function generateExecutiveSummaryHtml(session: ExportSession, hash?: string): string {
+  session = escapeReportData(session);
   const lang = session.language;
   const lbl = lang === "en" ? L.en : L.th;
   
@@ -790,6 +793,7 @@ export function generateExecutiveSummaryHtml(session: ExportSession, hash?: stri
 // PUBLIC: GENERATE TECHNICAL DETAILS HTML
 // ═══════════════════════════════════════════════════════════════════════════════
   export function generateTechnicalDetailsHtml(session: ExportSession, hash?: string): string {
+  session = escapeReportData(session);
     const lang = session.language;
     const lbl = lang === "en" ? L.en : L.th;
   
@@ -816,6 +820,7 @@ export function generateExecutiveSummaryHtml(session: ExportSession, hash?: stri
 // PUBLIC: GENERATE AI DAILY BRIEFING HTML
 // ═══════════════════════════════════════════════════════════════════════════════
 export function generateAiBriefingHtml(session: ExportSession, hash?: string): string {
+  session = escapeReportData(session);
   const lang = session.language;
   const lbl = lang === 'en' ? L.en : L.th;
   const ai = session.aiContext as AiBriefingContext | null;

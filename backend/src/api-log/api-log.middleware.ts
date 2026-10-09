@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiLog } from '../entities/api-log.entity';
+import { clientIp as resolveClientIp } from '../developer-api/ip-policy';
 
 @Injectable()
 export class ApiLogMiddleware implements NestMiddleware {
@@ -15,18 +16,7 @@ export class ApiLogMiddleware implements NestMiddleware {
     const start = Date.now();
 
     // ดึง IP จริงของ client (รองรับ proxy/nginx)
-    const clientIp = (
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-      req.socket?.remoteAddress ||
-      'unknown'
-    );
-
-    // ดึง role จาก fake-jwt token ถ้ามี
-    let authRole: string | undefined;
-    const authHeader = req.headers['authorization'] as string;
-    if (authHeader?.startsWith('Bearer fake-jwt-token-for-')) {
-      authRole = authHeader.replace('Bearer fake-jwt-token-for-', '').trim();
-    }
+    const clientIp = resolveClientIp(req) || 'unknown';
 
     // Hook เมื่อ response ส่งเสร็จแล้ว
     res.on('finish', () => {
@@ -47,10 +37,12 @@ export class ApiLogMiddleware implements NestMiddleware {
       logEntry.clientIp = clientIp as any;
       logEntry.userAgent = ((req.headers['user-agent'] || '').substring(0, 500)) as any;
       logEntry.durationMs = durationMs as any;
-      logEntry.authRole = (authRole || null) as any;
+      logEntry.authRole = ((req as any).user?.role || null) as any;
+      logEntry.actorUserId = (req as any).user?.sub || null;
+      logEntry.credentialId = (req as any).apiTokenId || null;
       logEntry.responseSize = (responseSize ?? null) as any;
 
-      this.apiLogRepository.save(logEntry).catch((err) => {
+      this.apiLogRepository.save(logEntry, { transaction: false }).catch((err) => {
         console.warn('[ApiLog] Failed to save log:', err?.message);
       });
     });

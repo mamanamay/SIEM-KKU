@@ -35,7 +35,7 @@ export class AuditService {
         result: data.result,
         metadata: data.metadata,
       });
-      await this.auditRepository.save(entry);
+      await this.auditRepository.save(entry, { transaction: false });
     } catch (error) {
       console.error('Failed to write audit log:', error);
     }

@@ -155,6 +155,7 @@
     }
 </script>
 
+<section class="siem-page siem-page--security" aria-label="security">
 <div class="page-container">
         <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
         <div style="width: 56px; height: 56px; background: rgba(239, 68, 68, 0.1); color: #ef4444; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px;">
@@ -169,6 +170,7 @@
     {#if loading}
         <div class="loading">Loading...</div>
     {:else}
+        <aside class="siem-form-intro"><span class="siem-eyebrow">ACCOUNT SECURITY</span><h3>ดูแลการเข้าถึงบัญชี</h3><p>กรอกรหัสผ่านด้านขวา หรือทำตามขั้นตอน 2FA ที่แสดงอยู่ ตรวจสอบข้อมูลก่อนยืนยันผ่านปุ่มเดิมของระบบ</p></aside>
         <div class="cards">
             <!-- Password Management -->
             <div class="card">
@@ -253,6 +255,7 @@
 
     <ConfirmModal bind:visible={showConfirmModal} title={confirmTitle} message={confirmMessage} icon={confirmIcon} on:confirm={executeConfirmAction} on:cancel={() => showConfirmModal = false} />
 </div>
+</section>
 
 <style>
     .page-container {

@@ -1,14 +1,26 @@
-﻿<script lang="ts">
+<script lang="ts">
   import type { Message } from '../../AiCopilot/types';
-  import { globalReportStore } from '../../../stores/globalReportStore';
+  import { openInvestigationReport, restoreInvestigationReport } from '../../AiCopilot/investigationReport';
+  import { aiCopilotStore } from '../../../stores/aiCopilotStore';
+  import { lanDetectionsStore as eventsStore, roleStore } from '../../../stores/events';
+  import { showNotification } from '../../../stores/notificationStore';
+  import { get } from 'svelte/store';
 
   export let message: Message;
+  export let conversation: Message[] = [];
 
   function handleAction(action: any) {
     if (action.action === 'export') {
-       globalReportStore.openReportWizard([], 'executive');
+      try {
+        if(get(roleStore)==='guest')throw new Error('บัญชีนี้ไม่มีสิทธิ์ใช้ข้อมูลเหตุการณ์เพื่อออกรายงาน');
+        const fallback=message.reportScope?undefined:restoreInvestigationReport(message,conversation,get(eventsStore),get(roleStore));
+        openInvestigationReport(message,fallback);
+        aiCopilotStore.closePanel();
+      } catch (error) {
+        showNotification('warning','Investigation Report',error instanceof Error?error.message:'เปิดรายงานไม่สำเร็จ');
+      }
     } else if (action.action === 'navigate' && action.payload) {
-       window.location.href = action.payload;
+      window.location.href = action.payload;
     }
   }
 

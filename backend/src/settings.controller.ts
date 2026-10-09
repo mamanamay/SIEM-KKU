@@ -210,6 +210,14 @@ export class SettingsController {
       
       user.apiConfigJson = JSON.stringify(newApi);
       await this.userRepository.save(user);
+      // Notification configuration is system-wide; per-user AI credentials remain per-user.
+      if (req.user.role === 'admin' && Object.prototype.hasOwnProperty.call(newApi, 'slackUrl')) {
+        let system = await this.configRepo.findOne({ where: { id: 1 } });
+        if (!system) system = this.configRepo.create({ id: 1 });
+        const current = system.apiConfigJson ? JSON.parse(system.apiConfigJson) : {};
+        system.apiConfigJson = JSON.stringify({ ...current, slackUrl: newApi.slackUrl });
+        await this.configRepo.save(system);
+      }
     }
 
     this.auditService.log({

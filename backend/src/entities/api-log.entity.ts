@@ -2,6 +2,12 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 
 
 @Entity('api_logs')
 export class ApiLog {
+  @Column({ type: 'int', nullable: true })
+  actorUserId: number | null;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  credentialId: string | null;
+
   @PrimaryGeneratedColumn()
   id: number;
 

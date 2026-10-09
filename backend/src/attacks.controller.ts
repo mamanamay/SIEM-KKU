@@ -6,6 +6,7 @@ import { Repository, Between } from 'typeorm';
 import { Attack } from './entities/attack.entity';
 import { EventsGateway } from './events.gateway';
 import { LogService } from './log.service';
+import { NetworkMapService } from './network-map.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -38,7 +39,8 @@ export class AttacksController {
     private attackRepository: Repository<Attack>,
     private eventsGateway: EventsGateway,
     private logService: LogService,
-    private aiService: AiService
+    private aiService: AiService,
+    private readonly network: NetworkMapService,
   ) {}
 
   // ── IP Map Registration (from proxy.js) ───────────────────────────────────
@@ -92,7 +94,7 @@ export class AttacksController {
 
   // ── Get Historical Attacks ────────────────────────────────────────────────
   @Get('history')
-  async getHistory(@Query('date') dateStr?: string) {
+  async getHistory(@Query('date') dateStr?: string, @Query('scope') scope?: string) {
     if (!dateStr) {
       // Default to today if no date provided
       dateStr = new Date().toISOString().split('T')[0];
@@ -115,7 +117,7 @@ export class AttacksController {
       take: 1000 // Limit to 1000 to prevent massive payloads
     });
     
-    return attacks;
+    return scope === 'lan' ? attacks.filter(event => this.network.evaluate(event).inScope).map(event => ({ ...event, networkScope: this.network.evaluate(event) })) : attacks;
   }
 
   // ── Update Attack Status ──────────────────────────────────────────────────
@@ -632,13 +634,28 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
       qb.andWhere('a.severity = :severity', { severity });
     }
 
-    if (lan === 'true') {
-      qb.andWhere(
-        `(a.destIp LIKE '10.52.%' OR a.destIp LIKE '10.101.%' OR a.destIp = '127.0.0.1' OR a.destIp IS NULL OR a.ip LIKE '10.52.%' OR a.ip LIKE '10.101.%' OR a.ip = '127.0.0.1')`
-      );
-    }
-
     qb.orderBy('a.id', 'DESC');
+
+    if (lan === 'true') {
+      // Scan in bounded batches so scope is applied BEFORE pagination and counts.
+      const data: any[] = [];
+      let total = 0;
+      let offset = 0;
+      for (;;) {
+        const batch = await qb.clone().skip(offset).take(500).getMany();
+        if (!batch.length) break;
+        if (offset === 0) qb.andWhere('a.id <= :snapshotId', { snapshotId: batch[0].id });
+        for (const event of batch) {
+          const networkScope = this.network.evaluate(event);
+          if (!networkScope.inScope) continue;
+          if (total >= skip && data.length < limitNum) data.push({ ...event, networkScope });
+          total++;
+        }
+        offset += batch.length;
+        if (batch.length < 500) break;
+      }
+      return { data, total, page: pageNum, pages: Math.ceil(total / limitNum) || 1 };
+    }
 
     const [data, total] = await qb.skip(skip).take(limitNum).getManyAndCount();
 
@@ -653,12 +670,14 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
 
   @Get('ip-history/:ip')
   @UseGuards(AuthGuard)
-  async getIpHistory(@Param('ip') ip: string) {
-    const attacks = await this.attackRepository.find({
+  async getIpHistory(@Param('ip') ip: string, @Query('scope') scope?: string) {
+    const loaded = await this.attackRepository.find({
       where: { ip },
       order: { id: 'ASC' },
       take: 200,
     });
+
+    const attacks = scope === 'lan' ? loaded.filter(event => this.network.evaluate(event).inScope) : loaded;
 
     const successKeywords = /(command|success|compromised|login.*ok|session.*open|cmd:|exec:|rm |wget |curl )/i;
 

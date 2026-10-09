@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { showUiMessage } from '../../../lib/workspace/feedback';
   import { callKKUAI } from '../../../lib/utils/kkuai';
-  import { eventsStore } from '../../../stores/events';
+  import { lanDetectionsStore as eventsStore } from '../../../stores/events';
   import { onMount } from 'svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
@@ -87,11 +88,11 @@
         selectedHistoryIds = [];
         showDeleteConfirm = false;
       } else {
-        alert('Failed to delete history');
+        await showUiMessage('Failed to delete history');
       }
     } catch (e) {
       console.error(e);
-      alert('Error deleting history');
+      await showUiMessage('Error deleting history');
     }
   }
 
@@ -426,7 +427,8 @@
 
   </style>
   
-  <div style="display:flex;flex-direction:column;height:100%;gap:16px;">
+  <section class="siem-page siem-page--cve" aria-label="cve">
+<div style="display:flex;flex-direction:column;height:100%;gap:16px;">
     <PageHeader title="CVE Database" description="Vulnerability Intelligence and Threat Analysis." icon="ti-shield-search">
       <div slot="actions">
         <ExportBtn 
@@ -507,12 +509,12 @@
   <div class="hub-main" style="margin-top: 0 !important; padding-top: 0 !important;">
     
     <div class="search-hero">
-      <div class="hero-title">Vulnerability Intelligence</div>
+      <div class="hero-title">Vulnerability Intelligence</div><p class="siem-panel-note">ค้นหาด้วย CVE ID · ผลค้นหาสำเร็จจะถูกบันทึกในประวัติตามระบบเดิม</p>
       
       
       <div class="ai-search-bar">
         <i class="ti ti-sparkles"></i>
-        <input type="text" bind:value={searchQuery} on:keydown={handleKeydown} placeholder="e.g. 'What is the Log4j vulnerability?' or 'CVE-2021-44228'" />
+        <input type="text" bind:value={searchQuery} on:keydown={handleKeydown} placeholder="CVE-2021-44228" />
         <button class="btn-search" on:click={() => searchVulnerability(searchQuery)} disabled={loading}>
           {loading ? 'Analyzing...' : 'Analyze'}
         </button>
@@ -655,3 +657,4 @@
   on:confirm={confirmDeleteHistory}
   on:cancel={() => showDeleteConfirm = false}
 />
+</section>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import { onMount } from 'svelte';
-  import { eventsStore } from '../../../stores/events';
+  import { lanEventsStore as eventsStore } from '../../../stores/events';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
   import OrgBadge from '../../../lib/components/OrgBadge.svelte';
   let searchQuery = '';
@@ -46,6 +46,7 @@
   });
 </script>
 
+<section class="siem-page siem-page--explorer" aria-label="explorer">
 <div class="explorer-wrap" style="display:flex;flex-direction:column;gap:16px;">
   <PageHeader title="Log Explorer" description="Perform ad-hoc queries across raw security events." icon="ti-file-search">
     <div slot="actions">
@@ -55,7 +56,7 @@
   <div class="kql-header">
     <div class="kql-search-box">
       <div class="kql-icon"><i class="ti ti-search"></i></div>
-      <input type="text" class="kql-input" bind:value={searchQuery} on:keypress={(e) => e.key === 'Enter' && performSearch()} placeholder="e.g. source_ip='192.168.1.5' AND severity='CRITICAL'" />
+      <input type="text" class="kql-input" bind:value={searchQuery} on:keypress={(e) => e.key === 'Enter' && performSearch()} placeholder="ค้นหาข้อความ IP, severity, type หรือ payload" />
       
       <select class="kql-date-picker" bind:value={dateRange}>
         <option value="last15m">Last 15 minutes</option>
@@ -128,6 +129,7 @@
     </table>
   </div>
 </div>
+</section>
 
 <style>
   .explorer-wrap {

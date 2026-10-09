@@ -1,4 +1,5 @@
 <script>
+    import ChangeSummary from '../../../../lib/components/workspace/ChangeSummary.svelte';
     import { onMount } from 'svelte';
     import { showNotification } from '../../../../stores/notificationStore';
     import ConfirmModal from '$lib/components/ConfirmModal.svelte';
@@ -84,6 +85,7 @@
     }
 </script>
 
+<section class="siem-page siem-page--config" aria-label="config">
 <div class="page-container">
     
     <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
@@ -100,6 +102,7 @@
     {#if loading}
         <div class="loading">Loading...</div>
     {:else}
+        <aside class="siem-form-intro"><span class="siem-eyebrow">SYSTEM PREFERENCES</span><h3>กำหนดค่าการใช้งานระบบ</h3><p>ตรวจทานระยะเวลาเก็บข้อมูลและเวลาออกจากระบบก่อนยืนยันบันทึก ช่องกรอกและเงื่อนไขใช้ค่าตามระบบเดิม</p></aside>
         <div class="cards">
             <!-- Data Management -->
             <div class="card">
@@ -120,6 +123,7 @@
             </div>
         </div>
 
+        <div class="siem-form-review"><ChangeSummary values={{ 'เก็บข้อมูล (วัน)': sysConfig.retentionDays, 'ออกจากระบบอัตโนมัติ (นาที)': sysConfig.autoLogout }} ready={!loading} /></div>
         <div class="actions">
             <button on:click={requestSaveConfig} disabled={saving} class="btn-primary">
                 {saving ? 'Saving...' : 'Save Configuration'}
@@ -129,6 +133,7 @@
     
     <ConfirmModal bind:visible={showConfirmModal} title={confirmTitle} message={confirmMessage} icon={confirmIcon} on:confirm={executeConfirmAction} on:cancel={() => showConfirmModal = false} />
 </div>
+</section>
 
 <style>
     .page-container {

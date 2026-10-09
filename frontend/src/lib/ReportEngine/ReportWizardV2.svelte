@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { askUiConfirm } from '../workspace/feedback';
   import { onMount, tick } from 'svelte';
   import { globalReportStore, closeReportWizard, AI_BRIEFING_SECTIONS } from '../../stores/globalReportStore';
-  import { getPageSchema, getDefaultSelectedFields, UNIFIED_FIELD_GROUPS, ALL_GROUP_KEYS, deriveFieldsFromGroups } from './exportSchemas';
+  import { getPageSchema, deriveIpSummaries, getDefaultSelectedFields, UNIFIED_FIELD_GROUPS, ALL_GROUP_KEYS, deriveFieldsFromGroups } from './exportSchemas';
   import {
     generateExecutiveSummaryHtml,
     generateTechnicalDetailsHtml,
@@ -16,7 +17,7 @@
 
   // Subscription to store
   $: session = $globalReportStore;
-  $: schema = getPageSchema(session.sourcePage);
+  $: schema = {...getPageSchema(session.sourcePage),allowExecOnly:session.config?.allowExecOnly || getPageSchema(session.sourcePage).allowExecOnly};
   $: isAiBriefing = session.sourcePage === 'ai-briefing';
 
   // Users for dropdown
@@ -80,12 +81,27 @@
     }
   });
 
+  function reportDateInput(value: string) {
+    if(!value)return '';
+    return /(Z|[+-]\d{2}:\d{2})$/.test(value)?new Date(Date.parse(value)+7*3600000).toISOString().slice(0,16):value.slice(0,16);
+  }
   function nextStep() {
     if (session.currentStep === 1) {
       if (!session.reportTitle.trim()) {
         showNotification('Error', 'กรุณาระบุชื่อรายงาน', 'error');
         return;
       }
+    }
+    if (session.currentStep === 1 && session.sourcePage === 'ai-copilot') {
+      const parse=(value:string)=>Date.parse(/(Z|[+-]\d{2}:\d{2})$/.test(value)?value:value+'+07:00');
+      const from=parse(session.dateRange.from),to=parse(session.dateRange.to);
+      const original=session.dataModel?.dataset||session.dataset;
+      const dataset=original.filter(e=>{const time=Date.parse(e.createdAt);return time>=from&&time<=to;});
+      if(!Number.isFinite(from)||!Number.isFinite(to)||from>to||!dataset.length){
+        showNotification('warning','Investigation Report','ช่วงวันที่เลือกไม่มีหลักฐานในชุดการสืบสวนนี้');return;
+      }
+      const summaries=deriveIpSummaries(dataset),ips=new Set(summaries.map(e=>e.ip));
+      globalReportStore.update(s=>({...s,dataset,allIpSummaries:summaries,selectedIPs:s.selectedIPs.filter(ip=>ips.has(ip))}));
     }
     if (session.currentStep === 2) {
       if (!isAiBriefing && session.selectedIPs.length === 0) {
@@ -293,7 +309,7 @@
   // --- Step 4 Actions (Export) ---
   async function finalizeExport() {
     if (session.validationResult?.hasCritical) {
-      const proceed = confirm("There are Critical Errors in the validation. Do you really want to export?");
+      const proceed = await askUiConfirm("There are Critical Errors in the validation. Do you really want to export?");
       if (!proceed) return;
     }
 
@@ -438,7 +454,7 @@
       <!-- STEP 1: Metadata -->
       {#if session.currentStep === 1}
         <div class="step-content">
-          <h3>Report Metadata</h3>
+          <h3>Report Metadata</h3><p class="siem-panel-note">กำหนดข้อมูลรายงานด้านล่าง ชุดข้อมูลถูกเก็บ ณ เวลาที่กด Export และใช้ขั้นตอนตรวจทานเดิมทั้ง 4 ขั้น</p>
           
           <div class="form-grid">
             <div class="form-group">
@@ -495,12 +511,12 @@
 
             <div class="form-group">
               <label>Reporting Period — From</label>
-              <input type="datetime-local" value={session.dateRange.from ? session.dateRange.from.slice(0,16) : ''} on:change={(e) => globalReportStore.update(s => ({ ...s, dateRange: { ...s.dateRange, from: e.currentTarget.value } }))} />
+              <input type="datetime-local" value={reportDateInput(session.dateRange.from)} on:change={(e) => globalReportStore.update(s => ({ ...s, dateRange: { ...s.dateRange, from: e.currentTarget.value ? e.currentTarget.value+'+07:00' : '' } }))} />
             </div>
 
             <div class="form-group">
               <label>Reporting Period — To</label>
-              <input type="datetime-local" value={session.dateRange.to ? session.dateRange.to.slice(0,16) : ''} on:change={(e) => globalReportStore.update(s => ({ ...s, dateRange: { ...s.dateRange, to: e.currentTarget.value } }))} />
+              <input type="datetime-local" value={reportDateInput(session.dateRange.to)} on:change={(e) => globalReportStore.update(s => ({ ...s, dateRange: { ...s.dateRange, to: e.currentTarget.value ? e.currentTarget.value+'+07:00' : '' } }))} />
             </div>
           </div>
         </div>

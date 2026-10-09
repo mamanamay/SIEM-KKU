@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { eventsStore } from '../../../stores/events';
+  import { lanEventsStore as eventsStore } from '../../../stores/events';
   import { formatEventTime } from '../../../lib/formatTime';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
@@ -91,9 +91,10 @@
 
 <svelte:head><title>Threat Hunting - KKUSIEM</title></svelte:head>
 
+<section class="siem-page siem-page--hunting" aria-label="hunting">
 <div class="hunt-container">
   <!-- Top Filters Panel -->
-  <PageHeader title="Threat Hunting" description="Proactively search and investigate potential threats using custom KQL-like filters." icon="ti-target">
+  <PageHeader title="Threat Hunting" description="ค้นหาเหตุการณ์จาก IP/CIDR ประเภท ประเทศ ระดับความรุนแรง และช่วงเวลา" icon="ti-target">
     <div slot="actions">
       <ExportBtn config={{ pageType: 'hunting', reportTitle: 'Threat Hunting Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={hasSearched ? results : events} />
     </div>
@@ -146,6 +147,7 @@
     </div>
   </div>
 
+  <div class="siem-filter-context" aria-live="polite"><i class="ti ti-filter"></i> เกณฑ์ที่กรอก: {searchIp || 'ทุก IP'} · {searchType || 'ทุกประเภท'} · {searchSeverity === 'all' ? 'ทุกระดับ' : searchSeverity} · {searchCountry || 'ทุกประเทศ'}{#if dateFrom || dateTo} · {dateFrom || 'เริ่มต้น'} → {dateTo || 'ปัจจุบัน'}{/if}</div>
   <!-- Data Grid Results -->
   <div class="results-panel">
     <div class="results-header">
@@ -219,6 +221,7 @@
     {/if}
   </div>
 </div>
+</section>
 
 <style>
   .hunt-container {

@@ -1,4 +1,14 @@
 <script lang="ts">
+  import '../../lib/workspace/workspace.css';
+  import '../../lib/workspace/layout.css';
+  import FeedbackDialog from '../../lib/components/workspace/FeedbackDialog.svelte';
+  import WorkspacePanels from '../../lib/components/workspace/WorkspacePanels.svelte';
+  import { enhanceWorkspace } from '../../lib/workspace/enhance';
+  import { resetWorkspacePage } from '../../lib/workspace/view';
+  let focusMode = false;
+  let mobileMenu = false;
+  let workspacePath = '';
+  $: if ($page.url.pathname !== workspacePath) { workspacePath = $page.url.pathname; mobileMenu = false; resetWorkspacePage(); }
   import { aiCopilotStore } from '../../stores/aiCopilotStore';
   import ReportWizardV2 from '../../lib/ReportEngine/ReportWizardV2.svelte';
   import AiCopilotDrawer from '../../lib/components/AiCopilot/AiCopilotDrawer.svelte';
@@ -174,6 +184,19 @@
   function getPageTitle(path: string) {
     const titles: Record<string, string> = {
       '/dashboard': 'Overview Dashboard',
+      '/dashboard/hunting': 'Threat Hunting',
+      '/dashboard/explorer': 'Log Explorer',
+      '/dashboard/soar': 'Deep Incident',
+      '/dashboard/health': 'System Health',
+      '/dashboard/settings/profile': 'My Profile',
+      '/dashboard/settings/users': 'User Access Control',
+      '/dashboard/settings/config': 'System Config',
+      '/dashboard/settings/integrations': 'Integrations',
+      '/dashboard/settings/developer-api': 'API & MCP',
+      '/dashboard/settings/security': 'Security & 2FA',
+      '/dashboard/settings/api-history': 'API History',
+      '/dashboard/settings/report-history': 'Report History',
+      '/dashboard/settings/audit-trail': 'Audit Trail',
       '/dashboard/investigate': 'Threat Investigation',
       '/dashboard/analytics': 'Attacker Analytics',
       '/dashboard/mitre': 'MITRE ATT&CK Matrix',
@@ -226,64 +249,52 @@
   <title>KKUSIEM</title>
 </svelte:head>
 
-<div class="layout-wrapper">
+<div class="layout-wrapper siem-workspace" class:siem-focus={focusMode} class:siem-sidebar-open={mobileMenu}>
   <!-- Sidebar -->
+  {#if mobileMenu}<button type="button" class="workspace-menu-shade" aria-label="ปิดเมนู" on:click={() => mobileMenu = false}></button>{/if}
   <aside class="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-logo">
-        <i class="ti ti-radar"></i>
+        <i class="ti ti-shield-check"></i>
       </div>
-      <div class="sidebar-title">KKUSIEM</div>
+      <div class="sidebar-title">SIEM KKU<span class="sidebar-subtitle">SECURITY WORKSPACE</span></div>
     </div>
           <nav class="sidebar-nav custom-scrollbar" style="overflow-y: auto;">
         <div class="nav-group-title">OVERVIEW</div>
-        <a href="/dashboard" class="nav-item {$page.url.pathname === '/dashboard' ? 'active' : ''}">
-          <i class="ti ti-dashboard"></i> Dashboard
-        </a>
+        <a href="/dashboard" class="nav-item {$page.url.pathname === '/dashboard' ? 'active' : ''}" aria-label="Dashboard" title="Dashboard">
+          <i class="ti ti-dashboard"></i><span class="nav-label">Dashboard</span></a>
   
         <div class="nav-group-title mt-2">DETECTION & ANALYSIS</div>
-        <a href="/dashboard/hunting" class="nav-item {$page.url.pathname === '/dashboard/hunting' ? 'active' : ''}">
-          <i class="ti ti-code-asterisk"></i> Threat Hunting
+        <a href="/dashboard/hunting" class="nav-item {$page.url.pathname === '/dashboard/hunting' ? 'active' : ''}" aria-label="Threat Hunting" title="Threat Hunting">
+          <i class="ti ti-code-asterisk"></i><span class="nav-label">Threat Hunting</span></a>
+        <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}" aria-label="Analyst Center" title="Analyst Center">
+          <i class="ti ti-chart-pie"></i><span class="nav-label">Analyst Center</span></a>
+        <a href="/dashboard/ai-briefing" class="nav-item {$page.url.pathname === '/dashboard/ai-briefing' ? 'active' : ''}" aria-label="AI Daily Briefing" title="AI Daily Briefing">
+          <i class="ti ti-brain"></i><span class="nav-label">AI Daily Briefing</span></a>
+        <a href="/wallboard" target="_blank" class="nav-item" aria-label="SOC Operations Center" title="SOC Operations Center">
+          <i class="ti ti-device-tv"></i><span class="nav-label">SOC Operations Center</span><i class="ti ti-external-link" style="margin-left:auto;font-size:11px;opacity:0.5;"></i>
         </a>
-        <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}">
-          <i class="ti ti-chart-pie"></i> Analyst Center
-        </a>
-        <a href="/dashboard/ai-briefing" class="nav-item {$page.url.pathname === '/dashboard/ai-briefing' ? 'active' : ''}">
-          <i class="ti ti-brain"></i> AI Daily Briefing
-        </a>
-        <a href="/wallboard" target="_blank" class="nav-item">
-          <i class="ti ti-device-tv"></i> SOC Operations Center
-          <i class="ti ti-external-link" style="margin-left:auto;font-size:11px;opacity:0.5;"></i>
-        </a>
-        <a href="/dashboard/soar" class="nav-item {$page.url.pathname === '/dashboard/soar' ? 'active' : ''}">
-          <i class="ti ti-zoom-in"></i> Deep Incident 
-        </a>
-        <a href="/dashboard/explorer" class="nav-item {$page.url.pathname === '/dashboard/explorer' ? 'active' : ''}">
-          <i class="ti ti-terminal-2"></i> Log Explorer
-        </a>
-        <a href="/dashboard/mitre" class="nav-item {$page.url.pathname === '/dashboard/mitre' ? 'active' : ''}">
-          <i class="ti ti-grid-dots"></i> MITRE ATT&CK
-        </a>
+        <a href="/dashboard/soar" class="nav-item {$page.url.pathname === '/dashboard/soar' ? 'active' : ''}" aria-label="Deep Incident" title="Deep Incident">
+          <i class="ti ti-zoom-in"></i><span class="nav-label">Deep Incident</span></a>
+        <a href="/dashboard/explorer" class="nav-item {$page.url.pathname === '/dashboard/explorer' ? 'active' : ''}" aria-label="Log Explorer" title="Log Explorer">
+          <i class="ti ti-terminal-2"></i><span class="nav-label">Log Explorer</span></a>
+        <a href="/dashboard/mitre" class="nav-item {$page.url.pathname === '/dashboard/mitre' ? 'active' : ''}" aria-label="MITRE ATT&CK" title="MITRE ATT&CK">
+          <i class="ti ti-grid-dots"></i><span class="nav-label">MITRE ATT&CK</span></a>
   
         <div class="nav-group-title mt-2">RESPONSE & INTEL</div>
-        <a href="/dashboard/network-map" class="nav-item {$page.url.pathname === '/dashboard/network-map' ? 'active' : ''}">
-          <i class="ti ti-map-2"></i> Network Map Management
-        </a>
-        <a href="/dashboard/blocked_ip_audit" class="nav-item {$page.url.pathname === '/dashboard/blocked_ip_audit' ? 'active' : ''}">
-          <i class="ti ti-shield-x"></i> Blocked IP Audit
-        </a>
-        <a href="/dashboard/cve" class="nav-item {$page.url.pathname === '/dashboard/cve' ? 'active' : ''}">
-          <i class="ti ti-database-search"></i> CVE Database
-        </a>
+        <a href="/dashboard/network-map" class="nav-item {$page.url.pathname === '/dashboard/network-map' ? 'active' : ''}" aria-label="Network Map Management" title="Network Map Management">
+          <i class="ti ti-map-2"></i><span class="nav-label">Network Map Management</span></a>
+        <a href="/dashboard/blocked_ip_audit" class="nav-item {$page.url.pathname === '/dashboard/blocked_ip_audit' ? 'active' : ''}" aria-label="Blocked IP Audit" title="Blocked IP Audit">
+          <i class="ti ti-shield-x"></i><span class="nav-label">Blocked IP Audit</span></a>
+        <a href="/dashboard/cve" class="nav-item {$page.url.pathname === '/dashboard/cve' ? 'active' : ''}" aria-label="CVE Database" title="CVE Database">
+          <i class="ti ti-database-search"></i><span class="nav-label">CVE Database</span></a>
   
         {#if $roleStore === 'admin'}
         <div class="nav-group-title mt-2">ADMINISTRATION</div>
-        <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}">
-          <i class="ti ti-settings"></i> Setting
-        </a>
-        <a href="/dashboard/health" class="nav-item {$page.url.pathname === '/dashboard/health' ? 'active' : ''}">
-          <i class="ti ti-server"></i> System Health
-        </a>
+        <a href="/dashboard/settings" class="nav-item {$page.url.pathname === '/dashboard/settings' ? 'active' : ''}" aria-label="Setting" title="Setting">
+          <i class="ti ti-settings"></i><span class="nav-label">Setting</span></a>
+        <a href="/dashboard/health" class="nav-item {$page.url.pathname === '/dashboard/health' ? 'active' : ''}" aria-label="System Health" title="System Health">
+          <i class="ti ti-server"></i><span class="nav-label">System Health</span></a>
         {/if}
       </nav>
     <div class="sidebar-footer">
@@ -393,11 +404,14 @@
     <!-- Topbar -->
     <header class="topbar">
       <div class="topbar-left">
+        <button type="button" class="workspace-mobile-menu" aria-label="เปิดหรือปิดเมนู" aria-expanded={mobileMenu} on:click={() => mobileMenu = !mobileMenu}><i class="ti ti-menu-2"></i></button>
+        <div><span class="workspace-kicker">KKU · SECURITY WORKSPACE</span>
         <h1 class="page-title">
           {getPageTitle($page.url.pathname)}
-        </h1>
+        </h1></div>
       </div>
       <div class="topbar-right" style="display:flex; align-items:center;">
+          <button type="button" class="workspace-mode-button" aria-label={focusMode ? 'ขยายชื่อเมนู' : 'ใช้มุมมอง Focus'} title={focusMode ? 'Workspace: แสดงชื่อเมนู' : 'Focus: เพิ่มพื้นที่ข้อมูล'} aria-pressed={focusMode} on:click={() => focusMode = !focusMode}><i class="ti {focusMode ? 'ti-layout-sidebar-left-expand' : 'ti-layout-sidebar-left-collapse'}"></i></button>
           <!-- Log Sources Status -->
           <div class="log-sources-status" style="display: flex; gap: 12px; margin-right: 15px; border-right: 1px solid var(--border); padding-right: 15px;">
             <div title="Firewall Traffic Log ({fwStatus})" style="display: flex; align-items: center; gap: 4px; font-size: 16px; color: var(--text-secondary);">
@@ -480,7 +494,7 @@
       </header>
 
     <!-- Page Content Slot -->
-    <div class="page-container custom-scrollbar">
+    <div class="page-container custom-scrollbar" use:enhanceWorkspace>
       <slot />
     </div>
 
@@ -1107,7 +1121,7 @@
   }
 </style>
 
-<Omnisearch />
+<div class="siem-workspace siem-overlay-host"><Omnisearch />
 
 {#if !$aiCopilotStore.isOpen}
   <button class="global-copilot-fab" on:click={() => aiCopilotStore.openPanel()} title="Open Global AI Copilot">
@@ -1121,4 +1135,6 @@
 
 <ReportWizardV2 />
 
-<AiCopilotDrawer />
+<AiCopilotDrawer /></div>
+<WorkspacePanels />
+<FeedbackDialog />

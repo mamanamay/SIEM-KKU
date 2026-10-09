@@ -1,6 +1,4 @@
-version: '3.8'
+# Use production mounts by default. For local mock logs, explicitly set
+# FIREWALL_LOG_DIR and REVPROXY_LOG_DIR in .env.
 services:
-  backend:
-    volumes:
-      - ./mock_logs/firewall:/var/log/firewall:ro
-      - ./mock_logs/revproxy:/var/log/revproxy:ro
+  backend: {}

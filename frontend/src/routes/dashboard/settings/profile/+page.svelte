@@ -1,4 +1,5 @@
 <script>
+    import ChangeSummary from '../../../../lib/components/workspace/ChangeSummary.svelte';
     import { onMount } from 'svelte';
     import { showNotification } from '../../../../stores/notificationStore';
     import ConfirmModal from '$lib/components/ConfirmModal.svelte';
@@ -10,6 +11,7 @@
         username: '',
         role: '',
         authMethod: '',
+        totpEnabled: undefined,
         status: ''
     };
     let loading = true;
@@ -87,10 +89,11 @@
     }
 
     function getInitials(first, last) {
-        return ((first || '')[0] || '') + ((last || '')[0] || '');
+        return (((first || '')[0] || '') + ((last || '')[0] || '')) || (user.username || 'U').slice(0, 2);
     }
 </script>
 
+<section class="siem-page siem-page--profile" aria-label="profile">
 <div class="profile-page">
     
     <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
@@ -107,18 +110,22 @@
         <div class="loading">Loading...</div>
     {:else}
         <div class="card">
-            <div class="card-header">
-                <div class="avatar">{getInitials(user.firstName, user.lastName).toUpperCase()}</div>
+            <div class="card-header profile-identity">
+                <div class="identity-eyebrow"><i class="ti ti-id-badge-2" aria-hidden="true"></i> ACCOUNT OVERVIEW</div>
+                <div class="avatar" aria-label="อักษรย่อของผู้ใช้">{getInitials(user.firstName, user.lastName).toUpperCase()}</div>
                 <div class="user-info">
-                    <h3>{user.username}</h3>
-                    <div class="badges">
-                        <span class="badge role">{user.role}</span>
-                        <span class="badge auth">{user.authMethod === 'kku_sso' ? 'KKU SSO' : 'Local'}</span>
-                        <span class="badge status" class:active={user.status === 'Active'}>{user.status}</span>
-                    </div>
+                    <h3>{[user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.username || 'ผู้ใช้งาน'}</h3>
+                    <p class="identity-handle">@{user.username || 'user'}</p>
                 </div>
+                <dl class="identity-details">
+                    <div><dt>บทบาทในระบบ</dt><dd><span class="identity-role"><i class="ti ti-shield-check" aria-hidden="true"></i>{user.role || 'ไม่ระบุ'}</span></dd></div>
+                    <div><dt>วิธีเข้าสู่ระบบ</dt><dd><i class="ti {user.authMethod === 'kku_sso' ? 'ti-building-bank' : 'ti-key'}" aria-hidden="true"></i>{user.authMethod === 'kku_sso' ? 'KKU SSO' : user.authMethod ? 'Local account' : 'ไม่ระบุ'}</dd></div>
+                    <div><dt>การยืนยัน 2 ขั้นตอน</dt><dd class="identity-security" class:enabled={user.totpEnabled === true}><i class="ti ti-lock" aria-hidden="true"></i>{user.totpEnabled === true ? 'เปิดใช้งานแล้ว' : user.totpEnabled === false ? 'ยังไม่เปิดใช้งาน' : 'ไม่มีข้อมูล'}</dd></div>
+                </dl>
+                <div class="identity-note"><i class="ti ti-info-circle" aria-hidden="true"></i><p>แก้ไขชื่อและอีเมลได้ในแบบฟอร์ม ข้อมูลสิทธิ์และการเข้าสู่ระบบแสดงไว้เพื่ออ้างอิง</p></div>
             </div>
             <form on:submit|preventDefault={requestSaveProfile} class="card-body">
+                <div class="profile-form-heading"><h3>Profile details</h3><p>ข้อมูลส่วนตัวที่ใช้แสดงในระบบ</p></div>
                 <div class="form-group">
                     <label for="firstName">First Name *</label>
                     <input type="text" id="firstName" bind:value={user.firstName} required />
@@ -131,6 +138,7 @@
                     <label for="email">Email</label>
                     <input type="email" id="email" bind:value={user.email} />
                 </div>
+                <ChangeSummary values={{ 'ชื่อ': user.firstName, 'นามสกุล': user.lastName, 'อีเมล': user.email }} ready={!loading} identity={user.username} />
                 <div class="form-actions">
                     <button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</button>
                 </div>
@@ -140,6 +148,7 @@
     
     <ConfirmModal bind:visible={showConfirmModal} title={confirmTitle} message={confirmMessage} icon={confirmIcon} on:confirm={executeConfirmAction} on:cancel={() => showConfirmModal = false} />
 </div>
+</section>
 
 <style>
     .profile-page {

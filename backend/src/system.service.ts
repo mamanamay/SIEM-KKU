@@ -7,6 +7,7 @@ import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { EventsGateway } from './events.gateway';
+import { LogService } from './log.service';
 
 const execAsync = promisify(exec);
 
@@ -19,6 +20,7 @@ export class SystemService implements OnModuleInit {
     @InjectRepository(SystemMetric)
     private metricRepository: Repository<SystemMetric>,
     @Inject(forwardRef(() => EventsGateway)) private eventsGateway: EventsGateway,
+    @Inject(forwardRef(() => LogService)) private logService: LogService,
   ) {}
 
   onModuleInit() {
@@ -58,6 +60,8 @@ export class SystemService implements OnModuleInit {
       this.eventsGateway.broadcastSystemHealth(metric);
 
       // Self-Monitoring Alerting
+      await this.handleRamPressure(ramUsage);
+
       if (ramUsage > 90 || diskStats.usage > 90) {
         this.logger.warn(`[!] System Health Warning! RAM: ${ramUsage.toFixed(1)}%, Disk: ${diskStats.usage.toFixed(1)}%`);
       }
@@ -76,6 +80,32 @@ export class SystemService implements OnModuleInit {
 
     } catch (error) {
       this.logger.error('Failed to collect system metrics', error);
+    }
+  }
+
+  
+  private readonly RAM_WARNING_THRESHOLD = 70;
+  private readonly RAM_CRITICAL_THRESHOLD = 85;
+  private readonly RAM_EMERGENCY_THRESHOLD = 92;
+
+  private async handleRamPressure(ramUsage: number) {
+    if (ramUsage >= this.RAM_EMERGENCY_THRESHOLD) {
+      this.logService.emergencyClearAllCaches();
+      if (global.gc) {
+        global.gc();
+        this.logger.warn('[RAM Guardian] EMERGENCY GC triggered');
+      }
+      try {
+        await this.metricRepository.query('DELETE FROM attack WHERE id IN (SELECT id FROM attack ORDER BY "createdAt" ASC LIMIT 50000);');
+      } catch(e) {}
+      this.logger.error(`[RAM Guardian] EMERGENCY: RAM at ${ramUsage.toFixed(1)}%! Cleared ALL caches + purged 50K oldest logs`);
+    } else if (ramUsage >= this.RAM_CRITICAL_THRESHOLD) {
+      this.logService.aggressiveCacheCleanup();
+      if (global.gc) global.gc();
+      this.logger.warn(`[RAM Guardian] CRITICAL: RAM at ${ramUsage.toFixed(1)}% — Aggressive cache cleanup`);
+    } else if (ramUsage >= this.RAM_WARNING_THRESHOLD) {
+      this.logService.cleanupStaleCaches();
+      this.logger.log(`[RAM Guardian] WARNING: RAM at ${ramUsage.toFixed(1)}% — Soft cache cleanup`);
     }
   }
 

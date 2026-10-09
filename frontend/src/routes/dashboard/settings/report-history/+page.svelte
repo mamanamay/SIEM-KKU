@@ -86,6 +86,7 @@
 
 </script>
 
+<section class="siem-page siem-page--report-history" aria-label="report-history">
 <div class="report-page">
   <div class="page-header-rh">
     <div class="rh-icon"><i class="ti ti-file-report"></i></div>
@@ -168,6 +169,7 @@
     </div>
   </div>
 {/if}
+</section>
 
 
 

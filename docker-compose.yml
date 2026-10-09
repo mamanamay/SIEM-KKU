@@ -1,18 +1,16 @@
-version: '3.8'
-
-# ============================================================
-# KKUSIEM Honeypot Dashboard — Production Docker Compose
+﻿# ============================================================
+# KKUSIEM Honeypot Dashboard â€” Production Docker Compose
 # ============================================================
 # All ports are configured via .env file.
-# Run: cp .env.example .env → edit .env → docker compose up -d --build
+# Run: cp .env.example .env â†’ edit .env â†’ docker compose up -d --build
 #
-# ─── Log Ingestion Architecture ─────────────────────────────
-#  [อื่นๆ]   ──HTTP POST──▶ backend:5000/api/ingest/<source>
+# â”€â”€â”€ Log Ingestion Architecture â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#  [à¸­à¸·à¹ˆà¸™à¹†]   â”€â”€HTTP POSTâ”€â”€â–¶ backend:5000/api/ingest/<source>
 # ============================================================
 
 services:
 
-  # ── 1. Reverse Proxy & SSL ──────────────────────────────────
+  # â”€â”€ 1. Reverse Proxy & SSL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   nginx:
     image: nginx:1.25-alpine
     container_name: siem_nginx
@@ -32,7 +30,7 @@ services:
       - frontend
       - backend
 
-  # ── 2. Frontend (SvelteKit) ─────────────────────────────────
+  # â”€â”€ 2. Frontend (SvelteKit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   frontend:
     build:
       context: ./frontend
@@ -53,12 +51,13 @@ services:
     depends_on:
       - backend
 
-  # ── 3. Backend (NestJS API & WebSockets) ────────────────────
+  # â”€â”€ 3. Backend (NestJS API & WebSockets) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: siemt_backend
+    mem_limit: 1g
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -71,26 +70,30 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - NODE_ENV=production
       - NODE_OPTIONS=--max-old-space-size=512
+      - SIEM_REPLAY_EXISTING_LOGS=${SIEM_REPLAY_EXISTING_LOGS:-false}
       - SSO_CLIENT_ID=${SSO_CLIENT_ID}
       - SSO_CLIENT_SECRET=${SSO_CLIENT_SECRET}
       - SSO_CALLBACK_URL=${SSO_CALLBACK_URL}
       - SSO_WEB_URL=${SSO_WEB_URL}
       - SSO_API_URL=${SSO_API_URL}
       - INGEST_API_KEY=${INGEST_API_KEY:-}
+      - SIEM_PUBLIC_BASE_URL=${SIEM_PUBLIC_BASE_URL:-https://odt-siem-uat.kku.ac.th}
+      - SIEM_TRUSTED_PROXY_CIDRS=${SIEM_TRUSTED_PROXY_CIDRS:-127.0.0.0/8,::1/128}
+      - SIEM_MCP_ALLOWED_ORIGINS=${SIEM_MCP_ALLOWED_ORIGINS:-https://odt-siem-uat.kku.ac.th}
     ports:
       - "5000:5000"
     expose:
       - "5000"
     volumes:
       - siem_logs:/app/siem-logs
-      - /var/log/firewall:/var/log/firewall:ro
-      - /var/log/revproxy:/var/log/revproxy:ro
+      - ${FIREWALL_LOG_DIR:-/var/log/firewall}:/var/log/firewall:ro
+      - ${REVPROXY_LOG_DIR:-/var/log/revproxy}:/var/log/revproxy:ro
       - /:/hostfs:ro
     depends_on:
       - postgres
       - redis
 
-  # ── 4. Database (PostgreSQL 16) ──────────────────────────────
+  # â”€â”€ 4. Database (PostgreSQL 16) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   postgres:
     image: postgres:16-alpine
     container_name: siem_postgres
@@ -109,7 +112,7 @@ services:
     expose:
       - "5432"
 
-  # ── 5. Cache / Message Broker (Redis 7) ──────────────────────
+  # â”€â”€ 5. Cache / Message Broker (Redis 7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   redis:
     image: redis:7-alpine
     container_name: siem_redis
@@ -122,12 +125,13 @@ services:
     expose:
       - "6379"
 
-  # ── 6. Detection Engine (AI/ML) ──────────────────────────────
+  # â”€â”€ 6. Detection Engine (AI/ML) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   detection-engine:
     build:
       context: ./detection-engine
       dockerfile: Dockerfile
     container_name: siem_detection_engine
+    mem_limit: 2g
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -145,3 +149,4 @@ services:
 volumes:
   pgdata:
   siem_logs:
+

@@ -23,7 +23,9 @@
   });
 </script>
 
+<section class="siem-page siem-page--audit-trail" aria-label="audit-trail">
 <div class="audit-page">
+  <div class="audit-overview">
   <div class="page-header-at">
     <div class="at-icon"><i class="ti ti-clipboard-list"></i></div>
     <div class="at-title-text">
@@ -33,15 +35,21 @@
   </div>
 
   <div class="kpi-badges">
-      <div class="k-badge c-hunting" class:active={activeFilter === "Hunting"} on:click={() => activeFilter = "Hunting"} style="cursor:pointer;"><i class="ti ti-tag"></i> {logs.filter(l => l.resource === 'Hunting').length} <span class="kb-lbl">HUNTING</span></div>
-      <div class="k-badge c-system" class:active={activeFilter === "System"} on:click={() => activeFilter = "System"} style="cursor:pointer;"><i class="ti ti-tag"></i> {logs.filter(l => l.resource === 'System').length} <span class="kb-lbl">SYSTEM</span></div>
+      <button type="button" class="k-badge c-hunting" class:active={activeFilter === "Hunting"} aria-pressed={activeFilter === 'Hunting'} on:click={() => activeFilter = "Hunting"}><span class="audit-stat-icon"><i class="ti ti-radar" aria-hidden="true"></i></span><span class="audit-stat-copy"><span class="kb-lbl">HUNTING</span><strong>{logs.filter(l => l.resource === 'Hunting').length}</strong></span><i class="ti ti-chevron-right audit-stat-arrow" aria-hidden="true"></i></button>
+      <button type="button" class="k-badge c-system" class:active={activeFilter === "System"} aria-pressed={activeFilter === 'System'} on:click={() => activeFilter = "System"}><span class="audit-stat-icon"><i class="ti ti-settings" aria-hidden="true"></i></span><span class="audit-stat-copy"><span class="kb-lbl">SYSTEM</span><strong>{logs.filter(l => l.resource === 'System').length}</strong></span><i class="ti ti-chevron-right audit-stat-arrow" aria-hidden="true"></i></button>
+  </div>
   </div>
 
-  <div class="filter-bar">
-      <div class="search-box">
+  <div class="filter-bar audit-toolbar">
+      <div class="audit-toolbar-top">
+      <label class="search-box" for="audit-search">
           <i class="ti ti-search"></i>
-          <input type="text" bind:value={searchQuery} placeholder="ค้นหา User, Action, Category..." />
+          <input id="audit-search" type="search" aria-label="ค้นหากิจกรรม ผู้ใช้ หรือหมวดหมู่" bind:value={searchQuery} placeholder="ค้นหาผู้ใช้ กิจกรรม หรือหมวดหมู่..." />
+      </label>
+      <div class="total-right" aria-live="polite">แสดง <strong>{filteredLogs.length}</strong> จาก {logs.length} รายการ</div>
       </div>
+      <div class="audit-filter-row">
+      <span class="audit-filter-label"><i class="ti ti-filter" aria-hidden="true"></i> หมวดหมู่</span>
       <div class="filter-chips">
           <button class="f-chip" class:active={activeFilter === 'All'} on:click={() => activeFilter = 'All'}>ทั้งหมด</button>
           <button class="f-chip" class:active={activeFilter === 'Account'} on:click={() => activeFilter = 'Account'}>Account</button>
@@ -52,7 +60,7 @@
           <button class="f-chip" class:active={activeFilter === 'Hunting'} on:click={() => activeFilter = 'Hunting'}>Hunting</button>
           <button class="f-chip" class:active={activeFilter === 'System'} on:click={() => activeFilter = 'System'}>System</button>
       </div>
-      <div class="total-right">{logs.length} รายการ</div>
+      </div>
   </div>
 
 
@@ -87,6 +95,7 @@
     {/if}
   </div>
 </div>
+</section>
 
 <style>
   .settings-page { padding: 24px; max-width: 1200px; margin: 0 auto; }
