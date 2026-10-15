@@ -1,9 +1,11 @@
+import { Roles } from './roles.guard';
 import { Controller, Get, Query } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLog } from './entities/audit-log.entity';
 
 @Controller('api/admin/audit-logs')
+@Roles('admin')
 export class AuditController {
   constructor(
     @InjectRepository(AuditLog)

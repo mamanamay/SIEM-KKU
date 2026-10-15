@@ -6,8 +6,10 @@ import { IntegrationCatalogService, PUBLIC_BASE_URL } from './catalog.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiLog } from '../entities/api-log.entity';
+import { PublicEndpoint, SelfService } from '../auth-policy';
 
 @Controller('api/developer')
+@SelfService()
 @UseGuards(DeveloperSessionGuard)
 export class DeveloperManagementController {
   constructor(private readonly access: ApiAccessService, private readonly catalog: IntegrationCatalogService, @InjectRepository(ApiLog) private readonly logs: Repository<ApiLog>) {}
@@ -27,6 +29,7 @@ export class DeveloperManagementController {
 }
 
 @Controller('api/v1')
+@PublicEndpoint()
 @UseGuards(DeveloperTokenGuard)
 export class DeveloperApiController {
   constructor(private readonly access: ApiAccessService, private readonly catalog: IntegrationCatalogService) {}

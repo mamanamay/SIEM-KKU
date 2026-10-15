@@ -15,6 +15,9 @@ import { Repository } from 'typeorm';
 import { SystemConfig } from './entities/system-config.entity';
 import { AuditService } from './audit.service';
 import axios from 'axios';
+import { safeHttp } from './outbound-http';
+import { aiApiBase } from './integration-url';
+import { randomBytes } from 'crypto';
 
 @Controller('api/settings')
 @UseGuards(AuthGuard, RolesGuard)
@@ -25,7 +28,7 @@ export class SettingsController {
     if (!user) throw new BadRequestException('User not found');
     const apiConfig = user && user.apiConfigJson ? JSON.parse(user.apiConfigJson) : {};
     
-    const apiUrl = (body.aiApiUrl || apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1').replace(/\/$/, '');
+    const apiUrl = aiApiBase(body.aiApiUrl || apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1');
     let apiKey = body.aiKey;
     
     // If frontend sends masked password, use the real one from DB
@@ -33,12 +36,12 @@ export class SettingsController {
         apiKey = apiConfig.aiKey;
     }
 
-    if (!apiKey) return { models: [] };
+    if (!apiKey) throw new BadRequestException('AI API Key is missing in Settings');
 
     let models: any[] = [];
     try {
       // First try standard OpenAI endpoint
-      const response2 = await axios.get(apiUrl + '/models', {
+      const response2 = await safeHttp({ url: apiUrl + '/models', method: 'GET',
         headers: { 'Authorization': `Bearer ${apiKey}` },
         timeout: 5000
       });
@@ -47,13 +50,14 @@ export class SettingsController {
        console.error('GET /models failed:', err.message);
        // Fallback for custom implementations
        try {
-         const response = await axios.post(apiUrl + '/chat/models-list', {}, {
+         const response = await safeHttp({ url: apiUrl + '/chat/models-list', method: 'POST', data: {},
            headers: { 'Authorization': `Bearer ${apiKey}` },
            timeout: 5000
          });
-         models = response.data || [];
+         models = response.data?.data || response.data?.models || response.data || [];
        } catch (e: any) {
          console.error('POST /chat/models-list failed:', e.message);
+         throw new BadRequestException(`ไม่สามารถโหลดรายชื่อโมเดล AI ได้ (HTTP ${e.response?.status || 'unavailable'}): ${e.code || 'ตรวจสอบการเชื่อมต่อขาออกของเซิร์ฟเวอร์'}`);
        }
     }
 
@@ -88,20 +92,20 @@ export class SettingsController {
     if (!user || !user.apiConfigJson) throw new BadRequestException('AI is not configured for your account. Please set it in Settings > Integrations.');
     
     const apiConfig = JSON.parse(user.apiConfigJson);
-    const apiUrl = (apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1').replace(/\/$/, '');
+    const apiUrl = aiApiBase(apiConfig.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1');
     const apiKey = apiConfig.aiKey;
     if (!apiKey) throw new BadRequestException('AI API Key is missing in Settings');
     
     try {
       // For simplicity, we don't stream the proxy, we just wait for the full response and return it
       // so the frontend can still parse it as JSON
-      const response = await axios.post(apiUrl + '/chat/completions', {
+      const response = await safeHttp({ url: apiUrl + '/chat/completions', method: 'POST', data: {
         model: body.model || apiConfig.aiModel || 'typhoon-v2-70b-instruct',
         messages: body.messages,
         max_tokens: body.max_tokens || 2048,
         temperature: body.temperature || 0.3,
         stream: false // Override stream to false for proxy simplicity
-      }, {
+      },
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
       });
       
@@ -209,14 +213,13 @@ export class SettingsController {
       if (newApi.lineToken === '********') newApi.lineToken = existingApi.lineToken;
       
       user.apiConfigJson = JSON.stringify(newApi);
-      await this.userRepository.save(user);
-      // Notification configuration is system-wide; per-user AI credentials remain per-user.
+      await this.userRepository.update({ id: user.id, tokenVersion: user.tokenVersion, accountStatus: 'active' }, { apiConfigJson: user.apiConfigJson });
       if (req.user.role === 'admin' && Object.prototype.hasOwnProperty.call(newApi, 'slackUrl')) {
-        let system = await this.configRepo.findOne({ where: { id: 1 } });
-        if (!system) system = this.configRepo.create({ id: 1 });
-        const current = system.apiConfigJson ? JSON.parse(system.apiConfigJson) : {};
-        system.apiConfigJson = JSON.stringify({ ...current, slackUrl: newApi.slackUrl });
-        await this.configRepo.save(system);
+        let config = await this.configRepo.findOneBy({ id: 1 });
+        if (!config) config = this.configRepo.create({ id: 1 });
+        const systemApi = JSON.parse(config.apiConfigJson || '{}');
+        config.apiConfigJson = JSON.stringify({ ...systemApi, slackUrl: newApi.slackUrl || '' });
+        await this.configRepo.save(config);
       }
     }
 
@@ -238,11 +241,11 @@ export class SettingsController {
         throw new BadRequestException('Invalid Slack Webhook URL');
     }
     try {
-      await axios.post(body.slackUrl, { text: 'SIEM Test Alert: Connection successful!' }, { timeout: 5000 });
-      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'Slack', result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+      await safeHttp({ url: body.slackUrl, method: 'POST', data: { text: 'SIEM Test Alert: Connection successful!' } });
+      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'Slack', result: 'SUCCESS', username: req.user.username, ipAddress: req.ip });
       return { success: true };
     } catch (e: any) {
-      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'Slack', result: 'FAILED', username: 'admin', ipAddress: req.ip, metadata: { error: e.message } });
+      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'Slack', result: 'FAILED', username: req.user.username, ipAddress: req.ip, metadata: { error: e.message } });
       throw new BadRequestException('Failed to send Slack message: ' + e.message);
     }
   }
@@ -251,11 +254,11 @@ export class SettingsController {
   async testTeams(@Body() body: { teamsUrl: string }, @Req() req: any) {
     if (!body.teamsUrl) throw new BadRequestException('Missing Teams URL');
     try {
-      await axios.post(body.teamsUrl, { text: 'SIEM Test Alert: Connection successful!' }, { timeout: 5000 });
-      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'Teams', result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+      await safeHttp({ url: body.teamsUrl, method: 'POST', data: { text: 'SIEM Test Alert: Connection successful!' } });
+      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'Teams', result: 'SUCCESS', username: req.user.username, ipAddress: req.ip });
       return { success: true };
     } catch (e: any) {
-      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'Teams', result: 'FAILED', username: 'admin', ipAddress: req.ip, metadata: { error: e.message } });
+      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'Teams', result: 'FAILED', username: req.user.username, ipAddress: req.ip, metadata: { error: e.message } });
       throw new BadRequestException('Failed to send Teams message: ' + e.message);
     }
   }
@@ -273,17 +276,13 @@ export class SettingsController {
     }
 
     try {
-      const url = (body.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1').replace(/\/$/, '');
-      // Use models-list to test API key instead of guessing a model
-      const res = await axios.get(`${url}/models`, {
-          headers: { 'Authorization': `Bearer ${key}` },
-          timeout: 5000
-      });
+      // Use the same normalized URL and provider fallback as the model selector.
+      await this.getAiModels({ aiApiUrl: body.aiApiUrl, aiKey: key }, req);
       
-      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'AI', result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'AI', result: 'SUCCESS', username: req.user.username, ipAddress: req.ip });
       return { success: true };
     } catch (e: any) {
-      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'AI', result: 'FAILED', username: 'admin', ipAddress: req.ip, metadata: { error: e.message } });
+      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'AI', result: 'FAILED', username: req.user.username, ipAddress: req.ip, metadata: { error: e.message } });
       throw new BadRequestException('AI Connection Failed: ' + (e.response?.data?.error?.message || e.message));
     }
   }
@@ -302,7 +301,8 @@ export class SettingsController {
   @Post('users')
   async createUser(@Body() body: any, @Req() req: any) {
     const { username, firstName, lastName, email, role, authMethod } = body;
-    if (!username || !role) throw new BadRequestException('Username and role are required');
+    if (authMethod !== undefined && !['local', 'kku_sso'].includes(authMethod)) throw new BadRequestException('Invalid authentication method');
+    if (!username || !['admin', 'analyst', 'guest', 'viewer', 'analyst_l2', 'threat_hunter'].includes(role)) throw new BadRequestException('Username and valid role are required');
     
     const existing = await this.userRepository.findOne({ where: { username } });
     if (existing) throw new BadRequestException('Username already exists');
@@ -311,16 +311,17 @@ export class SettingsController {
       username, firstName, lastName, email, role,
       authMethod: authMethod || 'local',
       accountStatus: 'active',
-      requirePasswordChange: true
+      requirePasswordChange: (authMethod || 'local') === 'local'
     });
 
     if (user.authMethod === 'local') {
-      const initPassword = body.password || `${username}@2026!`;
+      const initPassword = body.password;
+      if (typeof initPassword !== 'string' || initPassword.length < 12) throw new BadRequestException('Initial password must contain at least 12 characters');
       user.passwordHash = await bcrypt.hash(initPassword, 10);
     }
 
     await this.userRepository.save(user);
-    this.auditService.log({ action: 'CREATE_USER', resource: user.username, result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+    this.auditService.log({ action: 'CREATE_USER', resource: user.username, result: 'SUCCESS', username: req.user.username, ipAddress: req.ip });
     return { success: true, user: { id: user.id, username: user.username } };
   }
 
@@ -330,16 +331,35 @@ export class SettingsController {
     const user = await this.userRepository.findOne({ where: { id } });
     if (!user) throw new BadRequestException('User not found');
 
-    const { firstName, lastName, email, role, accountStatus, requirePasswordChange } = body;
+    const { firstName, lastName, email, role, accountStatus, requirePasswordChange, authMethod } = body;
+    if (authMethod !== undefined && !['local', 'kku_sso'].includes(authMethod)) throw new BadRequestException('Invalid authentication method');
+    const methodChanged = authMethod !== undefined && authMethod !== user.authMethod;
+    if (methodChanged) {
+      if (authMethod === 'local') {
+        if (typeof body.password !== 'string' || body.password.length < 12) throw new BadRequestException('Initial password required when switching to Local (at least 12 characters)');
+        user.passwordHash = await bcrypt.hash(body.password, 10);
+        user.requirePasswordChange = true;
+      } else {
+        user.passwordHash = 'SSO_MANAGED';
+        user.requirePasswordChange = false;
+      }
+      user.authMethod = authMethod;
+    }
     if (firstName !== undefined) user.firstName = firstName;
     if (lastName !== undefined) user.lastName = lastName;
     if (email !== undefined) user.email = email;
     if (role !== undefined) user.role = role;
+    if (role !== undefined && !['admin', 'analyst', 'guest', 'viewer', 'analyst_l2', 'threat_hunter'].includes(role)) throw new BadRequestException('Invalid role');
+    if (accountStatus !== undefined && !['active', 'disabled'].includes(accountStatus)) throw new BadRequestException('Invalid account status');
     if (accountStatus !== undefined) user.accountStatus = accountStatus;
-    if (requirePasswordChange !== undefined) user.requirePasswordChange = requirePasswordChange;
+    if (requirePasswordChange !== undefined && user.authMethod === 'local') user.requirePasswordChange = requirePasswordChange;
+    if (role !== undefined || accountStatus !== undefined || methodChanged) {
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
+      user.preAuthNonce = null;
+    }
 
     await this.userRepository.save(user);
-    this.auditService.log({ action: 'UPDATE_USER', resource: user.username, result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+    this.auditService.log({ action: 'UPDATE_USER', resource: user.username, result: 'SUCCESS', username: req.user.username, ipAddress: req.ip });
     return { success: true };
   }
 
@@ -350,15 +370,18 @@ export class SettingsController {
     if (!user) throw new BadRequestException('User not found');
     if (user.authMethod === 'kku_sso') throw new BadRequestException('Cannot reset password for SSO users');
 
-    const newPassword = body.password || `${user.username}@Reset!`;
+    const newPassword = body.password;
+    if (typeof newPassword !== 'string' || newPassword.length < 12) throw new BadRequestException('Password must contain at least 12 characters');
     user.passwordHash = await bcrypt.hash(newPassword, 10);
     user.requirePasswordChange = true;
     user.totpEnabled = false; // Reset 2FA
     user.totpSecretEnc = null;
     user.backupCodesJson = null;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    user.preAuthNonce = null;
     
     await this.userRepository.save(user);
-    this.auditService.log({ action: 'RESET_USER_PASSWORD', resource: user.username, result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+    this.auditService.log({ action: 'RESET_USER_PASSWORD', resource: user.username, result: 'SUCCESS', username: req.user.username, ipAddress: req.ip });
     return { success: true, message: 'Password reset and 2FA disabled' };
   }
 
@@ -370,7 +393,7 @@ export class SettingsController {
     if (user.username === 'admin') throw new BadRequestException('Cannot delete primary admin account');
     
     await this.userRepository.remove(user);
-    this.auditService.log({ action: 'DELETE_USER', resource: user.username, result: 'SUCCESS', username: 'admin', ipAddress: req.ip });
+    this.auditService.log({ action: 'DELETE_USER', resource: user.username, result: 'SUCCESS', username: req.user.username, ipAddress: req.ip });
     return { success: true };
   }
 }

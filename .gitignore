@@ -52,8 +52,41 @@ Thumbs.db
 access.csv
 import_csv.js
 import_nginx.js
-backend/README.md
 backend/src/app.controller.spec.ts
 backend/test/
 backend/*.sqlite
 trash/
+
+# Private environment variants and deployment backups
+.env.*
+!.env.example
+!.env.*.example
+*.env
+
+/.release/
+
+/deploy.tar.gz
+
+# Generated Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Source handoff: generated bundles and live outputs
+*.patch
+*.tar.gz
+*.tar.gz.sha256
+/release-info.json
+/upload-manifest.txt
+/siem-logs/
+backend/uploads/reports/*
+!backend/uploads/reports/.gitkeep
+!frontend/src/lib/data/ip_records.json
+
+# Developer handoff and local generated files
+*.sqlite-wal
+*.sqlite-shm
+*.tsbuildinfo
+!backend/README.md

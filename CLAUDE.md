@@ -1,248 +1,50 @@
-# 🏗️ KKUSIEM Architecture & Project Structure
+# แนวทางทำงานกับซอร์ส KKUSIEM
 
-ไฟล์นี้อธิบายโครงสร้างโปรเจกต์ สถาปัตยกรรม และหลักการทำงานของ KKUSIEM อย่างละเอียด สำหรับนักพัฒนาหรือ AI Agent ที่จะทำงานบนโค้ดนี้
+ใช้เอกสารนี้ร่วมกับ [README](README.md), [CONTRIBUTING](CONTRIBUTING.md), [GUIDELINE](GUIDELINE.md) และ [สถานะส่งต่อ](docs/HANDOFF_READINESS.md) อ้างอิงซอร์สปัจจุบัน ณ 15 ตุลาคม 2026
 
----
+## จุดเริ่มต้นของแต่ละส่วน
 
-## 📂 โครงสร้างโฟลเดอร์หลัก (Project Structure)
+| งาน | ไฟล์/โฟลเดอร์หลัก |
+| --- | --- |
+| Bootstrap, services, database | `backend/src/main.ts`, `app.module.ts`, `data-source.ts` |
+| Session, MFA, SSO, roles | `auth.controller.ts`, `auth.guard.ts`, `auth-policy.ts`, `auth-tokens.ts`, `jwt.config.ts`, `totp.service.ts`, `crypto.service.ts`, `roles.guard.ts` |
+| รับ log และ durable queue | `ingest.controller.ts`, `receipt.service.ts`, `log.service.ts`, `request-admission.ts`, `runtime-limits.ts` |
+| ดึง API/JSON/SSE | `log-api.controller.ts`, `log-api.service.ts`, `log-api-config.ts`, `log-api-format.ts`, `log-api-sse.ts` |
+| LAN, target และ alert eligibility | `network-map.service.ts`, `target-ip.ts`, `event-context.ts`, `alert-policy.ts`, `alert-query.service.ts` |
+| Entities และ schema upgrade | `backend/src/entities/`, `backend/src/migrations/`, `data-source.ts` |
+| Reports | `incident-report.controller.ts`, `report-query.service.ts`, `report-safety.ts`, `export.service.ts`, `backend/config/pdf-worker.cjs`, `frontend/src/lib/ReportEngine/` |
+| PAT, REST/MCP, outbound policy | `backend/src/developer-api/`, `outbound-http.ts`, `integration-url.ts` |
+| WebSocket และ audit | `events.gateway.ts`, `audit.service.ts`, `backend/src/api-log/` |
+| Detection runtime | `detection-engine/main.py`, `parsers/`, `engine/rules/`, `engine/correlation/`, `features/`, `fusion/`, `alert_policy.py` |
+| Optional shadow model | `detection-engine/engine/ml/shadow_model.py`, `models/README.md`, `requirements-models.txt` |
+| UI/route/shared state | `frontend/src/routes/`, `frontend/src/lib/`, `frontend/src/stores/` |
+| Deployment | `docker-compose.yml`, service Dockerfiles, `nginx/nginx.conf`, `.env.example` |
 
-```text
-Demo_Honeypot/
-│
-├── backend/                     # 🔴 NestJS Backend API & WebSocket (ระบบหลัก)
-│   ├── src/
-│   │   ├── attacks.controller.ts  # CRUD attack, บล็อก IP, จัดการ SOAR
-│   │   ├── ingest.controller.ts   # POST /api/ingest — Endpoint รับ log ทุกต้นทาง
-│   │   ├── log.service.ts         # ⚙️ Core Engine: Ingest → LAN Filter → Batch → DB → WebSocket
-│   │   ├── network-map.service.ts # 🗺️ LAN subnet matching จาก ip_records.json
-│   │   ├── ai.service.ts          # Gemini LLM สรุปเหตุการณ์ภาษาไทย
-│   │   ├── events.gateway.ts      # Real-time WebSocket (Socket.io)
-│   │   ├── ip_records.json        # 644 subnet records ของวงแลน KKU
-│   │   └── entities/attack.entity.ts  # Schema ตาราง attacks ใน PostgreSQL
-│   └── .env
-│
-├── detection-engine/            # 🧠 AI/ML Engine (FastAPI)
-│   ├── api/                     # FastAPI Endpoints (POST /api/v1/ingest)
-│   ├── parsers/                 # แปลง Log หลายฟอร์แมต (Firewall, Nginx) ให้เป็นมาตรฐาน
-│   ├── core/                    # IP Filter และ Core Logic
-│   ├── features/                # Feature Aggregation สำหรับ ML
-│   ├── engine/ml/               # Isolation Forest + XGBoost Classifier
-│   ├── fusion/                  # AI Analyst Fusion (Risk Score + Incident Generation)
-│   └── main.py                  # Entry point
-│
-├── frontend/                    # 🟢 SvelteKit Dashboard
-│   ├── src/
-│   │   ├── lib/components/      # UI Components (กราฟ, ตาราง, AI Modal)
-│   │   ├── routes/dashboard/    # หน้า Dashboard หลัก
-│   │   ├── routes/networkmap/   # หน้าจัดการ LAN subnet (ip_records.json)
-│   │   └── stores/events.ts     # State Management + WebSocket
-│   └── .env
-│
-├── honeypots/
-│   ├── cowrie/                  # SSH/Telnet Honeypot → ส่ง JSON ไปที่ POST /api/ingest
-│   └── webtrap/                 # HTTP Honeypot → ดักจับ Web Attacks
-│
-├── nginx/                       # Reverse Proxy + SSL (Production)
-├── logrotate.conf               # Log rotation: hourly, create+postrotate (ไม่ใช้ copytruncate)
-└── docker-compose.yml           # Deploy ทุก Service พร้อมกัน
-```
+Backend paths ในตารางที่ไม่ได้ขึ้นต้นด้วยโฟลเดอร์อยู่ใต้ `backend/src/` ตรวจการเรียกใช้จริงก่อนลบไฟล์ โดยเฉพาะ dynamic imports, Docker COPY/bind mounts, assets และ migrations
 
----
+## ข้อกำหนดที่ต้องคงไว้
 
-## 📐 สถาปัตยกรรมระบบ (System Architecture)
+- AuthGuard เป็น global guard ผ่าน `APP_GUARD` endpoint ใหม่ต้องกำหนด public/ingest/self-service/role อย่างตั้งใจ ตรวจสิทธิ์ที่ server เสมอ
+- Access token และ pre-auth ใช้ signed HS256 JWT แยก purpose/stage; tokenVersion และสถานะบัญชีมีผลต่อการเพิกถอน session ห้ามย้อนกลับไปเชื่อ pre-auth payload ที่ไม่ได้ verify
+- Production ต้องมี PostgreSQL, keys ผ่าน validation และ schema migrations; ไม่เปิด `synchronize` ใน production
+- Migration แรกสร้าง baseline เฉพาะฐานข้อมูลแอปที่ว่าง ตรวจฐานข้อมูลที่มี schema บางส่วนก่อนอัปเกรด migrations หลายตัวปฏิเสธ automatic down เพื่อรักษาหลักฐาน
+- ACK หลัง receipt ลงฐานข้อมูล; คิวต้องมีขอบเขต, lease, retry และ idempotency ไม่โหลด log ทั้งหมดเข้า RAM และไม่ broadcast ก่อน transaction สำเร็จ
+- เก็บ raw evidence และผลตรวจที่ไม่เข้าเกณฑ์ alert แยกจาก incident; อย่าแต่ง target IP เพื่อผ่าน LAN policy
+- JSON/SSE polling ต้องเลื่อน cursor หลัง durable ACK และแยกจำนวนอ่านใหม่/ซ้ำให้ชัด
+- Source keys และ MFA ใช้การเข้ารหัสที่พึ่ง `TOTP_ENCRYPTION_KEY` ห้ามเปลี่ยนค่าของระบบที่มีข้อมูลเดิมโดยไม่มีแผนย้ายข้อมูล
+- Outbound URL ต้องผ่าน network/host policy; ไม่ปิด TLS verification เพื่อแก้ปัญหา CA
+- PDF worker แยก service/network และใช้ sandbox ของ Chromium ไม่เพิ่ม `--no-sandbox` เพื่อกลบปัญหา deployment
+- Developer PAT ใช้ scope และสิทธิ์บัญชีปัจจุบัน ไม่ใช้ PAT แทน ingestion key หรือ browser session; token เต็มแสดงครั้งเดียว
+- การแจ้งเตือน/การตอบสนองต้องบอกผลจริงจาก integration ไม่ถือว่าบันทึกนโยบายหรือรายการบล็อกแล้วเท่ากับอุปกรณ์ภายนอกทำสำเร็จ
 
-```mermaid
-graph TD
-    classDef attacker fill:#ffcccc,stroke:#ff0000,stroke-width:2px;
-    classDef source fill:#ffe6cc,stroke:#ff9900,stroke-width:2px;
-    classDef backend fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
-    classDef engine fill:#e6ccff,stroke:#9900cc,stroke-width:2px;
-    classDef llm fill:#ccffcc,stroke:#00cc00,stroke-width:2px;
-    classDef frontend fill:#ffffcc,stroke:#cccc00,stroke-width:2px;
+## ตรวจงานก่อนส่ง
 
-    A[Hacker / Attacker]:::attacker
-    B1[Cowrie / WebTrap / Wazuh]:::source
-    B2["Syslog: Fortigate / Nginx (file tail)"]:::source
+ใช้ lockfiles และ `npm ci --legacy-peer-deps` อย่าอัปเกรด dependency หลายส่วนพร้อมกันโดยไม่มีเหตุผล ทำ build ทั้ง Backend/Frontend และ `npm --prefix frontend run check` เมื่อแตะ UI/TypeScript พร้อมตรวจผลกระทบของ migration/API ที่เปลี่ยน
 
-    C((NestJS Backend)):::backend
-    LAN{LAN Filter}:::backend
-    BATCH[Batch Buffer 50lines/2s]:::backend
-    D[[FastAPI Detection Engine]]:::engine
-    FB[Fallback Basic Parser]:::backend
-    E[(PostgreSQL)]:::backend
-    F[Google Gemini AI]:::llm
-    G[SvelteKit Dashboard]:::frontend
+ณ วันที่ตรวจ build ผ่านแต่ Frontend check มี 113 errors / 135 warnings ใน 31 ไฟล์ และ build มี warnings เรื่อง Svelte exports/compatibility อย่าปิด strict checking หรืออ้างว่าระบบผ่านทุก check เพียงเพราะ build สำเร็จ ยังไม่มี automated test suite ในชุดที่ทำความสะอาดนี้
 
-    A -->|โจมตีเครื่องในวงแลน| B1
-    A -->|Traffic ผ่าน Firewall/Proxy| B2
+อัปเดตคู่มือและ `.env.example` เมื่อเปลี่ยน behavior/config ไม่ใส่ secrets, real reports, private keys, DB dumps, caches หรือ dependency folders ใน commit ตรวจ `git diff --cached` และ new/untracked runtime files ให้ครบก่อน commit
 
-    B1 -.->|POST /api/ingest| C
-    B2 -->|watchFile polling 1s| C
+## การส่ง repository
 
-    C --> LAN
-    LAN -->|destIp ใน ip_records.json| BATCH
-    LAN -->|ไม่ใช่ LAN → DROP| X[ ]
-
-    BATCH -->|batch HTTP POST| D
-    D -.->|new_detections JSON| C
-    D -.->|timeout / down| FB
-    FB -->|basic parse fallback| C
-
-    C -->|Rule-based + Aggregation Cache| E
-    C -->|High/Critical only| F
-    F -.->|AI Narrative ภาษาไทย| C
-
-    C == WebSocket Real-time ==> G
-    G -->|Block IP / SOAR Actions| C
-```
-
----
-
-## ⚙️ การทำงานของ `log.service.ts` (Core Engine)
-
-### Data Flow ทั้งหมด
-
-```
-[Source: Cowrie/Wazuh/WebTrap]
-    → POST /api/ingest
-    → ingestLog()
-    → processXxx() (per-source rule-based processor)
-    → saveAndBroadcast()
-         ├─ LAN Filter (drop ถ้า destIp ไม่ใน LAN)
-         ├─ Kill Chain & Severity Classifier
-         ├─ Aggregation Cache (dedup ใน 1 นาที)
-         ├─ attackRepository.save() → PostgreSQL
-         └─ eventsGateway.broadcastAttack() → WebSocket → Dashboard
-
-[Source: Fortigate Syslog / Nginx revproxy]
-    → startFileTail() watchFile polling ทุก 1 วิ
-    → processSyslogMessage()
-         └─ LAN Filter (ตรวจ IP ทุกตัวในบรรทัด)
-         └─ queueLineForDetection()
-              └─ logBatchBuffer (สูงสุด 50 lines)
-                   └─ flushBatchToDetectionEngine() ทุก 2 วิ
-                        ├─ axios.post detection-engine:8100 → ingestLog() [ปกติ]
-                        └─ ingestRawLineAsFallback() [ถ้า AI ไม่ตอบ]
-```
-
-### Cron Jobs ที่รันอยู่เสมอ
-
-| Schedule | Method | หน้าที่ |
-|----------|--------|---------|
-| ทุก 5 นาที | `cleanupStaleCaches()` | GC: ล้าง aggregationCache, ipStats, cap sessionToIpMap ≤ 500 |
-| ทุกเที่ยงคืน | `pruneOldLogs()` | ลบ Log เกิน 30 วัน จาก PostgreSQL |
-
-### In-Memory State (และขอบเขต)
-
-| Map/Cache | Key | ขอบเขต/TTL | หมายเหตุ |
-|-----------|-----|-----------|---------|
-| `aggregationCache` | `${ip}-${type}` | 5 นาที (GC) | Dedup attack events |
-| `ipStats` | IP address | 5 นาที (GC) | นับครั้ง brute force |
-| `sessionToIpMap` | Cowrie session ID | cap 500 (FIFO) | เชื่อม Cowrie session กับ real IP |
-| `blockedIpsCache` | — | 1 นาที (TTL) | Cache blocked_ips.json |
-| `logBatchBuffer` | — | flush ทุก 2 วิ หรือ 50 lines | Buffer ก่อนส่ง Detection Engine |
-
----
-
-## 🗺️ การทำงานของ LAN Filter
-
-### Logic ใน `saveAndBroadcast()`
-
-```typescript
-const isLanDest   = networkMapService.isInLan(destIp);    // เป้าหมายใน LAN?
-const isLanSensor = networkMapService.isInLan(sensorIp);   // sensor ของเราใน LAN?
-
-const isRelevant  = isLanDest || (!destIp && isLanSensor);
-if (!isRelevant) return; // DROP
-```
-
-### Logic ใน `processSyslogMessage()` (สำหรับ file tail)
-
-```typescript
-// ตรวจ IP ทุกตัวในบรรทัด log — ถ้าไม่มีตัวใดอยู่ใน LAN → drop ตั้งแต่ต้น
-const ips = logString.match(/\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g) || [];
-const isLanRelated = ips.some(ip =>
-  ip !== '127.0.0.1' && ip !== '0.0.0.0' && networkMapService.isInLan(ip)
-);
-if (!isLanRelated) return;
-```
-
-### `isInLan()` Edge Cases (network-map.service.ts)
-
-| IP | ผลลัพธ์ | เหตุผล |
-|----|---------|--------|
-| `0.0.0.0` | `false` | Wazuh fallback — ไม่ใช่ IP จริง |
-| `127.0.0.1` | `true` | Localhost Honeypot sensor — ต้องผ่าน |
-| `10.x.x.x` (ใน records) | `true` | IP ในวง KKU LAN |
-| IP ต่างประเทศ | `false` | ภายนอก LAN |
-
-### Field ที่โชว์บน Dashboard
-
-| Field | ค่า | ความหมาย |
-|-------|-----|---------|
-| `ip` | เช่น `185.220.101.45` | **IP ผู้โจมตี** (attacker) |
-| `destIp` | เช่น `10.101.104.234` | **IP เครื่องเหยื่อ** ในวงแลน |
-| `organization` | เช่น `คณะแพทย์` | หน่วยงานของเครื่องเหยื่อ (lookup จาก destIp) |
-| `country` | เช่น `Russia` | ประเทศผู้โจมตี (GeoIP) |
-
----
-
-## 🔧 Processors แต่ละต้นทาง
-
-| Source | Processor | Field สำคัญที่แมป |
-|--------|-----------|-----------------|
-| `cowrie` | `processCowrieLine()` | `src_ip` → attacker, `destIp='10.101.104.234'` |
-| `webtrap` | `processWebTrapLine()` | `src_ip` → attacker, `destIp='10.101.104.234'` |
-| `wazuh` / `suricata` | `processWazuhAlert()` | `data.srcip` → attacker, `destIp=agent.ip` |
-| `firewall` (forti) | `ingestRawLineAsFallback()` | parse `srcip=` / `dstip=` จาก syslog line |
-| `nginx` (reproxy) | `ingestRawLineAsFallback()` | parse `client=` / `for=` จาก nginx log |
-| generic | `processGenericLog()` | `src_ip`, `dest_ip` fields |
-
----
-
-## 🐛 Known Issues & Gotchas
-
-### การแก้ไขโค้ดใน `log.service.ts`
-ไฟล์นี้มี **Unicode box-drawing characters** (`──`, `─`) ในบรรทัด comment ทำให้ `replace_file_content` tool ใน IDE บางตัวล้มเหลว  
-**ต้องใช้ PowerShell Get-Content -Raw + .Replace() + Set-Content -NoNewline เท่านั้น**
-
-```powershell
-$src = "...\backend\src\log.service.ts"
-$content = Get-Content $src -Raw -Encoding UTF8
-$content = $content.Replace($oldStr, $newStr)
-Set-Content $src -Value $content -NoNewline -Encoding UTF8
-```
-
-### logrotate.conf — ห้ามใช้ `copytruncate`
-`startFileTail()` ใช้ `watchFile + createReadStream` **ไม่ได้ lock file descriptor** → ไม่ต้องการ `copytruncate`  
-การใช้ `copytruncate` จะทำให้ log ถูก ingest **ซ้ำสอง** ในช่วง copy window  
-ปัจจุบันใช้ `create 0644 root root` + `postrotate: pkill -HUP rsyslog`
-
-### Detection Engine — Single Point of Failure
-ถ้า `detection-engine` container ลง → log จาก file tail จะเข้า **Fallback Mode** ไม่หายไป  
-Fallback ใช้ regex parse `srcip=`, `dstip=` จาก raw log line แล้ว ingest เข้า DB ตรงๆ
-
----
-
-## 🧪 Development Conventions
-
-### Backend (NestJS)
-- ทุก method ที่ I/O-bound ต้องเป็น `async/await` ห้าม block Event Loop
-- ห้ามใช้ `require()` ใน function body — ใช้ top-level `import` เสมอ
-- การเพิ่ม Log Source ใหม่: เพิ่ม `case` ใน `ingestLog()` switch และสร้าง `processXxx()` ใหม่ พร้อมตั้ง `destIp` ให้ครบ
-
-### Detection Engine (FastAPI / Python)
-- เพิ่มโมเดล ML ใหม่: สร้างคลาสใน `engine/ml/` แล้วเชื่อมที่ `fusion/`
-- Response format ที่ Backend คาดหวัง: `{ new_detections: [ { attack_type, risk_score, source_ips, dest_ips, ioc } ] }`
-
-### Frontend (SvelteKit)
-- การแสดงผล Real-time ผ่าน `eventsStore` (`frontend/src/stores/events.ts`)
-- Network Map จัดการ subnet ผ่าน UI → ไฟล์ `ip_records.json` ถูก reload เมื่อ Backend restart
-
-### Docker Compose
-- `backend` → `postgres`, `redis`
-- `nginx` → Gateway WebSocket ไปหา `backend:5000`
-- `detection-engine` → รับ HTTP จาก `backend` ที่ port 8100 (internal only)
-- Backend Node.js heap จำกัด 512MB: `NODE_OPTIONS=--max-old-space-size=512`
-
-> **Performance Note:** Aggregation Cache dedup attack events ในหน้าต่าง 1 นาที (update DB ทุก 5 hits) ทำให้ DB ไม่โดน write storm จาก brute force ปริมาณสูง
+ประวัติเดิมมี credentials และ private keys ที่ยังตรงกับระบบนี้ ห้ามถือว่า `.gitignore` หรือ commit ลบไฟล์ล้างประวัติแล้ว ให้เจ้าของระบบจัดการ credential rotation และเลือก source-only repository ใหม่หรือแผน sanitize history ที่ตรวจสอบได้ก่อนเผยแพร่ ห้าม force-push, ล้างประวัติ หรือเปลี่ยน credentials ของระบบที่ใช้อยู่โดยอัตโนมัติ

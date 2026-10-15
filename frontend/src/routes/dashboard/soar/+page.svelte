@@ -1,11 +1,14 @@
 <svelte:head><title>SOAR Triage - KKUSIEM</title></svelte:head>
 <script lang="ts">
   import { showUiMessage } from '../../../lib/workspace/feedback';
+  import { safeHtml } from '$lib/utils/safeHtml';
   import OrgBadge from '../../../lib/components/OrgBadge.svelte';
-  import { lanEventsStore as eventsStore } from '../../../stores/events';
-  import { getFacultyForIP, getServerName, getNetworkRouteForIP, isInternalIP, networkRecordsStore } from '../../../stores/faculties';
+  import { lanEventsStore as eventsStore,enrichEventWithCVE } from '../../../stores/events';
+  import {page} from '$app/stores';
+  import {incidentId,loadLinkedIncident,matchesIncident,matchesLegacyIncident} from '../../../lib/utils/incidentLink';
+  import { getFacultyForIP, getServerName } from '../../../stores/faculties';
   import { formatEventTime } from '../../../lib/formatTime';
-  import { onMount } from 'svelte';
+  import { onMount,onDestroy } from 'svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import { callKKUAI } from '../../../lib/utils/kkuai';
   import AttackPathGraph from '../../../lib/components/AttackPathGraph.svelte';
@@ -13,12 +16,17 @@
   import AiEvidenceBlock from '../../../lib/components/AiEvidenceBlock.svelte';
   import AttackTimeline from '../../../lib/components/AttackTimeline.svelte';
   
-  import { buildIncidentQueue, incidentTime, incidentOutcome } from '../../../lib/utils/incidentQueue';
   let isLive = true;
   let frozenEvents: any[] = [];
-  $: events = isLive ? $eventsStore : frozenEvents;
-  $: incidentQueue = ($networkRecordsStore, buildIncidentQueue(events, isInternalIP));
-  $: nonIncidentCount = events.filter(event => !incidentQueue.some(group => group.incidentMembers.includes(event))).length;
+  let linkedIncident:any=null;
+  let linkedId='';
+  let linkedIp='';
+  let mounted=false;
+  let linkKey='';
+  let linkGeneration=0;
+  let linkAbort:AbortController|null=null;
+  $: baseEvents = isLive ? $eventsStore : frozenEvents;
+  $: events = linkedIncident?[...baseEvents.filter(e=>!matchesIncident(e,String(linkedIncident.id))),linkedIncident]:baseEvents;
 
   function toggleLive() {
     if (isLive) {
@@ -45,37 +53,33 @@
     return false;
   };
 
-  onMount(() => {
-    const params = new URLSearchParams(window.location.search);
-    const ip = params.get('ip');
-    const time = params.get('time');
-    const id = params.get('id');
-    
-    if (id) {
-      searchQuery = id;
-      exactMatchMode = true;
-      setTimeout(() => {
-        // Try to find the event by ID
-        const found = incidentQueue.find(e => e.incidentMembers.some((member: any) => String(member.id ?? member.incident_id) === id));
-        if (found) selectEvent(found);
-      }, 100);
-    } else if (ip || time) {
-      if (ip) searchQuery = ip;
-      if (time) searchTime = time;
-      exactMatchMode = true;
-      setTimeout(() => {
-        if (filteredEvents.length > 0) selectEvent(filteredEvents[0]);
-      }, 100);
-    }
-  });
+  onMount(()=>{mounted=true;});
+  onDestroy(()=>{linkGeneration++;linkAbort?.abort();});
+  $: if(mounted&&linkKey!==$page.url.search){
+    linkKey=$page.url.search;
+    void followIncidentLink($page.url.searchParams);
+  }
+  async function followIncidentLink(params:URLSearchParams) {
+    const run=++linkGeneration;linkAbort?.abort();linkAbort=new AbortController();
+    linkedIncident=null;selectedEvent=null;
+    linkedId=params.get('id')||'';linkedIp=params.get('ip')||'';searchTime=params.get('time')||'';
+    searchQuery=linkedId||linkedIp;exactMatchMode=!!(linkedId||linkedIp||searchTime);
+    if(!linkedId)return;
+    if(!incidentId(linkedId))return;
+    const scope='organization';
+    try {
+      const event=await loadLinkedIncident(linkedId,scope,localStorage.getItem('token')||'',fetch,linkAbort.signal);
+      if(run!==linkGeneration)return;
+      linkedIncident=enrichEventWithCVE(event);selectEvent(linkedIncident);
+    } catch(error:any){if(run===linkGeneration&&error.name!=='AbortError')console.warn(error.message);}
+  }
 
-  $: filteredEvents = incidentQueue.filter((e: any) => {
+  $: filteredEvents = events.filter((e: any) => {
     if (exactMatchMode) {
-      // When navigated via direct link, show all events for this IP or ID
-      return e.ip === searchQuery || e.destIp === searchQuery || e.incidentMembers.some((member: any) => String(member.id ?? member.incident_id) === searchQuery);
+      return linkedId?!!linkedIncident&&matchesIncident(e,linkedId):matchesLegacyIncident(e,linkedIp,searchTime);
     }
     
-    const matchSearch = [e.ip, e.destIp, e.type, getFacultyForIP(e.destIp)?.name, getNetworkRouteForIP(e.destIp)].some(value => String(value || '').toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchSearch = (e.ip || '').toLowerCase().includes(searchQuery.toLowerCase()) || (e.destIp || '').toLowerCase().includes(searchQuery.toLowerCase()) || (e.type || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchSeverity = severityFilter === 'all' ? true : e.severity === severityFilter;
     
     let matchDate = true;
@@ -86,17 +90,15 @@
     }
     
     return matchSearch && matchSeverity && matchDate;
-  });
+  }).sort((a, b) => new Date(b.time || b.createdAt).getTime() - new Date(a.time || a.createdAt).getTime());
   
   let selectedEvent: any = null;
-  $: if (selectedEvent) {
-    const current = incidentQueue.find(group => group.groupId === selectedEvent.groupId);
-    if (current !== selectedEvent) selectedEvent = current || null;
-  }
+  // Legacy links select only one exact IP/time result after asynchronous data arrives.
+  $: if(exactMatchMode&&!linkedId&&!selectedEvent&&filteredEvents.length===1)selectEvent(filteredEvents[0]);
   $: kcPhase = (function(event) {
     if (!event) return 'Recon';
     if (event.killChainPhase) return event.killChainPhase;
-    const text = String(event.type || '').toLowerCase();
+    const text = `${event.type} ${event.detail || ''}`.toLowerCase();
     if (/malware|trojan|ransomware|c2|beacon|miner|backdoor|botnet|wanna|crypto|coin|virus/i.test(text)) return 'C&C';
     if (/drop|delete|destroy|rm -rf|format|wipe|dos|ddos/i.test(text)) return 'Impact';
     if (/sql|xss|injection|rce|traversal|exploit/i.test(text)) return 'Exploitation';
@@ -125,6 +127,7 @@
   }
 
   function clearExactMatch() {
+    linkGeneration++;linkAbort?.abort();linkedId='';linkedIp='';linkedIncident=null;
     exactMatchMode = false;
     searchQuery = '';
     searchTime = '';
@@ -132,6 +135,7 @@
     url.searchParams.delete('ip');
     url.searchParams.delete('time');
     url.searchParams.delete('id');
+    url.searchParams.delete('scope');
     window.history.pushState({}, '', url);
   }
 
@@ -175,7 +179,7 @@
   }
 
   // Timeline logic
-  $: timelineEvents = selectedEvent ? selectedEvent.incidentMembers.slice().sort((a: any,b: any) => incidentTime(a) - incidentTime(b)) : [];
+  $: timelineEvents = selectedEvent ? events.filter(e => e.ip === selectedEvent.ip && e.destIp === selectedEvent.destIp).sort((a,b) => Number(a.timestampMs) - Number(b.timestampMs)) : [];
   
   // Extract deep forensic info from raw detail
   $: forensicData = (() => {
@@ -199,15 +203,15 @@
       let riskColor = 'medium';
       
       if (status >= 200 && status < 300) {
-        outcome = 'HTTP response received; compromise unconfirmed';
-        riskLevel = 'Impact unconfirmed';
-        riskColor = 'medium';
+        outcome = 'Reached Server (Success)';
+        riskLevel = bytes > 1000 ? 'High Risk (Data Transfer)' : 'Medium Risk';
+        riskColor = bytes > 1000 ? 'critical' : 'high';
       } else if (status >= 400 && status < 500) {
         outcome = (status === 403 || status === 401) ? 'Blocked / Unauthorized' : 'Failed / Not Found';
         riskLevel = 'Low Risk (Blocked)';
         riskColor = 'low';
       } else if (status >= 500) {
-        outcome = 'Server Error; cause unconfirmed';
+        outcome = 'Server Error (Possible Crash/DoS)';
         riskLevel = 'High Risk (Impact)';
         riskColor = 'critical';
       }
@@ -248,7 +252,7 @@
     if (!event) return '';
     const country = event.country && event.country !== 'Unknown' && event.country !== 'UN' ? event.country : 'ไม่ระบุแหล่งที่มา';
     const type = event.type || 'การโจมตีบางอย่าง';
-    const org = event.organization && event.organization !== '-' ? event.organization : '';
+    const org = event.sourceScope==='organization'&&event.sourceOrganization&&event.sourceOrganization!=='Unknown' ? event.sourceOrganization : '';
     
     let attacker = org ? `ผู้โจมตีจาก ${org} (เครือข่ายภายใน)` : `ผู้โจมตีจากประเทศ${country}`;
     
@@ -262,12 +266,12 @@
     const status = Number(forensic.status) || 0;
     
     if (status >= 200 && status < 300) {
-       outcomeText = `เซิร์ฟเวอร์ตอบกลับ HTTP ${status} แต่ยังไม่ยืนยันว่าการโจมตีสำเร็จ`;
-       if (forensic.bytes > 0) outcomeText += ` ขนาดการตอบกลับ ${forensic.bytes} Bytes`;
+       outcomeText = `และสามารถเจาะเข้าถึงเป้าหมายได้ (HTTP ${status})`;
+       if (forensic.bytes > 1000) outcomeText += ` พร้อมทั้งมีการดึงข้อมูลออกไปขนาด ${forensic.bytes} Bytes! 🚨`;
     } else if (status >= 400 && status < 500) {
        outcomeText = `แต่ถูกระบบป้องกันบล็อกหรือปฏิเสธการเข้าถึง (HTTP ${status}) 🛡️`;
     } else if (status >= 500) {
-       outcomeText = `พบการตอบกลับผิดพลาด HTTP ${status} ยังไม่ยืนยันสาเหตุ`;
+       outcomeText = `ส่งผลให้เซิร์ฟเวอร์ทำงานผิดพลาดหรือล่ม (HTTP ${status}) 🔥`;
     } else {
        outcomeText = `(ไม่มีข้อมูลการตอบกลับจากเซิร์ฟเวอร์)`;
     }
@@ -320,16 +324,14 @@
     honeypot_port:     selectedEvent.honeypotPort,
     session_id:        selectedEvent.sessionId,
     correlation_chain: selectedEvent.correlationChain || [],
-    matched_subnet: getNetworkRouteForIP(selectedEvent.destIp),
-    related_events: selectedEvent.incidentMembers,
-    event_count: selectedEvent.relatedCount,
     attack_commands:   selectedEvent.attackCommands || [],
     credentials_used:  selectedEvent.credentialsUsed || null,
   }, null, 2) : '';
 
   // ── Dest IP Faculty ───────────────────────────────────────────────────────
-  $: destFaculty = ($networkRecordsStore, selectedEvent?.destIp ? getFacultyForIP(selectedEvent.destIp) : null);
-  $: targetSubnet = ($networkRecordsStore, selectedEvent?.destIp ? getNetworkRouteForIP(selectedEvent.destIp) : null);
+  $: destFaculty = selectedEvent?.targetScope==='organization'
+    ? {name:selectedEvent.targetOrganization}
+    : selectedEvent?.destIp ? getFacultyForIP(selectedEvent.destIp) : null;
 </script>
 
 <section class="siem-page siem-page--soar" aria-label="soar">
@@ -341,8 +343,8 @@
     <div class="col-list">
       <div class="list-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
-          <div style="font-size: 16px; font-weight: 700;">คิวเหตุการณ์ขององค์กร</div>
-          <div style="font-size: 12px; color: var(--text-muted);">{exactMatchMode ? 'การค้นหาเจาะจง' : 'ภัยคุกคามต่อ subnet ที่บันทึกไว้'} ({filteredEvents.length})</div>
+          <div style="font-size: 16px; font-weight: 700;">คิวการแจ้งเตือน</div>
+          <div style="font-size: 12px; color: var(--text-muted);">{exactMatchMode ? 'การค้นหาเจาะจง' : 'จากทุกแหล่งข้อมูล'} ({filteredEvents.length})</div>
         </div>
         <button class="btn-live-toggle {isLive ? 'live' : 'paused'}" on:click={toggleLive} title={isLive ? 'หยุดอัปเดตชั่วคราว' : 'เปิดรับข้อมูลแบบ Real-time'}>
           <i class="ti {isLive ? 'ti-player-play' : 'ti-player-pause'}"></i>
@@ -351,22 +353,19 @@
       
 
 
-      <div style="padding:10px 12px; font-size:12px; color:var(--text-muted);">รวมพฤติกรรมเดียวกันต่อเป้าหมายใน 5 นาที · log ที่ไม่ใช่ incident {nonIncidentCount} รายการ ดูได้ที่ Explorer</div>
       <div class="queue-items custom-scrollbar">
         {#each filteredEvents as event}
-          <div class="q-item" class:selected={selectedEvent?.groupId === event.groupId} on:click={() => selectEvent(event)}>
+          <div class="q-item" class:selected={selectedEvent === event} on:click={() => selectEvent(event)}>
             <div class="q-header">
               <span class="q-type" title={event.type}>{event.type === "UNKNOWN" ? "Suspicious Activity" : (event.type.length > 22 ? event.type.substring(0,22)+"..." : event.type)}</span>
               <span class="q-sev {event.severity}">{event.severity.toUpperCase()}</span>
             </div>
             <div class="q-ip"><i class="ti ti-network"></i> {event.ip} {#if event.country && event.country !== "Unknown" && event.country !== "UN"}<span style="opacity:0.7; font-size:11px; margin-left:4px;">({event.country})</span>{/if}</div>
-            <div class="q-ip" style="margin-top:6px;">→ {event.destIp} · {getFacultyForIP(event.destIp)?.name || 'ยังไม่ระบุหน่วยงาน'}</div>
-            <div class="q-time">{getNetworkRouteForIP(event.destIp)} · {event.relatedCount} ครั้ง</div>
-            <div class="q-time">{formatEventTime(new Date(event.lastSeenMs).toISOString())}</div>
+            <div class="q-time">{formatEventTime(event.time || event.createdAt)}</div>
           </div>
         {/each}
         {#if filteredEvents.length === 0}
-          <div class="empty-state">ไม่พบภัยคุกคามต่อ subnet ขององค์กรที่ตรงกับการค้นหา</div>
+          <div class="empty-state">ไม่พบเหตุการณ์ที่ตรงกับการค้นหา</div>
         {/if}
       </div>
     </div>
@@ -375,7 +374,7 @@
     <div class="col-main custom-scrollbar">
       {#if selectedEvent}
         <!-- 1. INSTANT HUMAN-READABLE DASHBOARD (Native, No AI) -->
-        <h3 class="panel-title"><i class="ti ti-dashboard"></i> สรุปภัยคุกคามต่อเป้าหมายขององค์กร</h3>
+        <h3 class="panel-title"><i class="ti ti-dashboard"></i> สรุปเหตุการณ์ทันที (Instant Overview)</h3>
         
         <div class="instant-dashboard" style="margin-bottom: 24px;">
           <!-- Source vs Dest Cards -->
@@ -410,12 +409,6 @@
                 {selectedEvent.destIp || 'Unknown'}
               </div>
               <div style="font-size:14px; color:#166534; margin-bottom:6px;">
-                🏢 หน่วยงาน: <strong>{destFaculty?.name || 'ยังไม่ระบุหน่วยงานใน Network Map'}</strong>
-              </div>
-              <div style="font-size:14px; color:#166534; margin-bottom:6px;">
-                🌐 Subnet องค์กร: <strong>{targetSubnet || 'ไม่พบ subnet'}</strong>
-              </div>
-              <div style="font-size:14px; color:#166534; margin-bottom:6px;">
                 🌐 เซิร์ฟเวอร์: <strong>{selectedEvent.hostname || forensicData?.host || getServerName(selectedEvent.destIp) || 'ไม่ทราบชื่อ'}</strong>
               </div>
               <div style="font-size:13px; color:#14532d; opacity:0.9; word-break:break-all;">
@@ -442,45 +435,45 @@
             <div style="flex:1; min-width:150px; text-align:right; border-left:2px dashed var(--border); padding-left:20px;">
               <div style="font-size:12px; font-weight:800; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">ผลลัพธ์ (Outcome)</div>
               <div style="font-size:20px; font-weight:900; text-transform:uppercase; {['dropped','blocked'].includes((selectedEvent.action || '').toLowerCase()) ? 'color:#16a34a;' : 'color:#dc2626;'}">
-                {incidentOutcome(selectedEvent)}
+                {selectedEvent.action || forensicData?.outcome || 'UNKNOWN'}
               </div>
               <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">
-                ระบบที่ตรวจจับ: {selectedEvent.sensorSources.join(', ')} · หลักฐาน {selectedEvent.relatedCount} ครั้ง
+                ระบบที่ตรวจจับ: {selectedEvent.clientVersion || selectedEvent.source || 'Syslog Sensor'}
               </div>
             </div>
           </div>
         </div>
 
         <!-- Stages of Attack (Kill Chain) -->
-        <h3 class="panel-title" style="margin-top: 24px;"><i class="ti ti-target"></i> ระยะที่สัมพันธ์กับหลักฐาน (Kill Chain)</h3>
+        <h3 class="panel-title" style="margin-top: 24px;"><i class="ti ti-target"></i> ระยะของการโจมตี (Kill Chain)</h3>
         <div class="kill-chain">
-          <div class="kc-step {kcPhase === 'Recon' ? 'active' : ''}">
+          <div class="kc-step {kcPhase === 'Recon' ? 'active' : 'passed'}">
             <div class="kc-icon"><i class="ti ti-radar"></i></div>
             <div class="kc-label">Recon</div>
             {#if kcPhase === 'Recon'}<div class="kc-sublabel">สแกนหาช่องโหว่<br>(ก่อนเจาะระบบ)</div>{/if}
           </div>
-          <div class="kc-line {kcPhase === 'Recon' ? '' : ''}"></div>
+          <div class="kc-line {kcPhase === 'Recon' ? '' : 'passed'}"></div>
           
-          <div class="kc-step {kcPhase === 'Intrusion' ? 'active' : (kcPhase === 'Recon' ? '' : '')}">
+          <div class="kc-step {kcPhase === 'Intrusion' ? 'active' : (kcPhase === 'Recon' ? '' : 'passed')}">
             <div class="kc-icon"><i class="ti ti-lock-open"></i></div>
             <div class="kc-label">Intrusion</div>
             {#if kcPhase === 'Intrusion'}<div class="kc-sublabel">พยายามเจาะเข้าสู่<br>ระบบล็อกอิน</div>{/if}
           </div>
-          <div class="kc-line {['Recon', 'Intrusion'].includes(kcPhase) ? '' : ''}"></div>
+          <div class="kc-line {['Recon', 'Intrusion'].includes(kcPhase) ? '' : 'passed'}"></div>
           
-          <div class="kc-step {kcPhase === 'Exploitation' ? 'active' : (['C&C', 'Impact'].includes(kcPhase) ? '' : '')}">
+          <div class="kc-step {kcPhase === 'Exploitation' ? 'active' : (['C&C', 'Impact'].includes(kcPhase) ? 'passed' : '')}">
             <div class="kc-icon"><i class="ti ti-bug"></i></div>
             <div class="kc-label">Exploitation</div>
             {#if kcPhase === 'Exploitation'}<div class="kc-sublabel">โจมตีผ่านช่องโหว่<br>(อันตรายสูง)</div>{/if}
           </div>
-          <div class="kc-line {['C&C', 'Impact'].includes(kcPhase) ? '' : ''}"></div>
+          <div class="kc-line {['C&C', 'Impact'].includes(kcPhase) ? 'passed' : ''}"></div>
           
-          <div class="kc-step {kcPhase === 'C&C' ? 'active' : (kcPhase === 'Impact' ? '' : '')}">
+          <div class="kc-step {kcPhase === 'C&C' ? 'active' : (kcPhase === 'Impact' ? 'passed' : '')}">
             <div class="kc-icon"><i class="ti ti-satellite"></i></div>
             <div class="kc-label">C&C</div>
             {#if kcPhase === 'C&C'}<div class="kc-sublabel">มัลแวร์พยายาม<br>ติดต่อเซิร์ฟเวอร์</div>{/if}
           </div>
-          <div class="kc-line {kcPhase === 'Impact' ? '' : ''}"></div>
+          <div class="kc-line {kcPhase === 'Impact' ? 'passed' : ''}"></div>
           
           <div class="kc-step {kcPhase === 'Impact' ? 'active danger' : ''}">
             <div class="kc-icon"><i class="ti ti-skull"></i></div>
@@ -520,7 +513,7 @@
                   </div>
                 {:else if aiExplanation}
                   <div class="chat-bubble ai">
-                    {@html aiExplanation}
+                    {@html safeHtml(aiExplanation)}
                   </div>
                 {:else}
                   <div class="chat-bubble ai text-muted" style="background: var(--bg-secondary, rgba(142, 68, 173, 0.05)); border: 1px dashed var(--border, rgba(142, 68, 173, 0.3)); color: var(--text-secondary);">
@@ -562,7 +555,7 @@
             <button on:click={clearExactMatch}><i class="ti ti-x"></i></button>
           </div>
         {:else}
-          <input type="text" placeholder="ค้นหา IP เป้าหมาย, subnet, หน่วยงาน หรือพฤติกรรม..." bind:value={searchQuery} />
+          <input type="text" placeholder="ค้นหา IP หรือ รูปแบบ..." bind:value={searchQuery} />
           <input type="date" bind:value={dateFilter} />
           <select bind:value={severityFilter}>
             <option value="all">ทุกระดับความรุนแรง</option>

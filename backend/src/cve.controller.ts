@@ -45,6 +45,7 @@ export class CVEController {
 
   @Get(':id')
   async getCVE(@Param('id') id: string) {
+    if (!/^CVE-\d{4}-\d{4,}$/i.test(id)) throw new HttpException('Invalid CVE ID', HttpStatus.BAD_REQUEST);
     if (id === 'history') return; // Prevent clash
     if (id === 'history/delete') return; // Prevent clash
     try {

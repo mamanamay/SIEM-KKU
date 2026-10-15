@@ -1,3 +1,4 @@
+import { bangkokDay } from "../lib/ReportEngine/reportWorkflow";
 import { writable } from "svelte/store";
 import type { ReportConfig, ReportDataModel, ExportSession, IpSummary, AiBriefingContext } from "../lib/ReportEngine/types";
 import { getDefaultSelectedFields, deriveIpSummaries, generateReportId, ALL_GROUP_KEYS, deriveFieldsFromGroups } from "../lib/ReportEngine/exportSchemas";
@@ -28,6 +29,7 @@ export const AI_BRIEFING_SECTIONS = [
 function createInitialSession(): ExportSession {
   return {
     isOpen: false,
+    snapshotId: "", snapshot: null, selectedIncidentId: null, selectedTargetIPs: [], revision: 0, contentDigest: "", previewSignature: "",
     reportType: "executive",
     reportTitle: "",
     reportId: "",
@@ -46,7 +48,7 @@ function createInitialSession(): ExportSession {
     allIpSummaries: [],
     previewHtml: "",
     aiContent: null,
-    manualEdits: { executiveSummary: "", recommendations: "" },
+    manualEdits: { executiveSummary: "", recommendations: "", rootCause:"", impact:"", actionsTaken:"", resolution:"", remainingWork:"" },
     revisionHistory: [],
     validationResult: null,
     cveSimilarityResults: [],
@@ -95,28 +97,26 @@ export function openReportWizard(
 
   globalReportStore.set({
     isOpen: true,
+    snapshotId: "", snapshot: null, selectedIncidentId: null, selectedTargetIPs: [], revision: 0, contentDigest: "", previewSignature: "",
     reportType: "executive", // default executive; user can change in Step 1 (unless allowExecOnly)
     reportTitle: config.reportTitle,
     reportId,
     reportVersion: "v1.0",
     sourcePage: config.pageType,
-    dateRange: {
-      from: startOfDay.toISOString(),
-      to: endOfDay.toISOString()
-    },
+    dateRange: bangkokDay(),
     language: "th",
     preparedBy: exportedBy,
     reviewedBy: "",
     exportedBy,
     selectedGroups: [...ALL_GROUP_KEYS],
-    selectedFields: deriveFieldsFromGroups(ALL_GROUP_KEYS),
+    selectedFields: config.pageType==='cve'?defaultFields:deriveFieldsFromGroups(ALL_GROUP_KEYS),
     includeRawLogs: false,
     selectedIPs: allIPs,
     includeAiIpAnalysis: false,
     allIpSummaries: ipSummaries,
     previewHtml: "",
     aiContent: null,
-    manualEdits: { executiveSummary: initialExecutiveSummary, recommendations: "" },
+    manualEdits: { executiveSummary: "", recommendations: "", rootCause:"", impact:"", actionsTaken:"", resolution:"", remainingWork:"" },
     revisionHistory: [],
     validationResult: null,
     cveSimilarityResults: [],

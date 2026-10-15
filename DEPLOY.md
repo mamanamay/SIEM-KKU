@@ -1,182 +1,70 @@
-# 🚀 Deploy Guide — KKUSIEM Honeypot Dashboard
+# ติดตั้งและดูแล KKUSIEM
 
----
+คู่มือนี้ใช้ `docker-compose.yml` ที่รากโครงการโดยตรง มี 6 services: nginx, frontend, backend, pdf-renderer, postgres และ detection-engine ไม่มี release archive หรือ deploy helper ที่ต้องเรียกเพิ่มเติม
 
-## Prerequisites
+อ่าน [ผลตรวจส่งต่อ](docs/HANDOFF_READINESS.md) ก่อนใช้ production รอบตรวจนี้ยังไม่ได้ทำ end-to-end deployment บนเครื่องใหม่
 
-| | Version |
-|---|---|
-| Linux Server (Ubuntu 22.04 LTS) | RAM ≥ 2GB, Storage ≥ 20GB |
-| Docker Engine | 24.0+ |
-| Docker Compose | v2+ |
+## เตรียม deployment ใหม่
 
----
+1. เตรียม Docker Engine + Compose v2, DNS, TLS และพื้นที่สำหรับ PostgreSQL/reports
+2. คัดลอก `.env.example` เป็น `.env` สำหรับ deployment ใหม่ อย่าทับ environment ของระบบเดิม
+3. กรอกค่าตามตาราง ปรับโดเมนและ SSO UAT ตัวอย่างให้ตรงกับระบบปลายทาง
+4. วาง `nginx/certs/cert.pem` และ `nginx/certs/key.pem` ที่ตรงกับโดเมนและ chain โดยเก็บไว้นอก Git
+5. ตรวจ Compose แล้วเริ่มระบบด้วยคำสั่งด้านล่าง
 
-## Port Overview
+| ค่า | ข้อกำหนด |
+| --- | --- |
+| `POSTGRES_USER`, `POSTGRES_DB`, `POSTGRES_PASSWORD` | บัญชีแอปและฐานข้อมูล; ใช้ password ที่ใส่ใน URL ได้ เพราะ Compose ประกอบ DATABASE_URL |
+| `JWT_SECRET` | สุ่มอย่างน้อย 32 ตัว; production ปฏิเสธค่าอ่อนแอ/placeholder |
+| `INGEST_API_KEY`, `DETECTION_API_KEY` | สุ่มแยกกัน อย่างน้อย 32 ตัว ส่งให้เฉพาะ service ที่ต้องใช้ |
+| `PDF_RENDER_KEY` | สุ่มอย่างน้อย 32 ตัว เป็นความลับร่วมระหว่าง Backend และ PDF worker |
+| `TOTP_ENCRYPTION_KEY` | hex 64 ตัว; ระบบเดิมต้องใช้ค่าเดิมเพื่อถอดรหัสข้อมูลที่บันทึกแล้ว |
+| `BOOTSTRAP_ADMIN_PASSWORD` | ฐานข้อมูลว่างเท่านั้น: อย่างน้อย 12 ตัวตาม SeedService; ล้างจาก environment หลังเปลี่ยนรหัสและ bootstrap สำเร็จ |
+| `PUBLIC_ORIGIN`, `SSO_CALLBACK_URL` | origin แบบ HTTPS และ callback ที่ลงทะเบียนจริง |
+| `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`, SSO URLs | จากผู้ให้บริการ SSO; ถ้ายังไม่ใช้ให้เข้าสู่ระบบ local |
+| `OUTBOUND_ALLOWED_HOSTS`, `OUTBOUND_PRIVATE_HOSTS` | อนุญาตเฉพาะต้นทาง/ปลายทางที่จำเป็นสำหรับ Log API, SSO, AI, webhook |
+| `SIEM_TRUSTED_PROXY_CIDRS` | ระบุ reverse proxy ที่เชื่อถือจริงสำหรับการตัดสิน client IP |
+| `SIEM_RESPONSE_MODE` | ค่าเริ่มต้น disabled; เปิดเมื่อ integration และนโยบายตอบสนองพร้อม |
 
-```
-SERVER IP: x.x.x.x
-│
-│  ── เปิดผ่าน Firewall ──
-├── :18080   Dashboard HTTP  → redirect ไป HTTPS
-├── :18443   Dashboard HTTPS → หน้าหลัก Login / Dashboard
-├── :22222   SSH Honeypot    → ดัก brute force / credential
-└── :28081   WebTrap HTTP    → ดัก SQL Inject / XSS / Scan
-│
-│  ── Internal only (ไม่เปิดออก) ──
-├── :3000    Frontend
-├── :5000    Backend API + WebSocket
-├── :5432    PostgreSQL
-└── :6379    Redis
-```
-
----
-
-## Quick Deploy
-
-### Step 1 — เตรียม directory
+สร้าง random hex 32 bytes ได้ด้วย `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` รันใหม่แยกแต่ละ key อย่านำค่าจากเอกสาร/ระบบอื่นมาใช้ซ้ำ
 
 ```bash
-# สร้างหรือเข้า folder โปรเจค
-mkdir -p /opt/honeypot && cd /opt/honeypot
-# ก๊อปปี้ไฟล์ทั้งหมดจากเครื่องมาวาง (scp หรือ SFTP)
-```
-
-### Step 2 — SSL Certificate
-
-```bash
-chmod +x nginx/generate-ssl.sh
-bash nginx/generate-ssl.sh
-```
-
-ผลลัพธ์:
-```
-✅ nginx/certs/cert.pem
-✅ nginx/certs/key.pem
-```
-
-> หากมี cert จาก CA จริง ให้วาง cert.pem และ key.pem ใน `nginx/certs/` แทน
-
-### Step 3 — ตั้งค่า Environment
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-**ค่าที่ต้องเปลี่ยนก่อน deploy:**
-
-```bash
-POSTGRES_PASSWORD=<รหัสที่แข็งแรง>
-JWT_SECRET=<random 32 bytes>
-INGEST_API_KEY=<key ที่จะแจ้งให้ทีมต้นทาง>
-```
-
-> สร้าง JWT_SECRET ด้วย:
-> ```bash
-> cat /dev/urandom | tr -dc 'a-f0-9' | head -c 64
-> ```
-
-### Step 4 — Build & Start
-
-```bash
+docker compose config --quiet
 docker compose up -d --build
 docker compose ps
+docker compose logs --tail=100 backend detection-engine pdf-renderer frontend nginx
 ```
 
-ผลที่ต้องการ (ทุก service = `running`):
-```
-NAME                STATUS
-cowrie-honeypot     running
-honeypot_backend    running
-honeypot_frontend   running
-honeypot_nginx      running
-honeypot_postgres   running
-honeypot_redis      running
-webtrap_honeypot    running
-```
+อย่าส่งผล `docker compose config` แบบเต็มหรือ logs ที่มี credentials ให้บุคคลอื่น การใช้ `--quiet` ตรวจ configuration โดยไม่พิมพ์ environment ที่แทนค่าแล้ว
 
-### Step 5 — เข้าใช้งาน
+Nginx เปิดเฉพาะ HTTP/HTTPS (ค่าเริ่มต้น 80/443) Backend 5000, Frontend 3000, engine 8100, PostgreSQL 5432 และ PDF 8200 อยู่ภายใน container networks PDF worker ใช้ network ภายในแยกและได้ capability สำหรับ Chromium sandbox ตาม Compose
 
-```
-https://SERVER_IP:18443
-Login: admin / Admin@1234!   ← เปลี่ยนทันทีหลัง login
-```
+`backend` bind public CA directory แบบ read-only ค่าเริ่มต้น `/etc/ssl/certs` เหมาะกับ Linux หากใช้ Docker Desktop/Windows ต้องกำหนด `SIEM_CA_DIR` เป็นโฟลเดอร์ host ที่มีอยู่จริงและ mount ได้ ตั้ง `NODE_EXTRA_CA_CERTS` เป็น path ของ public CA bundle ภายใน `/app/certs/` เมื่อจำเป็น
 
----
+`nginx/generate-ssl.sh` เป็น helper self-signed ที่มี CN ของ UAT เดิม เหมาะกับการตรวจในสภาพแวดล้อมที่ควบคุมไว้เท่านั้น deployment ใหม่ควรใช้ certificate/SAN ที่ตรงกับ hostname จริง
 
-## Firewall Setup (UFW)
+## ฐานข้อมูลและการอัปเกรด
 
-```bash
-sudo ufw allow 18080/tcp    # Dashboard HTTP
-sudo ufw allow 18443/tcp    # Dashboard HTTPS
-sudo ufw allow 22222/tcp    # SSH Honeypot
-sudo ufw allow 28081/tcp    # WebTrap HTTP
-sudo ufw allow 22/tcp       # SSH จริงของ Server
-sudo ufw enable
-```
+Backend image รัน `migration:run` ก่อน `start:prod` มี migration CLI ที่ `dist/data-source.js` และ production ใช้ `synchronize: false` migration แรกสร้าง baseline เฉพาะฐานข้อมูลแอปว่าง หากพบ schema บางส่วนจะหยุดให้ตรวจสอบก่อน
 
-> ❌ ห้ามเปิด: 5000, 5432, 6379, 3000
+1. สำรอง PostgreSQL, volume รายงาน และ environment/keys ผ่านช่องทางที่ควบคุมสิทธิ์
+2. ตรวจ migrations และทดลองกับฐานข้อมูลสำเนา อย่าใช้ข้อมูลจริงใน Git
+3. อัปเกรด image แล้วตรวจ startup/migration logs และ health checks
+4. เปิดเว็บ ตรวจบัญชี/สิทธิ์, ingestion receipt, detection, report PDF และ integrations ที่ใช้จริง
 
----
+migrations หลายตัวไม่รองรับ automatic down อย่าใช้การลบ volume เป็น rollback ใช้ backup/restore ที่ทดสอบแล้ว `docker compose down` หยุดระบบแต่ **อย่าเพิ่ม `-v`** หากต้องรักษาข้อมูล
 
-## Log Ingest Endpoint
+Volumes ถาวรคือ `pgdata`, `siem_logs`, `siem_reports` โดยรายงาน mount ที่ `/app/uploads` ต้องสำรองควบคู่กับฐานข้อมูล และเก็บ keys เดิมอย่างปลอดภัย การเปลี่ยน TOTP key โดยไม่ย้ายข้อมูลทำให้ข้อมูลเข้ารหัสเดิมอ่านไม่ได้
 
-ทีมต้นทางที่ต้องการส่ง Log เข้าระบบ ใช้ข้อมูลนี้:
+## ตรวจหลังเริ่มระบบ
 
-```
-Method:  POST
-URL:     https://SERVER_IP:18443/api/ingest
-Headers: Content-Type: application/json
-         X-Ingest-Key: <INGEST_API_KEY จาก .env>
-Body:    JSON Log ปกติของระบบต้นทาง
-```
+- `GET /api/ingest/test` ใช้ทดสอบการเข้าถึง; `GET /api/ingest/ready` ตรวจความพร้อม DB ใช้ endpoint ภายในหาก proxy ต้องยืนยันตัวตน
+- Login local ครั้งแรกด้วย bootstrap admin และเปลี่ยนรหัสตาม flow; ตั้ง MFA/SSO ตามนโยบาย
+- ตั้ง Network Map และ Settings > Log API; ทดสอบตัวอย่างก่อน pull และตรวจ Log Ingestion/Detection Results
+- แยก receipt accepted ออกจาก processed/incident แล้วดู retry/failed/quarantined เมื่อข้อมูลไม่ขึ้น Dashboard
+- ทดสอบ WebSocket, รายงาน/PDF และสิทธิ์ของบัญชีอ่านอย่างเดียว/นักวิเคราะห์/ผู้ดูแล
+- ทดสอบ outbound/Slack/SSO เฉพาะปลายทางที่พร้อมใช้งานจริง การดึง log และ test integration อาจเรียก service ภายนอก
 
-ทดสอบ:
-```bash
-curl -X POST https://SERVER_IP:18443/api/ingest \
-  -H "Content-Type: application/json" \
-  -H "X-Ingest-Key: YOUR_KEY" \
-  -d '{"src_ip":"1.2.3.4","type":"Test","severity":"low","detail":"test"}'
-```
+## ก่อนนำ Git history เดิมไปใช้
 
-Response ที่ถูกต้อง: `{"status":"ok","accepted":1}`
-
-ดูสถานะต้นทาง:
-```
-GET https://SERVER_IP:18443/api/ingest/status
-```
-
----
-
-## Update ระบบ
-
-```bash
-# วางไฟล์ใหม่ทับแล้วรัน:
-docker compose up -d --build
-docker image prune -f
-```
-
----
-
-## คำสั่งที่ใช้บ่อย
-
-```bash
-docker compose logs -f backend    # SIEM log
-docker compose logs -f cowrie     # SSH honeypot
-docker compose logs -f webtrap    # Web honeypot
-docker compose restart backend    # restart service เดียว
-docker compose down               # หยุดทั้งหมด
-docker compose down -v            # หยุด + ลบ database (ระวัง!)
-```
-
----
-
-## Checklist ก่อน Deploy
-
-- [ ] เปลี่ยน `POSTGRES_PASSWORD`
-- [ ] เปลี่ยน `JWT_SECRET`
-- [ ] ตั้ง `INGEST_API_KEY` และแจ้งทีมต้นทาง
-- [ ] สร้าง SSL cert
-- [ ] เปิด Firewall port
-- [ ] Login แล้วเปลี่ยน password `admin` ทันที
+พบค่า credentials ที่ยังตรงกับเครื่องนี้และ TLS private key ใน history ดู [HANDOFF_READINESS](docs/HANDOFF_READINESS.md) ต้องวางแผนเปลี่ยนค่าที่รั่วและจัดการ history ก่อนเผยแพร่ การสร้าง repository ใหม่จาก source-only export ช่วยไม่พาประวัติเก่าไปด้วย แต่ไม่ทดแทนการเปลี่ยนค่าที่เคยเปิดเผยแล้ว

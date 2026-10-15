@@ -12,36 +12,19 @@ import { JWT_SECRET } from './jwt.config';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
 
-// ── Pre-auth token helpers (stateless, no DB, short-lived) ──────────────────
-// We store a signed JSON in an httpOnly cookie instead of a full JWT lib
-// to avoid adding another dependency. In production, use @nestjs/jwt.
-function signPreAuth(userId: number, stage: 'setup' | 'verify'): string {
-  const payload = { userId, stage, exp: Date.now() + 5 * 60 * 1000 }; // 5 min
-  return Buffer.from(JSON.stringify(payload)).toString('base64');
-}
-
-function verifyPreAuth(token: string): { userId: number; stage: 'setup' | 'verify' } | null {
-  try {
-    const payload = JSON.parse(Buffer.from(token, 'base64').toString('utf8'));
-    if (Date.now() > payload.exp) return null;
-    return { userId: payload.userId, stage: payload.stage };
-  } catch {
-    return null;
-  }
-}
-
-function signAccessToken(user: { id: number; username: string; role: string }): string {
-  return jwt.sign(
-    { sub: user.id, username: user.username, role: user.role },
-    JWT_SECRET,
-    { expiresIn: '8h' },
-  );
-}
+import { signAccessToken, signPreAuth, verifyPreAuth } from './auth-tokens';
+import { PublicEndpoint, SelfService } from './auth-policy';
+import { Roles } from './roles.guard';
+import { randomUUID } from 'crypto';
+import { safeHttp } from './outbound-http';
+import { ssoApiEndpoint } from './integration-url';
+import { ForbiddenException } from '@nestjs/common';
 
 import { UseGuards } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
 @Controller('api/auth')
+@Roles('admin')
 @UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(
@@ -52,13 +35,45 @@ export class AuthController {
     private readonly totpService: TotpService,
   ) {}
 
+  private async issuePreAuth(user: User, stage: 'setup' | 'verify') {
+    if (user.accountStatus !== 'active') throw new UnauthorizedException('Account disabled');
+    user.preAuthNonce = randomUUID();
+    const updated = await this.userRepository.update({ id: user.id, accountStatus: 'active', tokenVersion: user.tokenVersion }, { preAuthNonce: user.preAuthNonce });
+    if (updated.affected !== 1) throw new UnauthorizedException('Account changed; login again');
+    return signPreAuth(user.id, stage, user.preAuthNonce, user.tokenVersion);
+  }
+
+  private requireChallenge(user: User | null, challenge: any) {
+    if (!user || user.accountStatus !== 'active' || user.preAuthNonce !== challenge.nonce ||
+        user.tokenVersion !== challenge.version) throw new UnauthorizedException('Challenge revoked');
+  }
+
+  private async updateSelf(user: User, fields: Partial<User>) {
+    const result = await this.userRepository.update({ id: user.id, tokenVersion: user.tokenVersion, accountStatus: 'active' }, fields);
+    if (result.affected !== 1) throw new UnauthorizedException('Account changed; login again');
+  }
+
+  private async consumeChallenge(user: User, challenge: any) {
+    const secret = user.totpSecretEnc;
+    if (!secret) throw new UnauthorizedException('Missing 2FA secret');
+    const result = await this.userRepository.update({ id: user.id, preAuthNonce: challenge.nonce,
+      tokenVersion: challenge.version, accountStatus: 'active', totpSecretEnc: secret },
+      { preAuthNonce: null, backupCodesJson: user.backupCodesJson });
+    if (result.affected !== 1) throw new UnauthorizedException('Challenge already used or revoked');
+  }
+
+  private requireSelf(user: User, req: any) {
+    if (Number(req.user.sub) !== user.id) throw new ForbiddenException('Only the account owner may enroll or disable 2FA');
+  }
+
   // ── Local Login (2FA-aware) ──────────────────────────────
   @Post('login')
+  @PublicEndpoint()
   async login(@Body() body: any, @Req() req: any, @Res({ passthrough: true }) res: Response) {
     const { username, password } = body;
     const user = await this.userRepository.findOne({ where: { username } });
 
-    if (user && await bcrypt.compare(password, user.passwordHash)) {
+    if (user && user.accountStatus === 'active' && user.authMethod !== 'kku_sso' && user.passwordHash && typeof password === 'string' && await bcrypt.compare(password, user.passwordHash)) {
       // Password correct — determine 2FA stage
       if (!user.totpEnabled) {
         // User does not have 2FA enabled, log them in directly
@@ -73,9 +88,10 @@ export class AuthController {
         return { access_token: signAccessToken(user), role: user.role, username: user.username, requirePasswordChange: user.requirePasswordChange, message: 'เข้าสู่ระบบสำเร็จ' };
       } else {
         // Already set up: user must verify TOTP
-        const preAuth = signPreAuth(user.id, 'verify');
+        const preAuth = await this.issuePreAuth(user, 'verify');
         res.cookie('pre_auth_token', preAuth, {
           httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
           maxAge: 5 * 60 * 1000,
         });
@@ -88,6 +104,7 @@ export class AuthController {
 
   // ── 2FA Setup: Generate QR Code ─────────────────────────
   @Post('2fa/setup')
+  @PublicEndpoint()
   async mfaSetup(@Req() req: any) {
     const preAuth = req.cookies?.pre_auth_token;
     const payload = verifyPreAuth(preAuth);
@@ -96,6 +113,7 @@ export class AuthController {
     }
 
     const user = await this.userRepository.findOne({ where: { id: payload.userId } });
+    this.requireChallenge(user, payload);
     if (!user) throw new UnauthorizedException('ไม่พบผู้ใช้');
 
     // Generate new secret every time setup is called (safe to regenerate)
@@ -103,7 +121,8 @@ export class AuthController {
 
     // Store encrypted secret (unconfirmed — totpEnabled stays false)
     user.totpSecretEnc = setup.encryptedSecret;
-    await this.userRepository.save(user);
+    const updated = await this.userRepository.update({ id: user.id, preAuthNonce: payload.nonce, totpEnabled: false }, { totpSecretEnc: setup.encryptedSecret });
+    if (updated.affected !== 1) throw new UnauthorizedException('Setup challenge revoked');
 
     return {
       qrCodeDataUrl: setup.qrCodeDataUrl,
@@ -114,6 +133,7 @@ export class AuthController {
 
   // ── 2FA Setup Confirm: Verify code, enable TOTP, issue session ──────
   @Post('2fa/setup/confirm')
+  @PublicEndpoint()
   async mfaSetupConfirm(@Body() body: any, @Req() req: any, @Res({ passthrough: true }) res: Response) {
     const preAuth = req.cookies?.pre_auth_token;
     const payload = verifyPreAuth(preAuth);
@@ -127,7 +147,8 @@ export class AuthController {
     }
 
     const user = await this.userRepository.findOne({ where: { id: payload.userId } });
-    if (!user || !user.totpSecretEnc) throw new UnauthorizedException('ไม่พบข้อมูล 2FA กรุณาเริ่มใหม่');
+    this.requireChallenge(user, payload);
+    if (!user || !user.totpSecretEnc || user.totpEnabled) throw new UnauthorizedException('ไม่พบข้อมูล 2FA กรุณาเริ่มใหม่');
 
     const isValid = await this.totpService.verifyCode(code, user.totpSecretEnc);
     if (!isValid) throw new UnauthorizedException('รหัส 2FA ไม่ถูกต้อง กรุณาลองใหม่');
@@ -136,7 +157,11 @@ export class AuthController {
     const { plainCodes, hashedCodes } = await this.totpService.generateBackupCodes();
     user.totpEnabled = true;
     user.backupCodesJson = JSON.stringify(hashedCodes);
-    await this.userRepository.save(user);
+    const confirmed = await this.userRepository.update({ id: user.id, preAuthNonce: payload.nonce,
+      tokenVersion: payload.version, accountStatus: 'active', totpEnabled: false, totpSecretEnc: user.totpSecretEnc },
+      { totpEnabled: true, backupCodesJson: user.backupCodesJson, preAuthNonce: null, tokenVersion: user.tokenVersion + 1 });
+    if (confirmed.affected !== 1) throw new UnauthorizedException('Setup challenge revoked or already used');
+    user.tokenVersion++;
 
     // Log session
     const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
@@ -159,6 +184,7 @@ export class AuthController {
 
   // ── 2FA Verify: Check code on every login ───────────────
   @Post('2fa/verify')
+  @PublicEndpoint()
   async mfaVerify(@Body() body: any, @Req() req: any, @Res({ passthrough: true }) res: Response) {
     const preAuth = req.cookies?.pre_auth_token;
     const payload = verifyPreAuth(preAuth);
@@ -172,6 +198,7 @@ export class AuthController {
     }
 
     const user = await this.userRepository.findOne({ where: { id: payload.userId } });
+    this.requireChallenge(user, payload);
     if (!user || !user.totpEnabled || !user.totpSecretEnc) {
       throw new UnauthorizedException('ไม่พบข้อมูล 2FA');
     }
@@ -187,7 +214,6 @@ export class AuthController {
         // Remove used backup code (one-time use)
         hashedCodes.splice(usedIndex, 1);
         user.backupCodesJson = JSON.stringify(hashedCodes);
-        await this.userRepository.save(user);
         isValid = true;
       }
     }
@@ -203,6 +229,7 @@ export class AuthController {
     });
 
     // Clear pre-auth cookie, issue access token
+    await this.consumeChallenge(user, payload);
     res.clearCookie('pre_auth_token');
     return {
       access_token: signAccessToken(user),
@@ -213,16 +240,21 @@ export class AuthController {
 
   // ── User: Init 2FA Setup (from Settings page) ───────────
   @Post('users/:username/init-2fa')
-  async initTwoFa(@Param('username') username: string, @Res({ passthrough: true }) res: Response) {
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter', 'guest', 'viewer')
+  @SelfService()
+  async initTwoFa(@Param('username') username: string, @Req() req: any, @Res({ passthrough: true }) res: Response) {
     const user = await this.userRepository.createQueryBuilder('user')
       .where('LOWER(user.username) = LOWER(:username)', { username })
       .getOne();
     if (!user) throw new BadRequestException('ไม่พบผู้ใช้');
+    this.requireSelf(user, req);
     
+    if (user.totpEnabled) throw new BadRequestException('2FA is already enabled');
     // We set a pre_auth_token to reuse the existing setup flow
-    const preAuth = signPreAuth(user.id, 'setup');
+    const preAuth = await this.issuePreAuth(user, 'setup');
     res.cookie('pre_auth_token', preAuth, {
       httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
       maxAge: 10 * 60 * 1000, // 10 mins for setup
@@ -231,15 +263,20 @@ export class AuthController {
 
   // ── User: Disable 2FA (from Settings page) ──────────────
   @Post('users/:username/disable-2fa')
-  async disableTwoFa(@Param('username') username: string) {
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter', 'guest', 'viewer')
+  @SelfService()
+  async disableTwoFa(@Param('username') username: string, @Req() req: any) {
     const user = await this.userRepository.createQueryBuilder('user')
       .where('LOWER(user.username) = LOWER(:username)', { username })
       .getOne();
     if (!user) throw new BadRequestException('ไม่พบผู้ใช้');
+    this.requireSelf(user, req);
 
     user.totpSecretEnc = null;
     user.totpEnabled = false;
     user.backupCodesJson = null;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    user.preAuthNonce = null;
     await this.userRepository.save(user);
 
     return { success: true, message: 'ปิดการใช้งาน 2FA สำเร็จ' };
@@ -254,6 +291,8 @@ export class AuthController {
     user.totpSecretEnc = null;
     user.totpEnabled = false;
     user.backupCodesJson = null;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    user.preAuthNonce = null;
     await this.userRepository.save(user);
 
     return { success: true, message: `รีเซ็ต 2FA ของ "${username}" สำเร็จ — ผู้ใช้จะต้องตั้งค่า 2FA ใหม่เมื่อ Login ครั้งถัดไป` };
@@ -267,16 +306,19 @@ export class AuthController {
 
   // ── SSO Redirect ────────────────────────────────────────
   @Get('sso/login')
+  @PublicEndpoint()
   @Redirect()
   ssoLogin() {
     // Read the App ID from .env so we NEVER hardcode it in the frontend
-    const clientId = process.env.SSO_CLIENT_ID || '019f5e7a-664b-7b4b-89aa-d3e411cff59f';
+    const clientId = process.env.SSO_CLIENT_ID || '';
+    if (!clientId) throw new BadRequestException('SSO_CLIENT_ID is missing in server configuration');
     const ssoWebUrl = process.env.SSO_WEB_URL || 'https://ssonext.kku.ac.th';
-    return { url: `${ssoWebUrl}/login?app=${clientId}` };
+    return { url: `${ssoApiEndpoint(ssoWebUrl, 'login')}?app=${encodeURIComponent(clientId)}` };
   }
 
   // ── SSO Callback ────────────────────────────────────────
   @Post('sso/callback')
+  @PublicEndpoint()
   async ssoCallback(@Body() body: { code: string }, @Req() req: any, @Res({ passthrough: true }) res: Response) {
     const { code } = body;
     if (!code) throw new BadRequestException('Authorization code is required');
@@ -302,29 +344,27 @@ export class AuthController {
       
       console.log(`[SSO Token Request] Sending to ${ssoApiUrl}/auth.token with redirectUrl: ${redirectUrl}`);
       
-      const tokenRes = await fetch(`${ssoApiUrl}/auth.token`, {
+      const tokenRes = await safeHttp({ url: ssoApiEndpoint(ssoApiUrl, 'auth.token'),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        data: payload,
       });
-      const tokenData = await tokenRes.json();
+      const tokenData = tokenRes.data;
 
       if (!tokenData.ok) {
-        console.error(`[SSO Token Error] URL Mismatch or Invalid Secret:`, tokenData);
         throw new UnauthorizedException(
-          'ไม่สามารถยืนยันตัวตนกับ KKU SSO ได้: ' + (tokenData.error || 'Unknown error') + '. โปรดตรวจสอบ Redirect URL ในระบบว่าตรงกันหรือไม่',
+          'KKU SSO ไม่ยอมรับการแลก authorization code กรุณาลองเข้าสู่ระบบใหม่',
         );
       }
 
       // 2. Get User Profile
-      const profileRes = await fetch(`${ssoApiUrl}/user.profile`, {
+      const profileRes = await safeHttp({ url: ssoApiEndpoint(ssoApiUrl, 'user.profile'),
         method: 'POST',
         headers: { Authorization: `Bearer ${tokenData.accessToken}` },
       });
-      const profileData = await profileRes.json();
+      const profileData = profileRes.data;
 
       if (!profileData.ok) {
-        console.error(`[SSO Profile Error]:`, profileData);
         throw new UnauthorizedException('ไม่สามารถดึงข้อมูลโปรไฟล์จาก KKU SSO ได้');
       }
 
@@ -332,19 +372,26 @@ export class AuthController {
       const email: string = ssoProfile.email || ssoProfile.mail || ssoProfile.userPrincipalName || ssoProfile.username || ssoProfile.uid || '';
       
       if (!email) {
-        console.error(`[SSO Profile Warning]: No email/username in response`, JSON.stringify(profileData));
-        throw new UnauthorizedException('ไม่พบข้อมูลบัญชีผู้ใช้จากระบบ KKU SSO ข้อมูลที่ได้มาคือ: ' + JSON.stringify(profileData));
+        throw new UnauthorizedException('ไม่พบข้อมูลบัญชีผู้ใช้จากระบบ KKU SSO');
       }
 
       const usernamePrefix = email.includes('@') ? email.split('@')[0] : email;
 
       // *** WHITELIST CHECK *** — look up by FULL email or Prefix (Case-Insensitive)
-      const user = await this.userRepository.createQueryBuilder('user')
-        .where('LOWER(user.username) = LOWER(:email)', { email })
-        .orWhere('LOWER(user.username) = LOWER(:prefix)', { prefix: usernamePrefix })
-        .orWhere('LOWER(user.username) LIKE LOWER(:likePrefix)', { likePrefix: `${usernamePrefix}@%` })
+      let user = await this.userRepository.createQueryBuilder('user')
+        .where('(LOWER(user.username) = LOWER(:email) OR LOWER(user.email) = LOWER(:email))', { email })
+        .andWhere('user.authMethod = :method', { method: 'kku_sso' })
         .getOne();
-      if (!user) {
+      // Legacy approved SSO accounts used a short username with no stored email.
+      // Never match local accounts, another email/domain, or a wildcard username.
+      if (!user && /^[^@\s]+@(?:[a-z0-9-]+\.)*kku\.ac\.th$/i.test(email)) {
+        user = await this.userRepository.createQueryBuilder('user')
+          .where('LOWER(user.username) = LOWER(:prefix)', { prefix: usernamePrefix })
+          .andWhere('(user.email IS NULL OR user.email = :empty)', { empty: '' })
+          .andWhere('user.authMethod = :method', { method: 'kku_sso' })
+          .getOne();
+      }
+      if (!user || user.accountStatus !== 'active') {
         throw new UnauthorizedException(
           `บัญชี "${email}" ยังไม่ได้รับอนุญาตให้เข้าสู่ระบบ กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มสิทธิ์`,
         );
@@ -360,9 +407,10 @@ export class AuthController {
 
       if (user.totpEnabled) {
         // Enforce 2FA for SSO users
-        const preAuth = signPreAuth(user.id, 'verify');
+        const preAuth = await this.issuePreAuth(user, 'verify');
         res.cookie('pre_auth_token', preAuth, {
           httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
           path: '/',
           maxAge: 5 * 60 * 1000,
@@ -372,8 +420,10 @@ export class AuthController {
 
       return { access_token: signAccessToken(user), role: user.role, username: user.username, requirePasswordChange: user.requirePasswordChange };
     } catch (err) {
-      console.error('SSO Error:', err);
-      throw new UnauthorizedException(err.message || 'SSO Authentication failed');
+      // Axios errors may contain client secrets and bearer tokens in config.
+      console.error('SSO request failed', { status: err.response?.status, code: err.code });
+      if (err instanceof UnauthorizedException) throw err;
+      throw new UnauthorizedException(`เชื่อมต่อ KKU SSO ไม่สำเร็จ (HTTP ${err.response?.status || 'unavailable'}): ${err.code || err.message || 'SSO Authentication failed'}`);
     }
   }
 
@@ -387,6 +437,8 @@ export class AuthController {
     if (!isSso && !password) {
       throw new BadRequestException('กรุณากรอก Username และ Password');
     }
+    if (role && !['admin', 'analyst', 'guest', 'viewer'].includes(role)) throw new BadRequestException('Invalid role');
+    if (!isSso && (typeof password !== 'string' || password.length < 12)) throw new BadRequestException('Password must contain at least 12 characters');
     const lowerUsername = username.toLowerCase();
     const existing = await this.userRepository.findOne({ where: { username: lowerUsername } });
     if (existing) {
@@ -398,6 +450,8 @@ export class AuthController {
       username: lowerUsername,
       passwordHash: hash,
       role: role || 'guest',
+      authMethod: isSso ? 'kku_sso' : 'local',
+      requirePasswordChange: !isSso,
     });
     await this.userRepository.save(user);
     return { success: true, message: `สร้างบัญชี "${lowerUsername}" สำเร็จ` };
@@ -412,7 +466,6 @@ export class AuthController {
       username: u.username,
       role: u.role,
       // Expose password only for manually managed accounts (not SSO)
-      passwordHash: u.passwordHash === 'SSO_MANAGED' ? null : u.passwordHash,
       isSso: u.passwordHash === 'SSO_MANAGED',
       totpEnabled: u.totpEnabled,
     }));
@@ -431,6 +484,8 @@ export class AuthController {
       user.role = body.role;
     }
 
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    user.preAuthNonce = null;
     await this.userRepository.save(user);
     return { success: true, message: `เปลี่ยนสิทธิ์ของ "${username}" เป็น ${user.role} สำเร็จ` };
   }
@@ -439,8 +494,8 @@ export class AuthController {
   @Put('users/:username/password')
   async changePassword(@Param('username') username: string, @Body() body: any) {
     const { newPassword } = body;
-    if (!newPassword || newPassword.trim().length < 4) {
-      throw new BadRequestException('รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร');
+    if (!newPassword || newPassword.trim().length < 12) {
+      throw new BadRequestException('รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษร');
     }
 
     const user = await this.userRepository.findOne({ where: { username } });
@@ -450,6 +505,8 @@ export class AuthController {
     }
 
     user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    user.preAuthNonce = null;
     await this.userRepository.save(user);
     return { success: true, message: `เปลี่ยนรหัสผ่านของ "${username}" สำเร็จ` };
   }
@@ -469,6 +526,8 @@ export class AuthController {
 
   // --- My Profile ---
   @Get('me')
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter', 'guest', 'viewer')
+  @SelfService()
   async getMe(@Req() req: any) {
     const authHeader = req.headers.authorization;
     if (!authHeader) throw new UnauthorizedException('No token');
@@ -497,6 +556,8 @@ export class AuthController {
   }
 
   @Post('me')
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter', 'guest', 'viewer')
+  @SelfService()
   async updateMe(@Body() body: any, @Req() req: any) {
     const authHeader = req.headers.authorization;
     if (!authHeader) throw new UnauthorizedException('No token');
@@ -511,16 +572,18 @@ export class AuthController {
     const user = await this.userRepository.findOne({ where: { id: payload.sub } });
     if (!user) throw new UnauthorizedException('User not found');
 
-    if (body.firstName !== undefined) user.firstName = body.firstName;
-    if (body.lastName !== undefined) user.lastName = body.lastName;
-    if (body.email !== undefined) user.email = body.email;
-
-    await this.userRepository.save(user);
+    const fields: Partial<User> = {};
+    if (body.firstName !== undefined) fields.firstName = body.firstName;
+    if (body.lastName !== undefined) fields.lastName = body.lastName;
+    if (body.email !== undefined) fields.email = body.email;
+    if (Object.keys(fields).length) await this.updateSelf(user, fields);
     return { success: true };
   }
 
   // === Authenticated 2FA Management (From Settings) ===
   @Post('me/2fa/setup')
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter', 'guest', 'viewer')
+  @SelfService()
   async my2FaSetup(@Req() req: any) {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) throw new UnauthorizedException('Missing token');
@@ -529,22 +592,20 @@ export class AuthController {
     
     const user = await this.userRepository.findOne({ where: { id: decoded.sub } });
     if (!user) throw new UnauthorizedException('User not found');
+    if (user.totpEnabled) throw new BadRequestException('2FA already enabled');
 
     const { encryptedSecret, qrCodeDataUrl, secret: plainSecret } = await this.totpService.generateSetup(user.username);
-    const { plainCodes, hashedCodes } = await this.totpService.generateBackupCodes();
-    
-    user.totpSecretEnc = encryptedSecret;
-    user.backupCodesJson = JSON.stringify(hashedCodes);
-    await this.userRepository.save(user);
+    await this.updateSelf(user, { totpSecretEnc: encryptedSecret });
 
     return { 
       qrCodeUrl: qrCodeDataUrl, 
-      secret: plainSecret, 
-      backupCodes: plainCodes 
+      secret: plainSecret
     };
   }
 
   @Post('me/2fa/confirm')
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter', 'guest', 'viewer')
+  @SelfService()
   async my2FaConfirm(@Body() body: any, @Req() req: any) {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) throw new UnauthorizedException('Missing token');
@@ -552,21 +613,23 @@ export class AuthController {
     const decoded: any = jwt.verify(token, secret);
     
     const user = await this.userRepository.findOne({ where: { id: decoded.sub } });
-    if (!user || !user.totpSecretEnc) throw new UnauthorizedException('Invalid state');
+    if (!user || !user.totpSecretEnc || user.totpEnabled) throw new UnauthorizedException('Invalid state');
 
     const { code } = body;
     const isValid = await this.totpService.verifyCode(code, user.totpSecretEnc);
     if (!isValid) throw new UnauthorizedException('Invalid 2FA code');
 
     const { plainCodes, hashedCodes } = await this.totpService.generateBackupCodes();
-    user.totpEnabled = true;
-    user.backupCodesJson = JSON.stringify(hashedCodes);
-    await this.userRepository.save(user);
+    const confirmed = await this.userRepository.update({ id: user.id, tokenVersion: user.tokenVersion, accountStatus: 'active', totpEnabled: false, totpSecretEnc: user.totpSecretEnc }, { totpEnabled: true, backupCodesJson: JSON.stringify(hashedCodes), tokenVersion: user.tokenVersion + 1, preAuthNonce: null });
+    if (confirmed.affected !== 1) throw new UnauthorizedException('2FA state changed');
 
-    return { success: true, backupCodes: plainCodes };
+    user.tokenVersion++;
+    return { success: true, backupCodes: plainCodes, access_token: signAccessToken(user) };
   }
 
   @Post('me/2fa/disable')
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter', 'guest', 'viewer')
+  @SelfService()
   async my2FaDisable(@Req() req: any) {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) throw new UnauthorizedException('Missing token');
@@ -576,15 +639,15 @@ export class AuthController {
     const user = await this.userRepository.findOne({ where: { id: decoded.sub } });
     if (!user) throw new UnauthorizedException('User not found');
 
-    user.totpEnabled = false;
-    user.totpSecretEnc = null;
-    user.backupCodesJson = null;
-    await this.userRepository.save(user);
+    await this.updateSelf(user, { totpEnabled: false, totpSecretEnc: null, backupCodesJson: null, tokenVersion: user.tokenVersion + 1, preAuthNonce: null });
 
-    return { success: true, message: '2FA disabled' };
+    user.tokenVersion++;
+    return { success: true, message: '2FA disabled', access_token: signAccessToken(user) };
   }
 
   @Post('change-password')
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter', 'guest', 'viewer')
+  @SelfService()
   async myChangePassword(@Body() body: any, @Req() req: any) {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) throw new UnauthorizedException('Missing token');
@@ -616,11 +679,12 @@ export class AuthController {
       throw new BadRequestException('รหัสผ่านต้องประกอบด้วยตัวอักษรพิมพ์ใหญ่ พิมพ์เล็ก และตัวเลข');
     }
 
-    user.passwordHash = await bcrypt.hash(newPassword, 10);
-    user.requirePasswordChange = false; // Successfully changed
+    await this.updateSelf(user, { passwordHash: await bcrypt.hash(newPassword, 10), requirePasswordChange: false, tokenVersion: user.tokenVersion + 1, preAuthNonce: null });
 
-    await this.userRepository.save(user);
-
-    return { success: true, message: 'Password changed successfully' };
+    // Other sessions remain revoked; the caller receives a token for the new version.
+    user.tokenVersion += 1;
+    user.requirePasswordChange = false;
+    return { success: true, message: 'Password changed successfully',
+      access_token: signAccessToken(user), role: user.role, username: user.username };
   }
 }

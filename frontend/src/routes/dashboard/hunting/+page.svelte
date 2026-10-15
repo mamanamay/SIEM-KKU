@@ -1,5 +1,6 @@
 <script lang="ts">
   import { lanEventsStore as eventsStore } from '../../../stores/events';
+  import { incidentUrl } from '../../../lib/utils/incidentLink';
   import { formatEventTime } from '../../../lib/formatTime';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
@@ -41,9 +42,9 @@
     let filtered = events;
     if (searchIp) {
       if (searchIp.includes('/')) {
-        filtered = filtered.filter(e => isIpInCidr(e.ip, searchIp));
+        filtered = filtered.filter(e => isIpInCidr(e.ip, searchIp) || isIpInCidr(e.destIp, searchIp));
       } else {
-        filtered = filtered.filter(e => (e.ip || '').toLowerCase().includes(searchIp.toLowerCase()));
+        filtered = filtered.filter(e => (e.ip || '').toLowerCase().includes(searchIp.toLowerCase()) || (e.destIp || '').toLowerCase().includes(searchIp.toLowerCase()));
       }
     }
     if (searchType) filtered = filtered.filter(e => (e.type || '').toLowerCase().includes(searchType.toLowerCase()));
@@ -58,7 +59,7 @@
       const t = new Date(dateTo + 'T23:59:59').getTime();
       filtered = filtered.filter(e => new Date(e.createdAt || e.time || 0).getTime() <= t);
     }
-    return filtered;
+    return filtered.map(e=>({...e,organization:e.sourceOrganization||'Unknown'}));
   })();
 
   function runHunt() {
@@ -200,7 +201,7 @@
                 <span class="sev-badge {e.severity}">{e.severity}</span>
               </td>
               <td>
-                <a href="/dashboard/soar?ip={e.ip}&time={e.time || e.createdAt}" class="btn-sm btn-outline">Investigate</a>
+                <a href={incidentUrl(e)||'/dashboard/soar'} class="btn-sm btn-outline">Investigate</a>
               </td>
             </tr>
           {/each}
@@ -342,4 +343,3 @@
   .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
   .page-info { font-size: 12px; color: var(--text-muted); }
 </style>
-

@@ -10,13 +10,14 @@ import {
 import * as QRCode from 'qrcode';
 import * as bcrypt from 'bcryptjs';
 import { CryptoService } from './crypto.service';
+import { randomBytes } from 'crypto';
 
 /** Shared options for all TOTP operations in this service */
 const buildOpts = (secret: string) => ({
   secret,
   crypto: new NobleCryptoPlugin(),
   base32: new ScureBase32Plugin(),
-  window: 1, // allow ±30 s clock drift
+  epochTolerance: 30, // otplib v13 uses seconds, not the removed v12 window option.
 });
 
 export interface TotpSetupResult {
@@ -72,9 +73,9 @@ export class TotpService {
 
     for (let i = 0; i < 10; i++) {
       const code =
-        Math.random().toString(36).slice(2, 7).toUpperCase() +
+        randomBytes(4).toString('hex').toUpperCase() +
         '-' +
-        Math.random().toString(36).slice(2, 7).toUpperCase();
+        randomBytes(4).toString('hex').toUpperCase();
       plainCodes.push(code);
       hashedCodes.push(await bcrypt.hash(code, SALT_ROUNDS));
     }

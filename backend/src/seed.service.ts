@@ -1,4 +1,5 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import * as crypto from 'crypto';
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -7,38 +8,31 @@ import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class SeedService implements OnModuleInit {
-  constructor(
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
-    @InjectRepository(Attack)
-    private attackRepository: Repository<Attack>,
-  ) {}
+  private readonly logger = new Logger(SeedService.name);
+  constructor(@InjectRepository(User) private readonly users: Repository<User>,
+              @InjectRepository(Attack) private readonly _attacks: Repository<Attack>) {}
 
   async onModuleInit() {
-    console.log('[+] Checking database seed...');
-    
-    const hash = await bcrypt.hash('Admin@1234!', 10);
-    const adminUser = await this.userRepository.findOne({ where: { username: 'admin' } });
-    if (!adminUser) {
-      await this.userRepository.save({ username: 'admin', passwordHash: hash, role: 'admin' });
-      console.log('[+] Seeded admin user');
-    } else if (!adminUser.passwordHash.startsWith('$2b$')) {
-      // Force update if the password in DB is plain text from an older version
-      adminUser.passwordHash = hash;
-      await this.userRepository.save(adminUser);
-      console.log('[+] Force updated admin password hash');
+    if (await this.users.count() > 0) {
+      if (process.env.NODE_ENV === 'production') {
+        for (const [username, legacyPassword] of [['admin', 'Admin@1234!'], ['guest', 'guest123']]) {
+          const user = await this.users.findOneBy({ username });
+          if (user && user.accountStatus === 'active' && user.passwordHash &&
+              (user.passwordHash === legacyPassword || await bcrypt.compare(legacyPassword, user.passwordHash))) {
+            throw new Error('Legacy default credentials detected for ' + username + '; rotate or disable this account in UAT before production');
+          }
+        }
+      }
+      return;
     }
-
-    const guestHash = await bcrypt.hash('guest123', 10);
-    const guestUser = await this.userRepository.findOne({ where: { username: 'guest' } });
-    if (!guestUser) {
-      await this.userRepository.save({ username: 'guest', passwordHash: guestHash, role: 'guest' });
-      console.log('[+] Seeded guest user');
-    } else if (!guestUser.passwordHash.startsWith('$2b$')) {
-      guestUser.passwordHash = guestHash;
-      await this.userRepository.save(guestUser);
-      console.log('[+] Force updated guest password hash');
+    const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+    if (process.env.NODE_ENV === 'production' && (!password || password.length < 12 || /ChangeMe|Admin@1234/i.test(password))) {
+      throw new Error('Empty production DB requires BOOTSTRAP_ADMIN_PASSWORD (at least 12 characters)');
     }
-
+    const initial = password || crypto.randomBytes(18).toString('base64url');
+    await this.users.save({ username: 'admin', passwordHash: await bcrypt.hash(initial, 12),
+      role: 'admin', authMethod: 'local', accountStatus: 'active', requirePasswordChange: true });
+    if (!password) this.logger.warn('Development bootstrap password (shown once): ' + initial);
+    else this.logger.log('Bootstrap admin created; password change required');
   }
 }

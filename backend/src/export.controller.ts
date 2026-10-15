@@ -10,6 +10,7 @@ import { ExportAudit } from "./entities/export-audit.entity";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { reportFileName, escapeHtml } from './report-safety';
 
 @Controller("api/export")
 export class ExportController {
@@ -32,7 +33,7 @@ export class ExportController {
     // Compute SHA-256 of content
     const sha256Hash = crypto.createHash("sha256").update(contentBuffer).digest("hex");
 
-    const fileName = body.fileName || `KKUSIEM_Report_${Date.now()}.${format}`;
+    const fileName = reportFileName(format);
     const filePath = path.join(__dirname, "..", "uploads", "reports", fileName);
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -153,7 +154,7 @@ export class ExportController {
       const sha256Hash = crypto.createHash("sha256").update(pdfBuffer).digest("hex");
 
       // Save to history
-      const fileName = `${reportId || "RPT"}_${Date.now()}.pdf`;
+      const fileName = reportFileName('pdf');
       const filePath = path.join(__dirname, "..", "uploads", "reports", fileName);
       const dir = path.dirname(filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -183,7 +184,7 @@ export class ExportController {
 
       res.set({
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${reportId || "report"}_${new Date().toISOString().slice(0,10)}.pdf"`,
+        "Content-Disposition": 'attachment; filename="' + fileName + '"',
         "Content-Length": pdfBuffer.length,
         "X-Report-Hash": sha256Hash,
       });
@@ -230,6 +231,17 @@ export class ExportController {
   }
 
   // ■ DOWNLOAD FILE ■
+  @Get('preview/:id')
+  async previewReport(@Param('id') id:string,@Res() res:Response) {
+    if(!/^\d+$/.test(id))throw new HttpException('Invalid report ID',400);
+    const report=await this.reportRepository.findOne({where:{id:Number(id)},select:['id','title','format','summary']});
+    if(!report)throw new HttpException('Report not found',404);
+    const content=report.format==='csv'?`<pre>${escapeHtml(report.summary)}</pre>`:
+      report.summary&&report.summary!=='PDF Content'?report.summary:'<p>รายงานรุ่นเดิมไม่มี HTML preview กรุณาดาวน์โหลด PDF</p>';
+    res.set({'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"sandbox; default-src 'none'; style-src 'unsafe-inline'",'X-Content-Type-Options':'nosniff'});
+    res.send(content);
+  }
+
   @Get("download/:id")
   async downloadReport(@Param("id") id: number, @Res() res: Response, @Query("inline") inline?: string) {
     await this.exportService.downloadReport(id, res, inline === "true");
@@ -243,7 +255,7 @@ export class ExportController {
     if (!report) throw new HttpException("Report not found", HttpStatus.NOT_FOUND);
     
     // Only the owner or the user with username 'admin' can delete
-    if (req.user?.username !== "admin" && report.exportedBy !== req.user?.username) {
+    if (req.user?.role !== "admin" && report.exportedBy !== req.user?.username) {
       throw new HttpException("Forbidden", HttpStatus.FORBIDDEN);
     }
     await this.reportRepository.remove(report);

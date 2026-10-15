@@ -2,15 +2,13 @@ import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/c
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApiLog } from '../entities/api-log.entity';
 import { ApiLogMiddleware } from './api-log.middleware';
-import { ApiLogController } from './api-log.controller';
 import { ApiBoundaryMiddleware } from '../developer-api/api-boundary.middleware';
-import { User } from '../entities/user.entity';
-import { ApiHistoryAdminGuard } from '../developer-api/api-history.guard';
+import { ApiLogController } from './api-log.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ApiLog, User])],
+  imports: [TypeOrmModule.forFeature([ApiLog])],
   controllers: [ApiLogController],
-  providers: [ApiLogMiddleware, ApiBoundaryMiddleware, ApiHistoryAdminGuard],
+  providers: [ApiLogMiddleware, ApiBoundaryMiddleware],
   exports: [TypeOrmModule],
 })
 export class ApiLogModule implements NestModule {

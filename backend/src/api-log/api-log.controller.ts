@@ -1,12 +1,12 @@
-import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
+import { Roles } from '../roles.guard';
+import { Controller, Get, Query, Res } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Like, MoreThanOrEqual } from 'typeorm';
 import { ApiLog } from '../entities/api-log.entity';
 import type { Response } from 'express';
-import { ApiHistoryAdminGuard } from '../developer-api/api-history.guard';
 
 @Controller('api/admin/api-logs')
-@UseGuards(ApiHistoryAdminGuard)
+@Roles('admin')
 export class ApiLogController {
   constructor(
     @InjectRepository(ApiLog)
@@ -58,6 +58,14 @@ export class ApiLogController {
       where.timestamp = Between(fromDate, toDate);
     }
 
+    if (status) {
+      if (/^[245]xx$/.test(status)) {
+        const start = Number(status[0]) * 100;
+        where.statusCode = Between(start, start + 99);
+      } else if (/^\d{3}$/.test(status)) {
+        where.statusCode = Number(status);
+      }
+    }
     const [logs, total] = await this.apiLogRepository.findAndCount({
       where,
       order: { timestamp: 'DESC' },
@@ -65,20 +73,8 @@ export class ApiLogController {
       skip,
     });
 
-    // กรอง status แบบ range (2xx/4xx/5xx) หลัง query เพราะ TypeORM ทำ range ยาก
-    let filteredLogs = logs;
-    if (status) {
-      if (status === '2xx') filteredLogs = logs.filter(l => l.statusCode >= 200 && l.statusCode < 300);
-      else if (status === '4xx') filteredLogs = logs.filter(l => l.statusCode >= 400 && l.statusCode < 500);
-      else if (status === '5xx') filteredLogs = logs.filter(l => l.statusCode >= 500 && l.statusCode < 600);
-      else {
-        const code = parseInt(status, 10);
-        if (!isNaN(code)) filteredLogs = logs.filter(l => l.statusCode === code);
-      }
-    }
-
     return {
-      data: filteredLogs,
+      data: logs,
       meta: {
         total,
         page: pageNum,

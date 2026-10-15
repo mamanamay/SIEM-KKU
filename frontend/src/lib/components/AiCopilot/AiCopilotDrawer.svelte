@@ -3,7 +3,7 @@
   import { onMount, tick } from 'svelte';
   import { get } from 'svelte/store';
   import { aiCopilotStore } from '../../../stores/aiCopilotStore';
-  import { lanDetectionsStore as eventsStore, roleStore } from '../../../stores/events';
+  import { lanEventsStore as eventsStore, roleStore } from '../../../stores/events';
   import { page } from '$app/stores';
   
   import type { AiMode, Message, SecurityContext } from '../../AiCopilot/types';

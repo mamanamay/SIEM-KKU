@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { showNotification } from '../../../../stores/notificationStore';
     import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+    import { disconnectSocket, initSocket } from '../../../../stores/events';
 
     let user = { totpEnabled: false };
     let loading = true;
@@ -71,6 +72,12 @@
             });
             
             if (res.ok) {
+                const data = await res.json();
+                if (data.access_token) {
+                    localStorage.setItem('token', data.access_token);
+                    disconnectSocket();
+                    initSocket();
+                } else { localStorage.removeItem('token'); window.location.href = '/?expired=true'; return; }
                 showNotification('success', 'สำเร็จ', 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว');
                 currentPassword = '';
                 newPassword = '';
@@ -106,7 +113,7 @@
     async function setup2FA() {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('/api/auth/2fa/setup', {
+            const res = await fetch('/api/auth/me/2fa/setup', {
                 method: 'POST',
                 headers: { 'Authorization': token ? `Bearer ${token}` : '' }
             });
@@ -115,9 +122,10 @@
                 const data = await res.json();
                 setupQrUrl = data.qrCodeUrl;
                 setupSecret = data.secret;
-                setupBackupCodes = data.backupCodes;
+                setupBackupCodes = [];
             } else {
-                showNotification('error', 'ผิดพลาด', 'ไม่สามารถสร้างตั้งค่า 2FA ได้');
+                const data = await res.json().catch(() => ({}));
+                showNotification('error', 'ผิดพลาด', data.message || 'ไม่สามารถสร้างตั้งค่า 2FA ได้');
             }
         } catch (error) {
             console.error('Error setting up 2FA:', error);
@@ -129,22 +137,30 @@
         verifyingTotp = true;
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('/api/auth/2fa/verify', {
+            const res = await fetch('/api/auth/me/2fa/confirm', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': token ? `Bearer ${token}` : ''
                 },
-                body: JSON.stringify({ code: totpCode })
+                body: JSON.stringify({ code: totpCode.replace(/\s/g, '') })
             });
             
             if (res.ok) {
+                const data = await res.json();
+                setupBackupCodes = data.backupCodes || [];
+                if (data.access_token) {
+                    localStorage.setItem('token', data.access_token);
+                    disconnectSocket();
+                    initSocket();
+                } else { localStorage.removeItem('token'); window.location.href = '/?expired=true'; return; }
                 showNotification('success', 'สำเร็จ', 'เปิดใช้งาน 2FA สำเร็จ');
                 user.totpEnabled = true;
                 setupQrUrl = '';
                 totpCode = '';
             } else {
-                showNotification('error', 'ผิดพลาด', 'รหัส Verification Code ไม่ถูกต้อง');
+                const data = await res.json().catch(() => ({}));
+                showNotification('error', 'ผิดพลาด', data.message || 'รหัส Verification Code ไม่ถูกต้อง');
             }
         } catch (error) {
             console.error('Error verifying 2FA:', error);
@@ -205,6 +221,13 @@
                     <div class="status-success">
                         <i class="ti ti-shield-check"></i> Two-Factor Authentication is currently enabled.
                     </div>
+                    {#if setupBackupCodes.length}
+                        <div class="backup-codes" role="status">
+                            <h4>รหัสสำรอง (Backup Codes)</h4>
+                            <p>บันทึกรหัสเหล่านี้ไว้ก่อนออกจากหน้านี้ รหัสแต่ละชุดใช้เข้าสู่ระบบได้ครั้งเดียว</p>
+                            {#each setupBackupCodes as code}<div><code>{code}</code></div>{/each}
+                        </div>
+                    {/if}
                 {:else}
                     <div class="status-warning">
                         <i class="ti ti-shield-x"></i> Two-Factor Authentication is not enabled.
@@ -227,15 +250,6 @@
                                 </div>
                             </div>
                             
-                            <div class="backup-codes" style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 24px;">
-                                <h4 style="margin: 0 0 12px 0; color: #ca8a04;"><i class="ti ti-alert-triangle"></i> รหัสสำรอง (Backup Codes)</h4>
-                                <p style="font-size: 13px; color: var(--text-secondary); margin-top: 0;">โปรดเก็บรหัสสำรองเหล่านี้ไว้ในที่ปลอดภัย คุณสามารถใช้รหัสนี้เข้าสู่ระบบได้ในกรณีที่คุณไม่สามารถเข้าถึงแอป Authenticator ได้</p>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-family: monospace; font-size: 14px;">
-                                    {#each setupBackupCodes as code}
-                                        <div style="background: var(--bg-secondary); padding: 6px 12px; border-radius: 4px; text-align: center;">{code}</div>
-                                    {/each}
-                                </div>
-                            </div>
                             <div class="form-group">
                                 <label for="totpCode">Verification Code</label>
                                 <input type="text" id="totpCode" bind:value={totpCode} class="input-field" placeholder="ป้อนรหัส 6 หลัก (123456)" maxlength="6" />

@@ -1,0 +1,12 @@
+.test-deps
+__pycache__
+*.pyc
+.git
+.env
+siem-logs
+uploads
+pgdata
+logs
+tests/
+models/*.onnx
+models/*.metadata.json

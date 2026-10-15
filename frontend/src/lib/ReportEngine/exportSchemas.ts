@@ -12,7 +12,7 @@ export const PAGE_EXPORT_SCHEMAS: Record<string, PageExportSchema> = {
           { key: "id", label: "Event ID", labelEn: "Event ID", defaultSelected: true, readOnly: true },
           { key: "createdAt", label: "เวลา", labelEn: "Timestamp", defaultSelected: true, readOnly: true },
           { key: "ip", label: "Source IP", labelEn: "Source IP (Attacker)", defaultSelected: true, readOnly: true },
-          { key: "destIp", label: "IP เครื่องเป้าหมาย", labelEn: "Target Honeypot IP", defaultSelected: true, readOnly: true },
+          { key: "destIp", label: "IP เครื่องเป้าหมาย", labelEn: "Target IP", defaultSelected: true, readOnly: true },
           { key: "honeypotPort", label: "Port เป้าหมาย", labelEn: "Target Port", defaultSelected: true, readOnly: true },
           { key: "type", label: "ประเภทการโจมตี", labelEn: "Attack Type", defaultSelected: true, readOnly: true },
           { key: "severity", label: "ระดับความรุนแรง", labelEn: "Severity", defaultSelected: true, readOnly: true },
@@ -305,20 +305,16 @@ export function deriveIpSummaries(dataset: any[]): import("./types").IpSummary[]
 
 export const ALL_GROUP_KEYS = ["Incident Overview", "Attacker & Target", "Timeline & Activity", "Evidence & Detection", "Analysis & Response"];
 
-export function deriveFieldsFromGroups(groups: string[]): string[] {
-  const fields: string[] = [];
-  for (const p in PAGE_EXPORT_SCHEMAS) {
-    for (const g of PAGE_EXPORT_SCHEMAS[p].fieldGroups) {
-      if (groups.includes(g.groupEn)) {
-        for (const f of g.fields) {
-          if (!fields.includes(f.key)) fields.push(f.key);
-        }
-      }
-    }
-  }
-  return fields;
+const REPORT_GROUP_FIELDS: Record<string,string[]> = {
+  'Incident Overview':['type','severity','source','status'],
+  'Attacker & Target':['destPort','protocol','networkContext'],
+  'Timeline & Activity':[],
+  'Evidence & Detection':['ruleId','mitreCode','detail'],
+  'Analysis & Response':['notes']
+};
+export function deriveFieldsFromGroups(groups:string[]):string[] {
+  return [...new Set(groups.flatMap(group=>REPORT_GROUP_FIELDS[group]||[]))];
 }
-
 
 export const UNIFIED_FIELD_GROUPS: Record<string, any> = {};
 
@@ -342,3 +338,7 @@ export const UNIFIED_FIELD_GROUPS: Record<string, any> = {};
   }
 })();
 
+
+for (const [key,fields] of Object.entries(REPORT_GROUP_FIELDS)) {
+  UNIFIED_FIELD_GROUPS[key] = {group:key,groupEn:key,fields:fields.map(key=>({key,label:key,labelEn:key,defaultSelected:true}))};
+}

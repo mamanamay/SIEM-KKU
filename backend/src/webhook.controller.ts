@@ -1,11 +1,14 @@
+import { Roles } from './roles.guard';
 import { Controller, Get, Post, Delete, Body, Param } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { WebhookConfig } from './entities/webhook-config.entity';
 import { WebhookDelivery } from './entities/webhook-delivery.entity';
 import * as crypto from 'crypto';
+import { safeHttp, vettedTarget } from './outbound-http';
 
 @Controller('api/webhooks')
+@Roles('admin')
 export class WebhookController {
   constructor(
     @InjectRepository(WebhookConfig)
@@ -16,11 +19,12 @@ export class WebhookController {
 
   @Get()
   async getWebhooks() {
-    return await this.webhookConfigRepository.find();
+    return (await this.webhookConfigRepository.find()).map(({ secret, ...config }) => ({ ...config, secret: secret ? '********' : '' }));
   }
 
   @Post()
   async createWebhook(@Body() config: Partial<WebhookConfig>) {
+    await vettedTarget(config.url || '');
     const webhook = this.webhookConfigRepository.create(config);
     return await this.webhookConfigRepository.save(webhook);
   }
@@ -52,18 +56,18 @@ export class WebhookController {
 
     try {
       if (!config.url) throw new Error('Webhook URL is required');
-      const response = await fetch(config.url, {
+      const response = await safeHttp({ url: config.url,
         method: config.method || 'POST',
         headers,
-        body: payloadString,
+        data: payloadString,
       });
 
       const endTime = Date.now();
       return {
-        success: response.ok,
+        success: response.status >= 200 && response.status < 300,
         status: response.status,
         responseTime: endTime - startTime,
-        errorReason: response.ok ? null : response.statusText,
+        errorReason: response.status < 300 ? null : response.statusText,
       };
     } catch (error: any) {
       const endTime = Date.now();

@@ -2,6 +2,12 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeor
 
 @Entity()
 export class User {
+  @Column({ default: 0 })
+  tokenVersion: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  preAuthNonce: string | null;
+
   @PrimaryGeneratedColumn()
   id: number;
 

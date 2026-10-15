@@ -1,7 +1,68 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
+import type { eventContext } from '../event-context';
 
 @Entity()
+@Index('IDX_attack_visibility_scope',['alertEligible','targetScope','timestampMs'])
+@Index('IDX_attack_actor_event_time',['ip','alertEligible','timestampMs'])
+@Index('IDX_attack_actor_processed_time',['ip','alertEligible','lastProcessedMs'])
 export class Attack {
+  @Column({type:'bigint',nullable:true})
+  lastProcessedMs: number;
+  @Column({ default: false })
+  @Index()
+  alertEligible: boolean;
+
+  @Column({ nullable: true })
+  detectionMode: string;
+
+  @Column({ nullable: true })
+  alertPolicyVersion: string;
+
+  @Column({ type: 'simple-json', nullable: true })
+  networkContext: ReturnType<typeof eventContext>;
+
+  @Column({ nullable: true })
+  @Index()
+  targetScope: string;
+
+  @Column({ type: 'int', nullable: true })
+  srcPort: number;
+
+  @Column({ type: 'int', nullable: true })
+  destPort: number;
+
+  @Column({ nullable: true })
+  protocol: string;
+  @Column({ nullable: true, unique: true })
+  aggregationKey: string;
+
+  @Column({ nullable: true })
+  source: string;
+
+  @Column({ nullable: true })
+  eventId: string;
+
+  @Column({ type: 'bigint', nullable: true })
+  firstSeenMs: number;
+
+  @Column({ type: 'bigint', nullable: true })
+  lastSeenMs: number;
+
+  @Column({ type: 'simple-json', nullable: true })
+  correlationChain: string[];
+
+  @Column({ type: 'simple-json', nullable: true })
+  detectionEvidence: any;
+
+  @Column({ nullable: true })
+  killChainPhase: string;
+
+  @Column({ nullable: true })
+  ruleId: string;
+
+  @Column({ nullable: true })
+  outcome: string;
+
   @PrimaryGeneratedColumn()
   id: number;
 

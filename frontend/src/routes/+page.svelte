@@ -31,7 +31,7 @@
     { label: 'ไม่มีชื่อผู้ใช้ในรหัสผ่าน', valid: !!newPassword && (!(tempUsername || username) || !newPassword.toLowerCase().includes((tempUsername || username).toLowerCase())) },
   ];
   $: passwordReady = passwordRules.every(rule => rule.valid);
-  $: codeReady = useBackupCode ? /^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}$/.test(totpCode) : /^\d{6}$/.test(totpCode);
+  $: codeReady = useBackupCode ? /^(?:[A-Za-z0-9]{5}-[A-Za-z0-9]{5}|[A-Fa-f0-9]{8}-[A-Fa-f0-9]{8})$/.test(totpCode) : /^\d{6}$/.test(totpCode);
 
   function message(data: { message?: string | string[] }, fallback: string) {
     return Array.isArray(data.message) ? data.message.join(' · ') : data.message || fallback;
@@ -78,11 +78,21 @@
         body: JSON.stringify({ currentPassword: password, newPassword }),
       });
       const data = await res.json();
-      if (res.ok) storeSession(tempToken, tempRole, tempUsername);
+      if (res.ok && data.access_token) storeSession(data.access_token, data.role, data.username);
+      else if (res.ok) {
+        goBackToLoginAfterReset();
+      }
       else error = message(data, 'เปลี่ยนรหัสผ่านไม่สำเร็จ');
     } catch {
       error = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองอีกครั้ง';
     } finally { isLoading = false; }
+  }
+
+  function goBackToLoginAfterReset() {
+    authStage = 'login';
+    password = ''; newPassword = ''; confirmPassword = '';
+    tempToken = ''; tempRole = ''; tempUsername = '';
+    error = 'เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่';
   }
 
   async function handleLogin() {
@@ -190,7 +200,7 @@
       </div>
       <button class="auth-button" type="submit" disabled={isLoading}>{#if isLoading}<span class="auth-spinner"></span>กำลังเข้าสู่ระบบ…{:else}เข้าสู่ระบบ <AuthIcon name="arrow" size={17} />{/if}</button>
       <div class="auth-divider">หรือใช้บัญชีมหาวิทยาลัย</div>
-      <a class="auth-button secondary" href="/api/auth/sso/login" data-sveltekit-reload><AuthIcon name="building" size={19} /> เข้าสู่ระบบด้วย KKU SSO</a>
+      <a class="auth-button secondary" href="/api/auth/sso/login"><AuthIcon name="building" size={19} /> เข้าสู่ระบบด้วย KKU SSO</a>
       <div class="auth-help"><strong>ใช้บัญชี KKU ของคุณได้เลย</strong><br />เลือก KKU SSO เพื่อยืนยันตัวตนผ่านระบบของมหาวิทยาลัย หากไม่มีสิทธิ์เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ</div>
     </form>
   {:else if authStage === 'verify'}

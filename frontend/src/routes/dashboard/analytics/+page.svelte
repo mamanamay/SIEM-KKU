@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { lanDetectionsStore as eventsStore } from '../../../stores/events';
+  import { lanEventsStore as eventsStore } from '../../../stores/events';
   import { downloadHTML, downloadPDF, downloadCSV } from '../../../lib/utils/export';
   import Chart from 'chart.js/auto';
   import CountryFlag from '../../../lib/components/CountryFlag.svelte';

@@ -2,6 +2,10 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeor
 
 @Entity()
 export class Report {
+  @Column({type:'text',nullable:true}) snapshotJson: string;
+  @Column({type:'text',nullable:true}) reviewJson: string;
+  @Column({nullable:true}) contentDigest: string;
+  @Column({type:'int',nullable:true}) pageCount: number;
   @PrimaryGeneratedColumn()
   id: number;
 

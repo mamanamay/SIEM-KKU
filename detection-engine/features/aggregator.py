@@ -1,94 +1,99 @@
-from collections import OrderedDict
-from datetime import timedelta
+from collections import OrderedDict, deque
 from time import monotonic
-from typing import Dict, Any
+from hashlib import blake2b
+import re
+from typing import Any, Dict
 from schemas.event import NormalizedEvent
 
 
 class FeatureAggregator:
-    def __init__(self, window_minutes=5, max_ips=5000,
-                 max_events_per_ip=1000, max_total_events=20000):
-        if min(max_ips, max_events_per_ip, max_total_events) < 1:
-            raise ValueError("History limits must be positive")
-        self.window_minutes = window_minutes
+    """Five-second aggregate buckets, never full raw events.
+
+    Counts are exact within bucket resolution. Distinct URI count is bounded
+    and explicitly marked as a lower bound when its budget is exhausted.
+    Inactive keys expire on wall-clock time even with no more incoming logs.
+    """
+    def __init__(self, window_minutes=5, max_ips=1024, bucket_seconds=5,
+                 max_unique_uris=64, clock=monotonic):
+        if min(window_minutes, max_ips, bucket_seconds, max_unique_uris) <= 0:
+            raise ValueError("Feature budgets must be positive")
+        self.window_seconds = window_minutes * 60
         self.max_ips = max_ips
-        self.max_events_per_ip = max_events_per_ip
-        self.max_total_events = max_total_events
-        self.ip_events = OrderedDict()
-        self.total_events = 0
-        self.evicted_events = 0
-        self._last_prune = monotonic()
+        self.bucket_seconds = bucket_seconds
+        self.max_buckets = int(self.window_seconds / bucket_seconds) + 1
+        self.max_unique_uris = max_unique_uris
+        self.clock = clock
+        self.ip_events = OrderedDict()  # compatibility name; contains aggregates
+        self.evicted_ips = 0
 
-    def prune(self, now):
-        cutoff = now - timedelta(minutes=self.window_minutes)
-        for ip, events in list(self.ip_events.items()):
-            kept = [event for event in events if event.timestamp >= cutoff]
-            self.total_events -= len(events) - len(kept)
-            if kept:
-                self.ip_events[ip] = kept
+    def sweep(self):
+        cutoff = self.clock() - self.window_seconds
+        while self.ip_events and next(iter(self.ip_events.values()))['touched'] <= cutoff:
+            self.ip_events.popitem(last=False)
+
+    def add_event(self, event: NormalizedEvent, context_key=None):
+        self.sweep()
+        now = self.clock()
+        key = context_key if context_key is not None else event.src_ip
+        state = self.ip_events.get(key)
+        if state is None:
+            if len(self.ip_events) >= self.max_ips:
+                self.ip_events.popitem(last=False)
+                self.evicted_ips += 1
+            state = {'touched': now, 'buckets': deque(maxlen=self.max_buckets), 'uris': {}}
+            self.ip_events[key] = state
+        state['touched'] = now
+        self.ip_events.move_to_end(key)
+        # Processing-time windows also bound replay/out-of-order logs.
+        slot = int(now // self.bucket_seconds)
+        buckets = state['buckets']
+        while buckets and buckets[0]['slot'] <= slot - self.max_buckets:
+            buckets.popleft()
+        state['uris'] = {u: s for u, s in state['uris'].items() if s > slot - self.max_buckets}
+        if not buckets or buckets[-1]['slot'] != slot:
+            buckets.append(dict(slot=slot, count=0, failed=0, auth_failed=0, s4=0, s5=0,
+                                bytes=0, uri_sum=0, uri_count=0,
+                                uri_capped=False))
+        b = buckets[-1]
+        b['count'] += 1
+        status = event.http_status or 0
+        b['failed'] += int((event.action or '').upper() == 'FAILURE' or status >= 400)
+        b['auth_failed'] += int((event.action or '').upper() == 'FAILURE' or (
+            status in (401, 403) and bool(re.search(r'/(?:login|signin|auth|session)(?:[/?.]|$)', event.uri or '', re.I))))
+        b['s4'] += int(400 <= status < 500)
+        b['s5'] += int(500 <= status < 600)
+        b['bytes'] += max(event.bytes_sent, 0)
+        if event.uri:
+            b['uri_sum'] += len(event.uri)
+            b['uri_count'] += 1
+            uri = blake2b(event.uri.encode('utf-8'), digest_size=16).digest()
+            if uri in state['uris'] or len(state['uris']) < self.max_unique_uris:
+                state['uris'][uri] = slot
             else:
-                del self.ip_events[ip]
+                b['uri_capped'] = True
 
-    def add_event(self, event: NormalizedEvent):
-        now = event.timestamp
-        clock = monotonic()
-        if clock - self._last_prune >= 30:
-            self.prune(now)
-            self._last_prune = clock
-        ip = event.src_ip
-        cutoff = now - timedelta(minutes=self.window_minutes)
-        previous = self.ip_events.pop(ip, [])
-        events = [item for item in previous if item.timestamp >= cutoff]
-        self.total_events -= len(previous) - len(events)
-        events.append(event)
-        self.total_events += 1
-        excess = max(0, len(events) - self.max_events_per_ip)
-        if excess:
-            del events[:excess]
-            self.total_events -= excess
-            self.evicted_events += excess
-        self.ip_events[ip] = events
-        while len(self.ip_events) > self.max_ips or self.total_events > self.max_total_events:
-            _, removed = self.ip_events.popitem(last=False)
-            self.total_events -= len(removed)
-            self.evicted_events += len(removed)
-
-    def get_features(self, ip: str, target: str = None) -> Dict[str, Any]:
-        events = self.ip_events.get(ip, [])
-        if target is not None:
-            events = [event for event in events if event.dst_ip == target]
-        if not events:
-            return {
-                "request_rate": 0,
-                "failed_requests": 0,
-                "uri_length": 0,
-                "status_4xx": 0,
-                "status_5xx": 0,
-                "bytes": 0,
-                "packet_count": 0,
-                "unique_uri_count": 0
-            }
-            
-        unique_uris = set(e.uri for e in events if e.uri)
-        failed_requests = sum(1 for e in events if e.action == "FAILURE" or (e.http_status and e.http_status >= 400))
-        status_4xx = sum(1 for e in events if e.http_status and 400 <= e.http_status < 500)
-        status_5xx = sum(1 for e in events if e.http_status and 500 <= e.http_status < 600)
-        total_bytes = sum(e.bytes_sent for e in events)
-        avg_uri_len = sum(len(e.uri) for e in events if e.uri) / len(unique_uris) if unique_uris else 0
-        
+    def get_features(self, ip: str, context_key=None) -> Dict[str, Any]:
+        self.sweep()
+        state = self.ip_events.get(context_key if context_key is not None else ip)
+        slot = int(self.clock() // self.bucket_seconds)
+        buckets = [b for b in state['buckets'] if b['slot'] > slot - self.max_buckets] if state else []
+        count = sum(b['count'] for b in buckets)
+        uri_count = sum(b['uri_count'] for b in buckets)
+        uris = [u for u, last_slot in state['uris'].items() if last_slot > slot - self.max_buckets] if state else []
         return {
-            "request_rate": len(events),
-            "failed_requests": failed_requests,
-            "uri_length": int(avg_uri_len),
-            "status_4xx": status_4xx,
-            "status_5xx": status_5xx,
-            "bytes": total_bytes,
-            "packet_count": len(events),
-            "unique_uri_count": len(unique_uris),
-            "failed_auth": sum(1 for e in events if e.http_status in (401, 403) or str(e.action).upper() in ("FAILURE", "FAILED")),
-            "unique_destination_ports": len({e.dst_port for e in events if e.dst_port is not None and str(e.action).lower() in ("drop", "deny", "blocked")}),
-            "current_auth_failure": events[-1].http_status in (401, 403) or str(events[-1].action).upper() in ("FAILURE", "FAILED"),
-            "current_blocked": str(events[-1].action).lower() in ("drop", "deny", "blocked"),
-            "current_4xx": bool(events[-1].http_status and 400 <= events[-1].http_status < 500),
-            "blocked_requests": sum(1 for e in events if str(e.action).lower() in ("drop", "deny", "blocked"))
+            'request_rate': count,
+            'failed_requests': sum(b['failed'] for b in buckets),
+            'auth_failed_requests': sum(b['auth_failed'] for b in buckets),
+            'uri_length': int(sum(b['uri_sum'] for b in buckets) / uri_count) if uri_count else 0,
+            'status_4xx': sum(b['s4'] for b in buckets),
+            'status_5xx': sum(b['s5'] for b in buckets),
+            'bytes': sum(b['bytes'] for b in buckets),
+            'packet_count': count,
+            'unique_uri_count': len(uris),
+            'unique_uri_count_is_lower_bound': any(b['uri_capped'] for b in buckets),
         }
+
+    def stats(self):
+        return {'active_ips': len(self.ip_events), 'max_ips': self.max_ips,
+                'bucket_count': sum(len(s['buckets']) for s in self.ip_events.values()),
+                'evicted_ips': self.evicted_ips}

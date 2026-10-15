@@ -1,11 +1,11 @@
 <script lang="ts">
   import PageHeader from '../../lib/components/PageHeader.svelte';
-  import { onDestroy } from 'svelte';
-  import { lanDetectionsStore as eventsStore, connectionState } from '../../stores/events';
+  import { onMount, onDestroy } from 'svelte';
+  import { lanEventsStore as eventsStore, connectionState, attackStatsStore, dashboardDataStore } from '../../stores/events';
+  import {incidentUrl,criticalForDisplay} from '../../lib/utils/incidentLink';
+  import { SmoothCounter } from '../../lib/utils/smoothCounter';
   import { formatEventTime } from '../../lib/formatTime';
   import { getFacultyForIP, isInternalIP, getServerName } from '../../stores/faculties';
-  import { rankTargetFaculties, unassignedTargetHits } from '../../lib/utils/facultyRanking';
-  import { networkRecordsStore } from '../../stores/faculties';
   import { themeStore } from '../../stores/theme';
 
   // ─── Attack entity field reference (from backend/src/entities/attack.entity.ts)
@@ -22,6 +22,18 @@
   // ─── Raw Events ──────────────────────────────────────────────────────────────
   let allEvents: any[] = [];
   let events: any[] = [];
+  let received24h: number | null = null;
+  let receiptTimer: ReturnType<typeof setInterval>;
+  let destroyed = false;
+  async function loadReceivedCount() {
+    try {
+      const res = await fetch('/api/ingest/summary', { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }, signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return;
+      const summary = await res.json();
+      if (!destroyed) received24h = summary.received24h;
+    } catch {}
+  }
+  onMount(() => { loadReceivedCount(); receiptTimer = setInterval(loadReceivedCount, 15000); });
 
   const unsub = eventsStore.subscribe(v => { 
     allEvents = v; 
@@ -38,11 +50,8 @@
   let selectedIncident = null;
 
   function openIncident(e) {
-    if (e.id || e.incident_id) {
-      window.location.href = `/dashboard/soar?id=${e.id || e.incident_id}`;
-    } else {
-      window.location.href = `/dashboard/soar?ip=${e.ip}&time=${e.time || e.createdAt}`;
-    }
+    const url=incidentUrl(e);
+    if(url)window.location.href=url;
   }
 
   // ─── Chart Instances ─────────────────────────────────────────────────────────
@@ -57,8 +66,11 @@
   let polarCanvas: HTMLCanvasElement;
 
   // ─── Derived Stats (using real backend fields) ────────────────────────────────
-  $: totalEvents    = events.length;
-  $: criticalEvents = events.filter((e: any) => e.severity === 'critical');
+  $: counterValues = (!$attackStatsStore?.date ? $attackStatsStore?.rolling24h?.organization : null)
+    || $attackStatsStore?.organization;
+  $: totalEvents    = counterValues?.total ?? 0;
+  $: dashboardBlocks=$dashboardDataStore?.organization;
+  $: criticalEvents = criticalForDisplay(dashboardBlocks?.criticalEvents||[]);
   // "blocked" = mitigation contains 'ban' or 'block', or type includes 'Block'
   $: blockedEvents  = events.filter((e: any) =>
     (e.mitigation && /ban|block/i.test(e.mitigation)) ||
@@ -71,48 +83,26 @@
   // ─── Counter Animation (browser-only — requestAnimationFrame not in Node) ────
   let dTotal = 0, dCrit = 0, dBlocked = 0, dSsh = 0;
 
-  function animCount(start: number, target: number, set: (v: number) => void, ms = 700) {
-    if (typeof requestAnimationFrame === 'undefined') { set(target); return; }
-    const t0 = Date.now();
-    const tick = () => {
-      const p = Math.min((Date.now() - t0) / ms, 1);
-      set(Math.round(start + (1 - Math.pow(1 - p, 3)) * (target - start)));
-      if (p < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }
-
-  let pTotal = -1, pCrit = -1, pBlk = -1, pSsh = -1;
-
-  $: { 
-    if (totalEvents !== pTotal) { 
-      if (pTotal === -1) { dTotal = totalEvents; } else { animCount(dTotal, totalEvents, v => dTotal = v); }
-      pTotal = totalEvents; 
-    } 
-  }
-  $: { 
-    if (criticalEvents.length !== pCrit) { 
-      if (pCrit === -1) { dCrit = criticalEvents.length; } else { animCount(dCrit, criticalEvents.length, v => dCrit = v); }
-      pCrit = criticalEvents.length; 
-    } 
-  }
-  $: { 
-    if (blockedEvents.length !== pBlk) { 
-      if (pBlk === -1) { dBlocked = blockedEvents.length; } else { animCount(dBlocked, blockedEvents.length, v => dBlocked = v); }
-      pBlk = blockedEvents.length; 
-    } 
-  }
-  $: { 
-    if (sshEvents.length !== pSsh) { 
-      if (pSsh === -1) { dSsh = sshEvents.length; } else { animCount(dSsh, sshEvents.length, v => dSsh = v); }
-      pSsh = sshEvents.length; 
-    } 
+  const makeCounter = (set: (value:number)=>void) => new SmoothCounter(set,
+    callback=>requestAnimationFrame(callback), id=>cancelAnimationFrame(id), ()=>performance.now());
+  const totalCounter=makeCounter(value=>dTotal=value);
+  const criticalCounter=makeCounter(value=>dCrit=value);
+  const blockedCounter=makeCounter(value=>dBlocked=value);
+  const sshCounter=makeCounter(value=>dSsh=value);
+  let previousCounterScope = '';
+  $: if (counterValues) {
+    const scope='organization:'+($attackStatsStore?.date||'live');
+    const immediate=scope!==previousCounterScope || typeof requestAnimationFrame==='undefined';
+    totalCounter.update(counterValues.total,immediate);
+    criticalCounter.update(counterValues.critical,immediate);
+    blockedCounter.update(counterValues.blocked,immediate);
+    sshCounter.update(counterValues.ssh,immediate);
+    previousCounterScope=scope;
   }
 
   // ─── Faculty Ranking (internal IPs via CIDR lookup) ──────────────────────────
-  $: facultyRanking = ($networkRecordsStore, rankTargetFaculties(events, getFacultyForIP, isInternalIP));
+  $: facultyRanking = dashboardBlocks?.facultyRanking||[];
   $: facMax = facultyRanking[0]?.count || 1;
-  $: unassignedHits = ($networkRecordsStore, unassignedTargetHits(events, getFacultyForIP, isInternalIP));
 
   // ─── Last event timestamp ─────────────────────────────────────────────────────
   $: lastEventLabel = events.length > 0
@@ -335,8 +325,11 @@
   }
 
   onDestroy(() => {
+    destroyed = true;
+    clearInterval(receiptTimer);
     chartsDestroyed = true;
     unsub();
+    totalCounter.stop();criticalCounter.stop();blockedCounter.stop();sshCounter.stop();
     timelineChart?.destroy();
     typeChart?.destroy();
     radarChart?.destroy();
@@ -360,11 +353,11 @@
     <span class="hl">Live Feed: <b>{$connectionState ? 'Connected' : 'Disconnected'}</b></span>
     <span class="sep">|</span>
     <i class="ti ti-clock hl-icon"></i>
-    <span class="hl">Last: <b>{lastEventLabel}</b></span>
+    <span class="hl">Last alert: <b>{lastEventLabel}</b></span>
     
     <div class="ml-auto" style="display: flex; align-items: center; gap: 12px;">
       <span class="hl" style="border-left: 1px solid var(--border); padding-left: 12px;">
-        <i class="ti ti-database hl-icon"></i> <b>{totalEvents}</b> events
+        <i class="ti ti-database hl-icon"></i> <b>{totalEvents}</b> alerts
       </span>
     </div>
   </div>
@@ -376,8 +369,8 @@
       <div class="kpi-icon blue"><i class="ti ti-shield-lock"></i></div>
       <div class="kpi-body">
         <span class="kpi-label">Total Events (24h)</span>
-        <span class="kpi-value">{dTotal.toLocaleString()}</span>
-        <span class="kpi-sub">All honeypot sensors</span>
+        <span class="kpi-value">{received24h === null ? '—' : received24h.toLocaleString()}</span>
+        <span class="kpi-sub">Logs received · {dTotal.toLocaleString()} security alerts</span>
       </div>
     </div>
     <div class="kpi-card">
@@ -402,9 +395,9 @@
       <div class="kpi-top green"></div>
       <div class="kpi-icon green"><i class="ti ti-ban"></i></div>
       <div class="kpi-body">
-        <span class="kpi-label">Auto-Blocked</span>
+        <span class="kpi-label">Blocked Traffic</span>
         <span class="kpi-value">{dBlocked.toLocaleString()}</span>
-        <span class="kpi-sub">IP ban triggered</span>
+        <span class="kpi-sub">Observed deny / drop outcomes</span>
       </div>
     </div>
   </div>
@@ -483,7 +476,7 @@
       </div>
       <div class="rank-body">
         {#if facultyRanking.length === 0}
-          <div class="empty"><i class="ti ti-info-circle"></i> ยังไม่มีเหตุการณ์ที่ระบุคณะเป้าหมายได้</div>
+          <div class="empty"><i class="ti ti-info-circle"></i> No internal IP data yet</div>
         {:else}
           {#each facultyRanking as f, i}
             <div class="rank-row">
@@ -496,12 +489,6 @@
             </div>
           {/each}
         {/if}
-        {#if unassignedHits > 0}
-          <div style="padding:12px 0;color:var(--text-muted);font-size:12px">
-            เป้าหมายอยู่ใน subnet ที่บันทึกไว้ แต่ไม่มีชื่อหน่วยงาน: {unassignedHits} เหตุการณ์
-          </div>
-        {/if}
-        <div style="color:var(--text-muted);font-size:11px">นับจากเหตุการณ์ที่แสดง โดยใช้ IP เป้าหมายและ Network Map ปัจจุบัน</div>
       </div>
     </div>
 

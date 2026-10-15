@@ -1,12 +1,13 @@
 <script>
   import { marked } from 'marked';
+  import { safeHtml } from '$lib/utils/safeHtml';
   export let event;
 
   $: summary = event?.ai_analysis?.summary || '';
   $: storyline = event?.ai_analysis?.storyline || '';
   $: confidence = event?.ai_analysis?.confidence_percentage || 0;
 
-  $: renderedStoryline = storyline ? marked.parse(storyline) : '';
+  $: renderedStoryline = storyline ? safeHtml(marked.parse(storyline)) : '';
 </script>
 
 {#if summary || storyline}

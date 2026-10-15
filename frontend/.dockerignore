@@ -27,3 +27,6 @@ nginx/certs/
 # Ignore honeypot logs from host to avoid copying large files
 honeypots/cowrie/var/log/
 honeypots/webtrap/logs/
+.svelte-kit/
+build/
+dist/

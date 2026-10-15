@@ -13,7 +13,8 @@ export class CryptoService {
 
   constructor() {
     const hexKey = process.env.TOTP_ENCRYPTION_KEY;
-    if (!hexKey || hexKey.length !== 64) {
+    if (!hexKey || !/^[0-9a-fA-F]{64}$/.test(hexKey)) {
+      if (process.env.NODE_ENV === 'production') throw new Error('Production requires TOTP_ENCRYPTION_KEY (64 hex characters)');
       // Fallback for dev/PoC — in production this MUST be set!
       const fallback = crypto.randomBytes(32).toString('hex');
       console.warn(

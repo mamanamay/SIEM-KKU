@@ -3,10 +3,18 @@ import { Request, Response, NextFunction } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiLog } from '../entities/api-log.entity';
+import { MAX_API_LOG_WRITES } from '../runtime-limits';
 import { clientIp as resolveClientIp } from '../developer-api/ip-policy';
 
 @Injectable()
 export class ApiLogMiddleware implements NestMiddleware {
+  private static active=0;
+  private static dropped=0;
+  private static failed=0;
+  private static lastWarning=0;
+  static diagnostics() {
+    return {activeWrites:this.active,maxWrites:MAX_API_LOG_WRITES,droppedAccessLogs:this.dropped,failedWrites:this.failed};
+  }
   constructor(
     @InjectRepository(ApiLog)
     private apiLogRepository: Repository<ApiLog>,
@@ -24,7 +32,20 @@ export class ApiLogMiddleware implements NestMiddleware {
       const path = req.path;
 
       // ข้ามการบันทึก health check / socket.io
-      if (path === '/health' || path.startsWith('/socket.io')) return;
+      if (path === '/health' || path.startsWith('/socket.io') ||
+          ['/api/ingest/ready','/api/system/runtime'].includes(path)) return;
+
+      // Optional access history must not create an unlimited promise queue
+      // when the database is slower than HTTP traffic. Durable event receipts
+      // and security audit records use their own awaited paths.
+      if(ApiLogMiddleware.active>=MAX_API_LOG_WRITES) {
+        ApiLogMiddleware.dropped++;
+        if(Date.now()-ApiLogMiddleware.lastWarning>=60000) {
+          ApiLogMiddleware.lastWarning=Date.now();
+          console.warn('[ApiLog] Access history write budget full; skipped entries counted in runtime diagnostics');
+        }
+        return;
+      }
 
       const contentLength = res.getHeader('content-length');
       const responseSize = contentLength ? parseInt(contentLength as string, 10) : undefined;
@@ -37,14 +58,18 @@ export class ApiLogMiddleware implements NestMiddleware {
       logEntry.clientIp = clientIp as any;
       logEntry.userAgent = ((req.headers['user-agent'] || '').substring(0, 500)) as any;
       logEntry.durationMs = durationMs as any;
-      logEntry.authRole = ((req as any).user?.role || null) as any;
-      logEntry.actorUserId = (req as any).user?.sub || null;
-      logEntry.credentialId = (req as any).apiTokenId || null;
+      logEntry.authRole = ((req as any).userVerified || (req as any).user?.role === 'service')
+        ? (req as any).user?.role : null;
       logEntry.responseSize = (responseSize ?? null) as any;
+      logEntry.actorUserId = (req as any).userVerified ? (req as any).user?.sub || null : null;
+      logEntry.credentialId = (req as any).apiTokenId || null;
 
-      this.apiLogRepository.save(logEntry, { transaction: false }).catch((err) => {
-        console.warn('[ApiLog] Failed to save log:', err?.message);
-      });
+      ApiLogMiddleware.active++;
+      void (async()=>{
+        try {await this.apiLogRepository.save(logEntry, { transaction: false });}
+        catch {ApiLogMiddleware.failed++;}
+        finally {ApiLogMiddleware.active--;}
+      })();
     });
 
     next();

@@ -1,6 +1,7 @@
-import { escapeReportData } from './reportEscape';
 import type { ExportSession, IpSummary, ExportLanguage, AiBriefingContext } from "./types";
 import { getAttackTypeMeaning, getMitreTechniqueInfo, getTacticBadge } from "./mitreMapping";
+import { escapeReportData, escapeText } from '../utils/safeHtml';
+import { AI_BRIEFING_SECTIONS } from '../../stores/globalReportStore';
 
 // ── Labels (Thai / English) ────────────────────────────────────────────────────
 const L = {
@@ -364,7 +365,7 @@ function renderTechEvidence(session: ExportSession, lbl: typeof L.th, sectionNum
   if (events.length === 0) return "";
 
   const keys = session.selectedFields.length > 0 ? session.selectedFields : Object.keys(events[0] || {});
-  const headers = keys.map(k => `<th>${k}</th>`).join("");
+  const headers = keys.map(k => `<th>${escapeText(k)}</th>`).join("");
   const rows = events.slice(0, 200).map(e => {
     const cells = keys.map(k => {
       let v = e[k] ?? "-";
@@ -587,6 +588,7 @@ function renderThreeLevelRecs(session: ExportSession, lbl: typeof L.th, sectionN
 // ═══════════════════════════════════════════════════════════════════════════════
 export function generateIncidentDeepDiveHtml(session: ExportSession, hash?: string): string {
   session = escapeReportData(session);
+  hash = hash ? escapeText(hash) : undefined;
   const lang = session.language;
   const lbl = lang === "en" ? L.en : L.th;
   
@@ -607,7 +609,7 @@ export function generateIncidentDeepDiveHtml(session: ExportSession, hash?: stri
   const mitreInfo = getMitreTechniqueInfo(primaryEvent.mitreCode);
 
   const attackerIp = primaryEvent.ip || primaryEvent['IP Address'] || 'N/A';
-  const targetIp = primaryEvent.destIp || '10.30.x.x (Honeypot)';
+  const targetIp = primaryEvent.destIp || 'ไม่ระบุใน Log';
   const targetPort = primaryEvent.honeypotPort || 'N/A';
   const attackerCountry = primaryEvent.country || 'N/A';
   const severity = primaryEvent.severity ? primaryEvent.severity.toUpperCase() : 'UNKNOWN';
@@ -732,6 +734,7 @@ export function generateIncidentDeepDiveHtml(session: ExportSession, hash?: stri
 // ═══════════════════════════════════════════════════════════════════════════════
 export function generateExecutiveSummaryHtml(session: ExportSession, hash?: string): string {
   session = escapeReportData(session);
+  hash = hash ? escapeText(hash) : undefined;
   const lang = session.language;
   const lbl = lang === "en" ? L.en : L.th;
   
@@ -793,7 +796,6 @@ export function generateExecutiveSummaryHtml(session: ExportSession, hash?: stri
 // PUBLIC: GENERATE TECHNICAL DETAILS HTML
 // ═══════════════════════════════════════════════════════════════════════════════
   export function generateTechnicalDetailsHtml(session: ExportSession, hash?: string): string {
-  session = escapeReportData(session);
     const lang = session.language;
     const lbl = lang === "en" ? L.en : L.th;
   
@@ -821,6 +823,7 @@ export function generateExecutiveSummaryHtml(session: ExportSession, hash?: stri
 // ═══════════════════════════════════════════════════════════════════════════════
 export function generateAiBriefingHtml(session: ExportSession, hash?: string): string {
   session = escapeReportData(session);
+  hash = hash ? escapeText(hash) : undefined;
   const lang = session.language;
   const lbl = lang === 'en' ? L.en : L.th;
   const ai = session.aiContext as AiBriefingContext | null;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { showUiMessage } from '../../../lib/workspace/feedback';
   import { callKKUAI } from '../../../lib/utils/kkuai';
-  import { lanDetectionsStore as eventsStore } from '../../../stores/events';
+  import { lanEventsStore as eventsStore } from '../../../stores/events';
   import { onMount } from 'svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';

@@ -1,141 +1,86 @@
-<div align="center">
+# KKUSIEM — Demo_Honeypot
 
-# 🛡️ KKUSIEM Honeypot Command Center
+ระบบ SIEM สำหรับรับ log จาก API ต้นทางหรือ POST, เก็บหลักฐานการรับเข้า, ตรวจจับด้วย rules/heuristics และแสดงผลเพื่อสืบสวนบนเว็บ มี NestJS API, SvelteKit dashboard และ FastAPI detection engine
 
-**ระบบ Honeypot และ SIEM อัจฉริยะสำหรับดักจับ วิเคราะห์ และตอบสนองการโจมตีทางไซเบอร์แบบ Real-time**
+> สถานะส่งต่อ 15 ตุลาคม 2026: Backend และ Frontend build ผ่าน แต่ Frontend type check ยังไม่ผ่าน และประวัติ Git เดิมมี credentials/private keys ดูข้อจำกัดและผลตรวจใน [HANDOFF_READINESS](docs/HANDOFF_READINESS.md) ก่อนนำขึ้น repository ขององค์กร
 
-[![SvelteKit](https://img.shields.io/badge/Frontend-SvelteKit-ff3e00?style=flat-square&logo=svelte)](https://kit.svelte.dev)
-[![NestJS](https://img.shields.io/badge/Backend-NestJS-e0234e?style=flat-square&logo=nestjs)](https://nestjs.com)
-[![FastAPI](https://img.shields.io/badge/AI_Engine-FastAPI-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791?style=flat-square&logo=postgresql)](https://postgresql.org)
-[![Socket.io](https://img.shields.io/badge/Realtime-Socket.io-010101?style=flat-square&logo=socket.io)](https://socket.io)
+## เริ่มอ่าน
 
-</div>
+| เอกสาร | สำหรับ |
+| --- | --- |
+| [GUIDELINE.md](GUIDELINE.md) | ผู้ใช้งาน: หน้าที่ของทุกหน้าและลำดับการตรวจเหตุการณ์ |
+| [DEPLOY.md](DEPLOY.md) | ผู้ดูแล: environment, TLS, Compose, migrations, backup |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | นักพัฒนา: ติดตั้ง ตรวจงาน และส่งการเปลี่ยนแปลง |
+| [CLAUDE.md](CLAUDE.md) | นักพัฒนา/AI agent: จุดแก้โค้ดและข้อกำหนดระบบ |
+| [Streaming log processing](docs/streaming-log-processing.md) | receipts, queue, detection, cursor และ backpressure |
+| [HANDOFF_READINESS](docs/HANDOFF_READINESS.md) | ผลตรวจจริงและงานคงค้างก่อนส่งต่อ |
 
----
+## ระบบทำงานอย่างไร
 
-## 📖 ภาพรวมของระบบ (System Overview)
+1. Backend ดึง API ที่บันทึกใน Settings > Log API หรือรับ `POST /api/ingest` ด้วย ingestion key
+2. เก็บ raw event/receipt ลงฐานข้อมูลก่อนตอบรับ การรับสำเร็จยังไม่ใช่การตรวจจับเสร็จ
+3. Worker claim งานด้วย lease; ส่ง batch ที่จำกัดจำนวน/ขนาดไป detection engine
+4. Engine แปลง log และตรวจ rules/heuristics; ผลทุกระดับตรวจได้ที่ Detection Results ข้อมูลไม่ครบหรือไม่เป็น alert ไม่ได้หมายความว่าต้นฉบับหาย
+5. Backend ประเมินหลักฐานและความเกี่ยวข้องกับเครือข่ายที่ลงทะเบียน เก็บ incident แล้วกระจายผ่าน Socket.IO
+6. ผู้ใช้สืบสวน สร้างรายงาน และใช้ integrations ตามสิทธิ์และการตั้งค่า AI, Slack, SSO และการตอบสนองต้องมีการตั้งค่าของแต่ละ deployment
 
-KKUSIEM เป็นระบบศูนย์กลางที่รวบรวม Log จากอุปกรณ์ต่างๆ นำมาประมวลผลด้วย **AI Detection Engine** และ **Rule-based Engine** เพื่อวิเคราะห์ความรุนแรง แยกแยะประเภทการโจมตี และแสดงผลบน Dashboard แบบ Real-time
+Shadow model เป็นตัวเลือก ไม่ได้หมายความว่ามี trained production model แนบมาครบ คะแนนหลักอ้างอิง rules/heuristics และหลักฐานจริง การบล็อกใน SIEM ต้องตรวจ response mode/integration ก่อนถือว่าบล็อกที่อุปกรณ์จริงแล้ว
 
-**หลักการสำคัญ — LAN-Scope Filtering:**
-> Dashboard จะแสดงเฉพาะ Log การโจมตีที่ **เป้าหมาย (เหยื่อ) อยู่ในวงแลนขององค์กร** ตามที่กำหนดไว้ใน Network Map (`ip_records.json`) เท่านั้น Log ที่ไม่มี Destination IP ในวงแลนจะถูก Drop อัตโนมัติ
-
-**กระบวนการทำงานหลัก (Data Flow):**
-1. **Ingest:** รับ Log จาก Honeypot (Cowrie, WebTrap), IDS (Suricata, Wazuh), และ Syslog (Fortigate, Nginx)
-2. **LAN Filter:** กรองให้เหลือเฉพาะ Event ที่ Destination IP อยู่ใน subnet ที่บันทึกใน Network Map
-3. **Detect & Correlate:**
-   - Syslog (Firewall/Nginx) ส่งเข้า **Detection Engine (AI/ML)** เป็น batch ทุก 2 วินาที (สูงสุด 50 lines/batch)
-   - Log จาก Honeypot/IDS ประมวลผลด้วย **Rule-based Engine** ใน Backend ทันที
-   - หาก Detection Engine ไม่ตอบสนอง ระบบจะ **Fallback** ส่ง Log ด้วย Basic Parser อัตโนมัติ
-4. **Store & Broadcast:** บันทึกลง PostgreSQL และส่งหน้า Dashboard ผ่าน WebSocket ทันที
-5. **AI Narrative:** Gemini สรุปเหตุการณ์ระดับ High/Critical เป็นภาษาไทย
-6. **Respond (SOAR):** SOC Team กดบล็อก IP หรือทำ Auto-triage จาก Dashboard
-
-## 📂 โครงสร้างโปรเจกต์ (Project Structure)
+## โครงสร้าง
 
 ```text
-Demo_Honeypot/
-├── backend/            # NestJS API + WebSocket (Data ingestion & Rule-based correlation)
-│   └── src/
-│       ├── log.service.ts        # ⚙️ Core: Ingest → LAN Filter → DB → WebSocket
-│       ├── network-map.service.ts # 🗺️ LAN subnet matching (ip_records.json)
-│       ├── ingest.controller.ts  # POST /api/ingest — รับ log จากทุกต้นทาง
-│       └── ip_records.json       # รายชื่อ subnet วงแลนองค์กร (644 records)
-├── frontend/           # SvelteKit Dashboard (Real-time monitoring & SOAR)
-├── detection-engine/   # 🧠 AI/ML Engine (FastAPI) — Isolation Forest + XGBoost
-├── honeypots/          # Cowrie (SSH), WebTrap (HTTP)
-├── nginx/              # Reverse Proxy + SSL config (Production)
-├── logrotate.conf      # Log rotation config (hourly, no copytruncate)
-└── docker-compose.yml  # ไฟล์ Deploy ระบบแบบเต็มรูปแบบ
+backend/
+  src/                 API, auth, ingestion, receipts, reports, developer API
+    entities/          TypeORM entities
+    migrations/        PostgreSQL migrations (7 ไฟล์ ณ วันที่ตรวจ)
+  config/              PDF worker, CA validation, network map
+frontend/
+  src/routes/          28 เส้นทางหน้าเว็บ และ server route
+  src/lib/             components, reports, utilities, data
+  src/stores/          สถานะที่ใช้ร่วมในเว็บ
+  static/              รูปภาพและ assets
+detection-engine/     FastAPI, parsers, rules, features, fusion, optional models
+nginx/                 reverse proxy, TLS configuration และ helper
+docker-compose.yml    nginx, frontend, backend, pdf-renderer, postgres, detection-engine
+docs/                 คู่มือเพิ่มเติมและบันทึกย้อนหลัง
 ```
 
-ดูรายละเอียดสถาปัตยกรรมแบบเจาะลึกได้ที่ [CLAUDE.md](CLAUDE.md)
+`backend/config/`, migrations, frontend data/assets และ `detection-engine/models/README.md` เป็นส่วนของชุดซอร์สที่ต้องส่งต่อ `node_modules`, `dist`, `build`, `.svelte-kit`, `.env`, certificates/private keys, SQLite และรายงาน runtime ถูกยกเว้นจาก Git
 
-## 🗺️ การทำงานของ LAN Filter (Network Map)
+## รันด้วย Docker Compose
 
-ทุก Log ที่เข้ามาจะถูกตรวจสอบว่า **เครื่องเป้าหมาย (destIp) อยู่ในวงแลนองค์กรหรือไม่** ก่อนบันทึกลงฐานข้อมูล:
+ต้องมี Docker Engine และ Compose v2 พร้อม TLS certificate ที่ตรงกับโดเมน
 
-```
-isRelevant = isLanDest(destIp)          ← destIp อยู่ใน ip_records.json?
-           || (!destIp && isLanSensor)  ← ไม่รู้ destIp แต่ sensor ของเราอยู่ใน LAN
-
-ถ้า false → Drop เงียบ (ไม่บันทึก ไม่แสดงบน Dashboard)
-```
-
-- **`ip` field** บน Dashboard = **IP ผู้โจมตี** (อาจเป็น IP ต่างประเทศ)
-- **`destIp` field** = **IP เครื่องเหยื่อในวงแลน** (ต้องอยู่ใน ip_records.json)
-- Subnet ทั้งหมด (644 records) จัดการผ่านหน้า **Network Map** บน Dashboard
-
-## 🧠 การทำงานของ Detection Engine (AI/ML Pipeline)
-
-หัวใจสำคัญของการตรวจจับ Syslog จาก Firewall และ Nginx มี Pipeline 6 ขั้นตอน:
-1. **Parse & Normalize:** แปลง Log ดิบจากหลายแหล่งให้อยู่ในฟอร์แมตมาตรฐาน
-2. **External Attacker Filter:** กรองทิ้ง IP ภายใน (Private/Loopback)
-3. **Feature Aggregation:** รวบรวมสถิติของแต่ละ IP ในช่วง 5 นาที
-4. **AI Screening (Isolation Forest):** คัดแยก Anomaly ออกจาก Normal traffic
-5. **Threat Engine (XGBoost + LogLLM):** จำแนกชนิดการโจมตีและระดับความรุนแรง
-6. **Correlation & AI Analyst:** รวมเหตุการณ์เป็น Attack Session ส่งกลับ Backend
-
-> **Fallback Mode:** ถ้า Detection Engine ไม่ตอบสนอง (down/timeout) Backend จะ parse Log ด้วย Basic Parser และ ingest เข้า DB อัตโนมัติ เพื่อให้ Log ไม่หายไปจาก Dashboard
-
-## 🚀 การติดตั้งและเริ่มใช้งาน
-
-**รันทั้งระบบด้วย Docker (แนะนำสำหรับ Production / Testing)**
 ```bash
-# 1. ตั้งค่า Environment Variables
+# deployment ใหม่เท่านั้น; อย่าทับ environment ของระบบเดิม
 cp .env.example .env
-cp backend/.env.example backend/.env
-
-# 2. เริ่มการทำงานของทุก Service
+# แก้ค่าที่เว้นว่างและ origin/SSO/allowlist ให้ตรงกับสภาพแวดล้อม
+# วาง cert.pem และ key.pem ใน nginx/certs/ โดยไม่ commit
+docker compose config --quiet
 docker compose up -d --build
+docker compose ps
 ```
 
-**รันแยกส่วน (Local Development)**
-- **Backend:** `cd backend && npm install && npm run start:dev` (http://localhost:5000)
-- **Frontend:** `cd frontend && npm install && npm run dev` (http://localhost:5173)
-- **Detection Engine:** `cd detection-engine && pip install -r requirements.txt && uvicorn main:app --port 8100`
+อ่าน [DEPLOY.md](DEPLOY.md) ก่อนเริ่มจริง Compose ใช้ PostgreSQL 16; Backend Dockerfile ใช้ Node 24, Frontend ใช้ Node 22, engine ใช้ Python 3.12 Backend รัน migrations ก่อน start และ PDF มี worker แยกที่ไม่เปิด host port
 
-## 🔑 บัญชีเข้าใช้งานเริ่มต้น (Default Credentials)
+## พัฒนาจากซอร์ส
 
-| Username | Password      | Role  | สิทธิ์ |
-|----------|---------------|-------|--------|
-| `admin`  | `Admin@1234!` | admin | จัดการระบบทั้งหมด, SOAR (บล็อก IP), ตั้งค่า AI |
-| `guest`  | `guest123`    | guest | ดูข้อมูลบน Dashboard เท่านั้น (Read-only) |
+ใช้ Node 24 ตาม `.nvmrc` และ Python 3.12 แยก environment สำหรับ engine
 
-⚠️ **ข้อควรระวัง:** เมื่อนำขึ้นเซิร์ฟเวอร์จริง ควรเปลี่ยนรหัสผ่านทันที
+```bash
+npm --prefix backend ci --legacy-peer-deps
+npm --prefix frontend ci --legacy-peer-deps
+npm --prefix backend run build
+npm --prefix frontend run build
+npm --prefix frontend run check
+```
 
-## ⚙️ Environment Variables ที่สำคัญ (`.env`)
+`--legacy-peer-deps` ตรงกับ Dockerfiles ปัจจุบัน มี peer-version debt ที่ระบุในรายงาน readiness อย่าถือว่า build ผ่านเท่ากับ type check หรือ end-to-end ผ่าน การรัน local API/environment อยู่ใน [CONTRIBUTING.md](CONTRIBUTING.md)
 
-| ตัวแปร | หน้าที่ |
-|---|---|
-| `JWT_SECRET` | คีย์สำหรับเข้ารหัส Access Token |
-| `GEMINI_API_KEY` | คีย์ AI สำหรับสร้างคำอธิบายแจ้งเตือน (ถ้าไม่มี ระบบ Rule-based ทำงานแทน) |
-| `SSO_*` | การเชื่อมต่อระบบ Login ผ่าน KKU SSO |
-| `INGEST_API_KEY` | รหัสผ่านสำหรับส่ง Log เข้ามาที่ `/api/ingest` |
-| `POSTGRES_USER/PASSWORD/DB` | ข้อมูล PostgreSQL สำหรับ Production |
+## บัญชีและข้อมูล
 
-## ⚠️ ปัญหาที่พบบ่อย (Troubleshooting)
+ฐานข้อมูล production ใหม่ต้องกำหนด `BOOTSTRAP_ADMIN_PASSWORD` อย่างน้อย 12 ตัวตาม SeedService ระบบสร้าง `admin` และบังคับเปลี่ยนรหัสผ่าน ไม่มีบัญชี default password สำหรับใช้งานทั่วไป ระบบเดิมต้องเก็บ `TOTP_ENCRYPTION_KEY` เดิมไว้เพื่ออ่าน MFA และ source credentials ที่เข้ารหัส
 
-- **หน้า Dashboard โล่ง ไม่แสดง Log:**
-  1. ตรวจสอบว่า Container ทุกตัวรันอยู่: `docker compose ps`
-  2. ดู log Backend: `docker compose logs backend --tail=50`
-  3. ถ้าเห็น `[Cache GC]` ทุก 5 นาที = Backend ทำงานปกติ
-  4. ถ้าเห็น `[DetectionEngine] Unreachable ... falling back` = อยู่ใน Fallback Mode (Log ยังเข้าได้)
-  5. ตรวจสอบว่า `destIp` ของ Log อยู่ใน Network Map หรือไม่
+ข้อมูลเครือข่ายและตราสัญลักษณ์ในซอร์สเป็นของ deployment นี้ ผู้รับช่วงต้องปรับ Network Map, origin, SSO และ integrations ให้ตรงกับหน่วยงานก่อนใช้งานจริง ไม่แนบฐานข้อมูลหรือข้อมูลเหตุการณ์จริงเข้า Git
 
-- **Log เข้าระบบแต่ไม่โชว์บน Dashboard:**
-  - Log อาจถูก Drop เพราะ `destIp` ไม่อยู่ใน subnet ที่กำหนดใน Network Map (`ip_records.json`)
-  - ตรวจสอบ subnet ที่หน้า Network Map และเพิ่ม subnet ที่ขาดหาย
-
-- **การส่ง Log ไม่เข้าฐานข้อมูล:**
-  - ตรวจสอบ `INGEST_API_KEY` ว่าตรงกับ `.env` ของ Backend
-  - ทดสอบ: `GET /api/ingest/test` (ไม่ต้องใช้ Key) และ `GET /api/ingest/status` (ดู health แต่ละ source)
-
-- **RAM เต็มบน Server:**
-  - ระบบมี Cache GC ทุก 5 นาที และ Auto-Prune Log อายุเกิน 30 วันทุกเที่ยงคืน
-  - ตรวจสอบ: `docker stats` เพื่อดูการใช้ RAM แต่ละ Container
-  - Backend ถูกจำกัด heap ที่ 512MB (`NODE_OPTIONS=--max-old-space-size=512`)
-
-- **AI ไม่วิเคราะห์เหตุการณ์:**
-  - Gemini ทำงานเฉพาะ Log ระดับ High/Critical และมี Rate Limit 1 ครั้ง/IP/นาที
+ใบอนุญาตที่รากโครงการ: [LICENSE](LICENSE) เอกสารใน `docs/deployment-history/` เป็นบันทึกย้อนหลัง คำสั่งเก่าที่อ้าง helper/package ซึ่งถูกนำออกแล้วไม่ใช่ขั้นตอนติดตั้งปัจจุบัน

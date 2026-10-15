@@ -2,7 +2,7 @@
   import type { Message } from '../../AiCopilot/types';
   import { openInvestigationReport, restoreInvestigationReport } from '../../AiCopilot/investigationReport';
   import { aiCopilotStore } from '../../../stores/aiCopilotStore';
-  import { lanDetectionsStore as eventsStore, roleStore } from '../../../stores/events';
+  import { lanEventsStore as eventsStore, roleStore } from '../../../stores/events';
   import { showNotification } from '../../../stores/notificationStore';
   import { get } from 'svelte/store';
 

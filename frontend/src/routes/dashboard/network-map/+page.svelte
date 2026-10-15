@@ -9,8 +9,8 @@
   import ChangeSummary from '../../../lib/components/workspace/ChangeSummary.svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   import ExportBtn from '../../../lib/components/ExportBtn.svelte';
-  import { lanDetectionsStore as eventsStore } from '../../../stores/events';
-  import { getFacultyForIP, getFacultyCode, getNetworkRouteForIP, networkRecordsStore, networkPolicyState, refreshNetworkPolicy } from '../../../stores/faculties';
+  import { lanEventsStore as eventsStore } from '../../../stores/events';
+  import { getFacultyForIP, networkRecordsStore, networkPolicyState, refreshNetworkPolicy } from '../../../stores/faculties';
   import { roleStore } from '../../../stores/events';
   import { isIpInCidr } from '../../../lib/utils/ip';
   // @ts-ignore
@@ -44,21 +44,21 @@
 
   // Extract unique faculties dynamically from the current editableRecords
   $: dynamicFaculties = Array.from(new Set(editableRecords.map((r: any) => r['Faculty/Dept']).filter(Boolean))).map(name => {
-    let code = getFacultyCode(String(name));
+    let code = String(name).split('â€”')[0].trim().toUpperCase();
     if (!code) code = 'UNASSIGNED';
     if (code === 'MS/KKBS') code = 'MS/KKBS';
     return { code, name: String(name) };
   });
 
   // Map events dynamically
-  $: mappedEvents = ($networkRecordsStore, $eventsStore.map(e => {
-    return { ...e, faculty: getFacultyForIP(e.destIp || e.dst_ip || '') };
-  }));
+  $: mappedEvents = $eventsStore.map(e => {
+    return { ...e, faculty: getFacultyForIP(e.ip) };
+  });
 
   $: filteredEvents = (() => {
     let base = selectedFacultyCode === 'ALL' 
       ? mappedEvents 
-      : mappedEvents.filter(e => selectedFacultyCode === 'UNASSIGNED' ? !e.faculty : e.faculty?.code === selectedFacultyCode);
+      : mappedEvents.filter(e => e.faculty && e.faculty.code === selectedFacultyCode);
     if (searchTopIP) base = base.filter(e => e.ip && e.ip.includes(searchTopIP));
     return base;
   })();
@@ -66,9 +66,9 @@
   $: facultyStats = (() => {
     if (selectedFacultyCode !== 'ALL') {
       const f = dynamicFaculties.find(x => x.code === selectedFacultyCode);
-      return { total: filteredEvents.reduce((sum, event) => sum + (Number(event.hitCount) > 0 ? Number(event.hitCount) : 1), 0), name: f ? f.name : 'Unknown' };
+      return { total: filteredEvents.length, name: f ? f.name : 'Unknown' };
     }
-    return { total: filteredEvents.reduce((sum, event) => sum + (Number(event.hitCount) > 0 ? Number(event.hitCount) : 1), 0), name: 'ทุกคณะ / ส่วนงาน' };
+    return { total: filteredEvents.length, name: 'ทุกคณะ / ส่วนงาน' };
   })();
 
   // --- Events Pagination ---
@@ -91,7 +91,7 @@
 
     // Filter Faculty Code
     if (selectedFacultyCode !== 'ALL') {
-      let rCode = getFacultyCode(String(r['Faculty/Dept'] || ''));
+      let rCode = String(r['Faculty/Dept']).split('â€”')[0].trim().toUpperCase();
       if (!rCode) rCode = 'UNASSIGNED';
       if (rCode !== selectedFacultyCode) return false;
     }
@@ -144,7 +144,7 @@
   // --- Actions ---
   function hasMatch(cidr: any) {
     if (!cidr || cidr === '0.0.0.0/0') return false;
-    return $eventsStore.some(e => getNetworkRouteForIP(e.destIp || e.dst_ip || '') === cidr);
+    return $eventsStore.some(e => isIpInCidr(e.ip, cidr));
   }
 
   function openAddModal() {
@@ -199,7 +199,7 @@
       const dataToSave = editableRecords.map(({ _id, ...rest }) => rest);
       const response = await fetch('/api/network-map', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token'), 'If-Match': '"' + get(networkPolicyState).version + '"' },
         body: JSON.stringify(dataToSave)
       });
       if (!response.ok) { const data = await response.json(); throw new Error(data.message || 'บันทึกกฎเครือข่ายไม่สำเร็จ'); }

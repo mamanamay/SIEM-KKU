@@ -1,4 +1,4 @@
-import { Controller, Patch, Post, Param, Body, HttpException, HttpStatus, Get, Headers, Delete, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Patch, Post, Param, Body, HttpException, HttpStatus, Get, Headers, Delete, Query, UseGuards, Req, ParseIntPipe, NotFoundException } from '@nestjs/common';
 import { AuthGuard } from './auth.guard';
 import { AiService } from './ai.service';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -6,9 +6,10 @@ import { Repository, Between } from 'typeorm';
 import { Attack } from './entities/attack.entity';
 import { EventsGateway } from './events.gateway';
 import { LogService } from './log.service';
-import { NetworkMapService } from './network-map.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import { AlertQueryService } from './alert-query.service';
+import { Roles } from './roles.guard';
 
 const isDocker = process.env.NODE_ENV === 'production' || process.env.IS_DOCKER === 'true';
 const basePath = process.cwd().endsWith('backend') ? path.join(process.cwd(), '..') : process.cwd();
@@ -16,7 +17,7 @@ const basePath = process.cwd().endsWith('backend') ? path.join(process.cwd(), '.
 const BLOCKED_IPS_FILE = isDocker ? '/app/siem-logs/blocked_ips.json' : path.join(basePath, 'siem-logs', 'blocked_ips.json');
 const ISOLATED_PORTS_FILE = isDocker ? '/app/siem-logs/isolated_ports.json' : path.join(basePath, 'siem-logs', 'isolated_ports.json');
 
-function readJSON(filePath: string, fallback: any[] = []) {
+function readJSON(filePath: string, fallback: any[] = []): any[] {
   try {
     if (!fs.existsSync(filePath)) return fallback;
     return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -29,6 +30,7 @@ function writeJSON(filePath: string, data: any) {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
   } catch (err) {
     console.error(`❌ Failed to write JSON to ${filePath}:`, err);
+    throw new HttpException('Response state could not be persisted', HttpStatus.SERVICE_UNAVAILABLE);
   }
 }
 
@@ -40,7 +42,7 @@ export class AttacksController {
     private eventsGateway: EventsGateway,
     private logService: LogService,
     private aiService: AiService,
-    private readonly network: NetworkMapService,
+    private alerts: AlertQueryService,
   ) {}
 
   // ── IP Map Registration (from proxy.js) ───────────────────────────────────
@@ -54,16 +56,20 @@ export class AttacksController {
     const attack = await this.attackRepository.findOne({ where: { id } });
     if (!attack) throw new HttpException("Attack not found", HttpStatus.NOT_FOUND);
 
-    if (body.status !== undefined) attack.status = body.status;
-    if (body.assignee !== undefined) attack.assignee = body.assignee;
-    if (body.notes !== undefined) attack.notes = body.notes;
-
-    await this.attackRepository.save(attack);
+    const fields: Partial<Attack> = {};
+    if (body.status !== undefined) {
+      if (!['Opened', 'In Progress', 'Closed'].includes(body.status)) throw new HttpException('Invalid status', HttpStatus.BAD_REQUEST);
+      fields.status = body.status;
+    }
+    if (body.assignee !== undefined) fields.assignee = body.assignee;
+    if (body.notes !== undefined) fields.notes = body.notes;
+    if (Object.keys(fields).length) await this.attackRepository.update(id, fields);
+    const current = await this.attackRepository.findOneByOrFail({ id });
     
     // Broadcast case update
-    this.eventsGateway.broadcastAttack(attack);
+    this.eventsGateway.broadcastAttack(current);
     
-    return { success: true, attack };
+    return { success: true, attack: current };
   }
 
   @Post('ip-map')
@@ -94,7 +100,7 @@ export class AttacksController {
 
   // ── Get Historical Attacks ────────────────────────────────────────────────
   @Get('history')
-  async getHistory(@Query('date') dateStr?: string, @Query('scope') scope?: string) {
+  async getHistory(@Query('date') dateStr?: string) {
     if (!dateStr) {
       // Default to today if no date provided
       dateStr = new Date().toISOString().split('T')[0];
@@ -102,23 +108,37 @@ export class AttacksController {
     
     // Parse date and create range for the whole day in UTC
     // dateStr format: YYYY-MM-DD
-    const startDate = new Date(`${dateStr}T00:00:00.000Z`);
-    const endDate = new Date(`${dateStr}T23:59:59.999Z`);
+    const startDate = new Date(`${dateStr}T00:00:00.000+07:00`);
+    const endDate = new Date(`${dateStr}T23:59:59.999+07:00`);
     
     if (isNaN(startDate.getTime())) {
       throw new HttpException('Invalid date format. Use YYYY-MM-DD', HttpStatus.BAD_REQUEST);
     }
     
-    const attacks = await this.attackRepository.find({
-      where: {
-        createdAt: Between(startDate, endDate)
-      },
-      order: { id: 'DESC' },
-      take: 1000 // Limit to 1000 to prevent massive payloads
-    });
-    
-    return scope === 'lan' ? attacks.filter(event => this.network.evaluate(event).inScope).map(event => ({ ...event, networkScope: this.network.evaluate(event) })) : attacks;
+    return this.alerts.latest('organization',dateStr);
   }
+
+  @Get('stats')
+  getStats(@Query('date') date?: string) { return this.alerts.stats(date); }
+
+  @Get('detections')
+  @Roles('admin','analyst','analyst_l2','threat_hunter')
+  getDetections(@Query() query: { page?: string; limit?: string; source?: string; scope?: string; severity?: string }) {
+    return this.alerts.detections(query);
+  }
+
+  @Get('dashboard')
+  getDashboard(@Query('date') date?:string) { return this.alerts.dashboard(date); }
+
+  @Get('incident/:id')
+  async getIncident(@Param('id',ParseIntPipe) id:number,@Query('scope') scope='organization') {
+    const event=await this.alerts.incident(id,scope);
+    if(!event)throw new NotFoundException('Qualified incident not found in this scope');
+    return event;
+  }
+
+  @Get('recent')
+  getRecent() { return this.alerts.latest(); }
 
   // ── Update Attack Status ──────────────────────────────────────────────────
   @Patch(':id/status')
@@ -129,7 +149,7 @@ export class AttacksController {
     const attack = await this.attackRepository.findOne({ where: { id: parseInt(id) } });
     if (!attack) throw new HttpException('Attack not found', HttpStatus.NOT_FOUND);
     attack.status = status;
-    await this.attackRepository.save(attack);
+    await this.attackRepository.update(attack.id, { status });
     this.eventsGateway.server.emit('status_updated', { id: attack.id, status: attack.status });
     return attack;
   }
@@ -138,6 +158,7 @@ export class AttacksController {
   // Adds the IP to blocked_ips.json and broadcasts to all clients
   @Post('block-ip')
   async blockIp(@Body() body: { ip: string; reason: string; attackId?: number; faculty?: any; port?: string }) {
+    if (process.env.SIEM_RESPONSE_MODE !== 'simulation') throw new HttpException('Firewall adapter is not configured; no block was executed', HttpStatus.NOT_IMPLEMENTED);
     if (!body.ip) throw new HttpException('Missing IP', HttpStatus.BAD_REQUEST);
 
     const blockedIps: any[] = readJSON(BLOCKED_IPS_FILE);
@@ -160,6 +181,8 @@ export class AttacksController {
       faculty:   body.faculty || null,
       switchPort:body.port || null,
       blockedBy: 'SIEM Dashboard (Auto)',
+      enforced: false,
+      mode: 'simulation',
       // จำข้อมูลทั้งหมดของ IP ที่โดนบล็อกไว้ตามที่ผู้ใช้ขอ
       attackData: attackData ? {
         type: attackData.type,
@@ -178,12 +201,13 @@ export class AttacksController {
     this.eventsGateway.server.emit('ip_blocked', entry);
 
     console.log(`[SIEM] 🔒 IP Blocked: ${body.ip} — ${body.reason}`);
-    return { success: true, entry };
+    return { success: false, enforced: false, mode: 'simulation', message: 'Simulation recorded; no firewall block executed', entry };
   }
 
   // ── Unblock IP (WAF Rule) ─────────────────────────────────────────────────
   @Post('unblock-ip')
   unblockIp(@Body() body: { ip: string }) {
+    if (process.env.SIEM_RESPONSE_MODE !== 'simulation') throw new HttpException('Firewall adapter is not configured; no unblock was executed', HttpStatus.NOT_IMPLEMENTED);
     if (!body.ip) throw new HttpException('Missing IP', HttpStatus.BAD_REQUEST);
 
     let blockedIps: any[] = readJSON(BLOCKED_IPS_FILE);
@@ -198,13 +222,13 @@ export class AttacksController {
     this.eventsGateway.server.emit('ip_unblocked', { ip: body.ip });
 
     console.log(`[SIEM] 🔓 IP Unblocked: ${body.ip}`);
-    return { success: true, ip: body.ip };
+    return { success: false, enforced: false, mode: 'simulation', message: 'Simulation removed; no firewall change executed', ip: body.ip };
   }
 
   // ── Get Blocked IPs List ──────────────────────────────────────────────────
   @Get('blocked-ips')
   getBlockedIps() {
-    return readJSON(BLOCKED_IPS_FILE);
+    return readJSON(BLOCKED_IPS_FILE).map(entry => ({ ...entry, mode: 'simulation', enforced: false }));
   }
 
   // ── Isolate Switch Port ───────────────────────────────────────────────────
@@ -215,6 +239,7 @@ export class AttacksController {
     ip: string; switchPort: string; building: string; floor: string;
     portNumber: string; faculty?: any; attackId?: number;
   }) {
+    if (process.env.SIEM_RESPONSE_MODE !== 'simulation') throw new HttpException('Switch adapter is not configured; no isolation was executed', HttpStatus.NOT_IMPLEMENTED);
     if (!body.ip || !body.switchPort) {
       throw new HttpException('Missing ip or switchPort', HttpStatus.BAD_REQUEST);
     }
@@ -231,8 +256,10 @@ export class AttacksController {
       attackId:    body.attackId   || null,
       isolatedAt:  new Date().toISOString(),
       isolatedBy:  'SIEM Dashboard',
-      status:      'ISOLATED',
-      note:        'Port administratively shut down pending investigation.',
+      status:      'SIMULATED',
+      enforced:    false,
+      mode:        'simulation',
+      note:        'Simulation only; switch port remains unchanged.',
       // In production: would send: `interface GiX/0/Y \n shutdown` via SSH/NETCONF to the switch
       realWorldCmd: `interface ${body.switchPort}\n shutdown\n description [SIEM-BLOCKED: Suspicious Activity]\n`,
     };
@@ -243,13 +270,13 @@ export class AttacksController {
     this.eventsGateway.server.emit('port_isolated', entry);
 
     console.log(`[SIEM] 🔌 Port Isolated: ${body.switchPort} (${body.ip})`);
-    return { success: true, entry };
+    return { success: false, enforced: false, mode: 'simulation', message: 'Simulation recorded; no switch change executed', entry };
   }
 
   // ── Get Isolated Ports List ───────────────────────────────────────────────
   @Get('isolated-ports')
   getIsolatedPorts() {
-    return readJSON(ISOLATED_PORTS_FILE);
+    return readJSON(ISOLATED_PORTS_FILE).map(entry => ({ ...entry, status: 'SIMULATED', mode: 'simulation', enforced: false }));
   }
 
   // ── AI Daily Briefing ─────────────────────────────────────────────────────
@@ -622,7 +649,7 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
     const limitNum = Math.min(Math.max(1, parseInt(limit || '50', 10)), 200);
     const skip = (pageNum - 1) * limitNum;
 
-    const qb = this.attackRepository.createQueryBuilder('a');
+    const qb = this.alerts.query();
 
     if (q && q.trim()) {
       qb.andWhere(
@@ -634,28 +661,8 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
       qb.andWhere('a.severity = :severity', { severity });
     }
 
-    qb.orderBy('a.id', 'DESC');
 
-    if (lan === 'true') {
-      // Scan in bounded batches so scope is applied BEFORE pagination and counts.
-      const data: any[] = [];
-      let total = 0;
-      let offset = 0;
-      for (;;) {
-        const batch = await qb.clone().skip(offset).take(500).getMany();
-        if (!batch.length) break;
-        if (offset === 0) qb.andWhere('a.id <= :snapshotId', { snapshotId: batch[0].id });
-        for (const event of batch) {
-          const networkScope = this.network.evaluate(event);
-          if (!networkScope.inScope) continue;
-          if (total >= skip && data.length < limitNum) data.push({ ...event, networkScope });
-          total++;
-        }
-        offset += batch.length;
-        if (batch.length < 500) break;
-      }
-      return { data, total, page: pageNum, pages: Math.ceil(total / limitNum) || 1 };
-    }
+    qb.orderBy('a.id', 'DESC');
 
     const [data, total] = await qb.skip(skip).take(limitNum).getManyAndCount();
 
@@ -670,14 +677,9 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
 
   @Get('ip-history/:ip')
   @UseGuards(AuthGuard)
-  async getIpHistory(@Param('ip') ip: string, @Query('scope') scope?: string) {
-    const loaded = await this.attackRepository.find({
-      where: { ip },
-      order: { id: 'ASC' },
-      take: 200,
-    });
-
-    const attacks = scope === 'lan' ? loaded.filter(event => this.network.evaluate(event).inScope) : loaded;
+  async getIpHistory(@Param('ip') ip: string) {
+    const attacks = await this.alerts.query().andWhere('(a.ip = :ip OR a.destIp = :ip)',{ip})
+      .orderBy('a.id','ASC').take(200).getMany();
 
     const successKeywords = /(command|success|compromised|login.*ok|session.*open|cmd:|exec:|rm |wget |curl )/i;
 

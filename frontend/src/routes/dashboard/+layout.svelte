@@ -19,6 +19,7 @@
   import Omnisearch from '../../lib/components/Omnisearch.svelte';
   import { page } from '$app/stores';
   import { initSocket, disconnectSocket, roleStore, connectionState, latestAttackStore, usernameStore } from '../../stores/events';
+  import { isVisibleAlert } from '../../lib/utils/alertStream';
   
   let currentTime = '';
   let timeInterval: any;
@@ -58,7 +59,11 @@
     const token = localStorage.getItem('token');
     if (token) {
       fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } })
-        .then(res => res.json())
+        .then(res => {
+          if (res.status === 401) { if (localStorage.getItem('token') === token) logout(true); return null; }
+          if (!res.ok) throw new Error(`Profile request failed (${res.status})`);
+          return res.json();
+        })
         .then(data => {
           if (data && data.username) {
             userProfile = {
@@ -68,7 +73,7 @@
             };
           }
         }).catch(err => console.error('Failed to fetch profile', err));
-    }
+    } else { logout(true); }
 
     if(userAgent.includes('Windows')) osName = 'Windows';
     else if(userAgent.includes('Mac')) osName = 'macOS';
@@ -134,10 +139,13 @@
     const savedNotifs = localStorage.getItem('notifications');
     const savedUnread = localStorage.getItem('unreadCount');
     if (savedNotifs) {
-      try { notificationsHistory = JSON.parse(savedNotifs); } catch (e) {}
+      try {
+        const saved=JSON.parse(savedNotifs);
+        notificationsHistory=Array.isArray(saved)?saved.filter(isVisibleAlert).slice(0,50):[];
+      } catch (e) {}
     }
     if (savedUnread) {
-      unreadCount = parseInt(savedUnread) || 0;
+      unreadCount = Math.min(notificationsHistory.length,Math.max(0,parseInt(savedUnread)||0));
     }
 
     // Real health check for Log Sources (every 30s)
@@ -185,6 +193,9 @@
     const titles: Record<string, string> = {
       '/dashboard': 'Overview Dashboard',
       '/dashboard/hunting': 'Threat Hunting',
+      '/dashboard/log-ingestion': 'Log Ingestion',
+      '/dashboard/detections': 'Detection Results',
+      '/dashboard/settings/log-api': 'Log API',
       '/dashboard/explorer': 'Log Explorer',
       '/dashboard/soar': 'Deep Incident',
       '/dashboard/health': 'System Health',
@@ -219,13 +230,18 @@
 
   async function checkLogSources() {
     try {
-      // Check backend health (if backend is up → all managed sources are online)
-      const res = await fetch('/api/auth/sessions', { signal: AbortSignal.timeout(3000) });
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/ingest/status', {
+        headers: { Authorization: `Bearer ${token || ''}` },
+        signal: AbortSignal.timeout(3000)
+      });
       if (res.ok) {
-        fwStatus = 'online';
-        edrStatus = 'online';
-        wafStatus = 'online';
+        const sources = await res.json();
+        fwStatus = sources.firewall?.status === 'online' ? 'online' : 'offline';
+        edrStatus = [sources.wazuh, sources.server].some(s => s?.status === 'online') ? 'online' : 'offline';
+        wafStatus = sources.nginx?.status === 'online' ? 'online' : 'offline';
       } else {
+        if (res.status === 401 && localStorage.getItem('token') === token) logout(true);
         fwStatus = 'offline';
         edrStatus = 'offline';
         wafStatus = 'offline';
@@ -246,7 +262,7 @@
 </script>
 
 <svelte:head>
-  <title>KKUSIEM</title>
+  <title>{getPageTitle($page.url.pathname)} · SIEM KKU</title>
 </svelte:head>
 
 <div class="layout-wrapper siem-workspace" class:siem-focus={focusMode} class:siem-sidebar-open={mobileMenu}>
@@ -267,6 +283,10 @@
         <div class="nav-group-title mt-2">DETECTION & ANALYSIS</div>
         <a href="/dashboard/hunting" class="nav-item {$page.url.pathname === '/dashboard/hunting' ? 'active' : ''}" aria-label="Threat Hunting" title="Threat Hunting">
           <i class="ti ti-code-asterisk"></i><span class="nav-label">Threat Hunting</span></a>
+        {#if ['admin','analyst','analyst_l2','threat_hunter'].includes($roleStore)}
+        <a href="/dashboard/log-ingestion" class="nav-item {$page.url.pathname === '/dashboard/log-ingestion' ? 'active' : ''}" aria-label="Log Ingestion" title="Log Ingestion"><i class="ti ti-database-import"></i><span class="nav-label">Log Ingestion</span></a>
+        <a href="/dashboard/detections" class="nav-item {$page.url.pathname === '/dashboard/detections' ? 'active' : ''}" aria-label="Detection Results" title="ผลตรวจจาก rule และ heuristic ทุกระดับ"><i class="ti ti-shield-search"></i><span class="nav-label">Detection Results</span></a>
+        {/if}
         <a href="/dashboard/analytics" class="nav-item {$page.url.pathname === '/dashboard/analytics' ? 'active' : ''}" aria-label="Analyst Center" title="Analyst Center">
           <i class="ti ti-chart-pie"></i><span class="nav-label">Analyst Center</span></a>
         <a href="/dashboard/ai-briefing" class="nav-item {$page.url.pathname === '/dashboard/ai-briefing' ? 'active' : ''}" aria-label="AI Daily Briefing" title="AI Daily Briefing">

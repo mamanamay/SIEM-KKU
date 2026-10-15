@@ -47,6 +47,7 @@
 
     let isEditing = false;
     let editTargetId = null;
+    let originalAuthMethod = 'local';
 
     function openEditModal(user) {
         if (user.username === 'admin') {
@@ -56,6 +57,7 @@
             return;
         }
         isEditing = true;
+        originalAuthMethod = user.authMethod;
         editTargetId = user.id;
         newUser = {
             username: user.username,
@@ -414,7 +416,7 @@
                         </div>
                     {/if}
 
-                    {#if newUser.authMethod === 'local' && !isEditing}
+                    {#if newUser.authMethod === 'local' && (!isEditing || originalAuthMethod !== 'local')}
                     <div class="form-group">
                         <label for="password">Password *</label>
                         <input type="password" id="password" bind:value={newUser.password} required placeholder="Set temporary password" />

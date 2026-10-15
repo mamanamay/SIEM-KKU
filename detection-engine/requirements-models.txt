@@ -1,0 +1,2 @@
+# Optional: install only when deploying a separately evaluated ONNX artifact.
+onnxruntime>=1.20,<2

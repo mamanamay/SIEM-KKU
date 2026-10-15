@@ -10,7 +10,7 @@ import { AuditService } from '../audit.service';
 import { clientIp, ipInCidr, validCidr } from './ip-policy';
 
 export const API_SCOPES = ['catalog:read', 'integrations:read', 'health:read'] as const;
-const ROLE_SCOPES: Record<string, readonly string[]> = { admin: API_SCOPES, analyst: API_SCOPES, guest: ['health:read'] };
+const ROLE_SCOPES: Record<string, readonly string[]> = { admin: API_SCOPES, analyst: API_SCOPES, analyst_l2: API_SCOPES, threat_hunter: API_SCOPES, guest: ['health:read'], viewer: ['health:read'] };
 export const tokenView = (token: ApiToken) => ({ id: token.id, name: token.name, prefix: token.prefix, scopes: token.scopes, allowedCidrs: token.allowedCidrs, expiresAt: token.expiresAt, revokedAt: token.revokedAt, lastUsedAt: token.lastUsedAt, createdAt: token.createdAt });
 
 @Injectable()
@@ -38,8 +38,10 @@ export class ApiAccessService {
     const token = this.bearer(request);
     if (token.startsWith('kkusiem_pat_')) throw new UnauthorizedException('A browser session is required for credential management');
     let decoded: any;
-    try { decoded = jwt.verify(token, JWT_SECRET); } catch { throw new UnauthorizedException('Session expired or invalid'); }
+    try { decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }); } catch { throw new UnauthorizedException('Session expired or invalid'); }
     const user = await this.activeUser(Number(decoded.sub));
+    if (decoded.purpose !== 'access' || (decoded.tokenVersion || 0) !== user.tokenVersion || decoded.role !== user.role) throw new UnauthorizedException('Session revoked or invalid');
+    request.userVerified = true;
     request.user = { sub: user.id, username: user.username, role: user.role };
     request.apiActor = user;
     return user;
@@ -68,6 +70,7 @@ export class ApiAccessService {
     const scopes = token.scopes.filter(scope => this.allowedScopes(user).includes(scope));
     request.user = { sub: user.id, username: user.username, role: user.role };
     request.apiTokenId = token.id;
+    request.userVerified = true;
     request.apiActor = user;
     request.apiScopes = scopes;
     return { user, token, scopes };

@@ -1,6 +1,6 @@
 <svelte:head><title>MITRE ATT&CK&reg; Matrix - KKUSIEM</title></svelte:head>
 <script lang="ts">
-  import { lanDetectionsStore as eventsStore } from '../../../stores/events';
+  import { lanEventsStore as eventsStore } from '../../../stores/events';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
   
   

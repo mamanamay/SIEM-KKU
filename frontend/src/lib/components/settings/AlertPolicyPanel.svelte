@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { showNotification } from '../../../stores/notificationStore';
+  import HelpHint from '../HelpHint.svelte';
   let overview: any = null;
   let error = '';
   let busy = false;
@@ -30,11 +31,12 @@
 </script>
 
 <section class="alert-policy-panel">
-  <header><div><h2><i class="ti ti-bell-check"></i> Slack Alert Policy</h2><p>ตรวจ LAN และหลักฐานความเสี่ยงก่อนเข้าคิว · Test Connection เป็นการทดสอบส่งอีกแบบหนึ่ง</p></div><button class="btn-secondary" on:click={load} disabled={busy}>รีเฟรชคิว</button></header>
+  <header><div><h2><i class="ti ti-bell-check"></i> Slack Alert Policy<HelpHint id="slack-policy-help" text="การทดสอบเชื่อมต่อส่งข้อความทดสอบได้ แต่ automatic alert ต้องผ่าน LAN ที่กำหนด หลักฐาน rule/พฤติกรรม คะแนน และเพดานส่ง เหตุการณ์ซ้ำรวมกลุ่ม ไม่ส่งหนึ่งข้อความต่อ log" /></h2><p>ตรวจทั้งต้นทางและปลายทางใน LAN ที่ลงทะเบียน พร้อมหลักฐานความเสี่ยงก่อนเข้าคิว</p></div><button class="btn-secondary" on:click={load} disabled={busy}>รีเฟรชคิว</button></header>
   {#if error}<p role="alert">{error}</p>{:else if !overview}<p role="status">กำลังโหลดกฎ…</p>{:else}
     <div class="budget"><div><strong>{overview.sentLastMinute}/{policy.maxPerMinute}</strong><span>ส่งสำเร็จในนาทีล่าสุด</span></div><div><strong>{overview.queued}</strong><span>รอคิว</span></div><div><strong>{overview.failed}</strong><span>ส่งไม่สำเร็จ</span></div><div><strong>{overview.configured ? 'พร้อม' : 'ยังไม่ตั้งค่า'}</strong><span>Slack ระดับระบบ</span></div></div>
     <form on:submit|preventDefault={save}><label class="enabled"><input type="checkbox" bind:checked={policy.enabled} /> เปิด automatic Slack alerts</label><div class="policy-fields"><label for="alert-high-score">คะแนนขั้นต่ำ High<input id="alert-high-score" type="number" min="0" max="100" bind:value={policy.minHighScore} required /></label><label for="alert-budget">ข้อความสูงสุดต่อนาที<input id="alert-budget" type="number" min="1" max="30" bind:value={policy.maxPerMinute} required /></label><label for="alert-cooldown">Cooldown (วินาที)<input id="alert-cooldown" type="number" min="60" max="3600" bind:value={policy.cooldownSeconds} required /></label><label for="alert-group">รวมกลุ่ม High (วินาที)<input id="alert-group" type="number" min="0" max="300" bind:value={policy.highGroupSeconds} required /></label></div><p>Critical ที่มีหลักฐานเข้าแถวทันที เหตุการณ์ซ้ำเพิ่มจำนวนในกลุ่ม ความเสี่ยงเพิ่มหรือเป้าหมายเปลี่ยนประเมินใหม่ ทุกข้อความผ่านเพดานรวมของช่อง</p><button class="btn-primary" disabled={busy} type="submit">บันทึกกฎแจ้งเตือน</button></form>
-    <div class="rule-preview"><h3>Rule Preview</h3><p>ปรับตัวอย่างแล้วดูผลกฎและ cooldown โดยไม่ส่งข้อความจริง</p><label for="alert-event-json">เหตุการณ์ตัวอย่าง (JSON)</label><textarea id="alert-event-json" bind:value={previewText} rows="7" spellcheck="false"></textarea><button class="btn-secondary" disabled={busy} on:click={evaluate}>พรีวิวเหตุผลการแจ้งเตือน</button>{#if preview}<pre aria-live="polite">{JSON.stringify(preview, null, 2)}</pre>{/if}</div>
+    <p>Port Scan ที่มีหลักฐาน rule ใช้เกณฑ์เดียวกับการโจมตีอื่น · คะแนนเป็นน้ำหนักความเสี่ยง ไม่ใช่ความแม่นยำของโมเดลที่ฝึกแล้ว · การตรวจย้อนหลังไม่ส่ง Slack</p>
+    <div class="rule-preview"><h3>Rule Preview<HelpHint id="slack-preview-help" text="แสดงเหตุผล เช่น OUTSIDE_LAN, INSUFFICIENT_EVIDENCE_OR_SCORE, SLACK_NOT_CONFIGURED หรือ DUPLICATE_COOLDOWN โดยไม่ส่ง webhook จริง การผ่านพรีวิวยังต้องรอคิวและเพดานต่อนาที" /></h3><p>ปรับตัวอย่างแล้วดูผลกฎและ cooldown โดยไม่ส่งข้อความจริง</p><label for="alert-event-json">เหตุการณ์ตัวอย่าง (JSON)</label><textarea id="alert-event-json" bind:value={previewText} rows="7" spellcheck="false"></textarea><button class="btn-secondary" disabled={busy} on:click={evaluate}>พรีวิวเหตุผลการแจ้งเตือน</button>{#if preview}<pre aria-live="polite">{JSON.stringify(preview, null, 2)}</pre>{/if}</div>
     {#if overview.recent.length}<div class="recent"><h3>การส่งล่าสุด</h3>{#each overview.recent as delivery}<div><strong>{delivery.summary.type}</strong><span>{delivery.severity} · {delivery.status} · {delivery.hitCount} events</span><small>HTTP {delivery.lastHttpStatus || '—'} · ลองส่ง {delivery.attempts} ครั้ง</small></div>{/each}</div>{/if}
   {/if}
 </section>

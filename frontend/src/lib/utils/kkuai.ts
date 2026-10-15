@@ -55,12 +55,30 @@ export async function callKKUAI(
 
 // Test connection — sends a tiny "ping" to verify the backend AI setup works
 export async function testKKUAIConnection(
-  model: string
+  keyOrModel: string, model?: string
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    await callKKUAI(model, [{ role: 'user', content: 'ping' }]);
+    if (model) {
+      const response = await settingsRequest('/api/settings/integrations/test-ai', { aiKey: keyOrModel, aiModel: model, aiApiUrl: KKU_AI_BASE_URL });
+      if (!response.success) throw new Error('Connection test failed');
+    } else await callKKUAI(keyOrModel, [{ role: 'user', content: 'ping' }]);
     return { ok: true };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Connection failed' };
   }
+}
+
+async function settingsRequest(url: string, body?: unknown) {
+  const response = await fetch(url, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'AI settings request failed');
+  return data;
+}
+export async function loadKKUAISettings() {
+  const data = await settingsRequest('/api/settings');
+  return { aiApiUrl: KKU_AI_BASE_URL, aiKey: '', aiModel: KKU_AI_MODELS[0].id, ...data.apiConfig };
+}
+export async function saveKKUAISettings(config: { aiKey: string; aiModel: string; aiApiUrl?: string }) {
+  const existing = await loadKKUAISettings();
+  await settingsRequest('/api/settings', { apiConfig: { ...existing, ...config } });
 }

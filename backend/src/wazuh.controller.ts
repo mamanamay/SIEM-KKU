@@ -9,6 +9,7 @@
  */
 import { Controller, Post, Body, Logger } from '@nestjs/common';
 import { LogService } from './log.service';
+import { IngestEndpoint } from './auth-policy';
 
 @Controller('api/wazuh')
 export class WazuhController {
@@ -17,10 +18,11 @@ export class WazuhController {
   constructor(private readonly logService: LogService) {}
 
   @Post()
-  receiveAlert(@Body() alertData: any) {
+  @IngestEndpoint()
+  async receiveAlert(@Body() alertData: any) {
     this.logger.log('📥 [Legacy] Received via /api/wazuh → forwarding to ingestLog()');
     // Forward ไปยัง ingestLog เหมือนกัน — auto-detect จะรู้ว่าเป็น Wazuh
-    this.logService.ingestLog(alertData);
-    return { status: 'success', message: 'Alert processed', note: 'Please migrate to POST /api/ingest' };
+    const receipt = await this.logService.ingestLog(alertData, 'wazuh');
+    return { status: 'accepted', ...receipt, note: 'Please migrate to POST /api/ingest' };
   }
 }

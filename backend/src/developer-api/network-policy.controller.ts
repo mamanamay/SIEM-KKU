@@ -11,11 +11,13 @@ export class NetworkPolicyController {
   constructor(private readonly network: NetworkMapService, private readonly audit: AuditService) {}
   @Get() get(@Res({ passthrough: true }) res: Response) {
     res.setHeader('X-SIEM-Network-Rule-Version', this.network.getVersion());
+    res.setHeader('ETag', '"' + this.network.getVersion() + '"');
     return this.network.getRecords();
   }
   @Post() async save(@Req() req: any, @Body() records: unknown) {
     if (req.apiActor.role !== 'admin') throw new ForbiddenException('Only administrators may edit monitored networks');
-    const result = await this.network.update(records);
+    const saved = await this.network.update(records, req.headers['if-match']);
+    const result = { success: true, version: this.network.getVersion(), records: saved };
     await this.audit.log({ username: req.apiActor.username, role: req.apiActor.role, action: 'UPDATE_NETWORK_POLICY', resource: 'NETWORK_MAP', ipAddress: clientIp(req), result: 'SUCCESS', metadata: { version: result.version } });
     return result;
   }

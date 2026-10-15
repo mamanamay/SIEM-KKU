@@ -29,10 +29,11 @@
       searchResults = $eventsStore.filter((e: any) => {
         if (!q) return true;
         return String(e.ip || '').toLowerCase().includes(q) || 
+               String(e.destIp || '').toLowerCase().includes(q) ||
                String(e.severity || '').toLowerCase().includes(q) ||
                String(e.type || '').toLowerCase().includes(q) ||
                String(typeof e.payload === "string" ? e.payload : JSON.stringify(e.payload || "")).toLowerCase().includes(q);
-      });
+      }).map(e=>({...e,organization:e.sourceOrganization||'Unknown'}));
       executionTime = Math.round(performance.now() - start);
       isSearching = false;
       

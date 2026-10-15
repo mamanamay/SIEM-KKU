@@ -88,7 +88,7 @@ export interface AiAnalysisResult {
 
 // ─── Export System v3 Types ───────────────────────────────────────────────────
 
-export type ReportType = 'executive' | 'technical';
+export type ReportType = 'executive' | 'incident' | 'technical';
 export type ExportLanguage = 'th' | 'en';
 export type ExportFormat = 'pdf' | 'html' | 'csv';
 
@@ -132,6 +132,8 @@ export interface ValidationIssue {
 }
 
 export interface ValidationResult {
+  pageCount?: number;
+  contentDigest?: string;
   passed: boolean;
   hasCritical: boolean;
   issues: ValidationIssue[];
@@ -181,6 +183,13 @@ export interface FinalReviewChecklist {
 // ─── Export Session (v3) ──────────────────────────────────────────────────────
 
 export interface ExportSession {
+  snapshotId: string;
+  snapshot: any | null;
+  selectedIncidentId: number | null;
+  selectedTargetIPs: string[];
+  revision: number;
+  contentDigest: string;
+  previewSignature: string;
   isOpen: boolean;
 
   // Step 1 — Report Type + Metadata
@@ -209,6 +218,11 @@ export interface ExportSession {
   manualEdits: {
     executiveSummary: string;
     recommendations: string;
+    rootCause: string;
+    impact: string;
+    actionsTaken: string;
+    resolution: string;
+    remainingWork: string;
   };
   revisionHistory: RevisionEntry[];
   validationResult: ValidationResult | null;

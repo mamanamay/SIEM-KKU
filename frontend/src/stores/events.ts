@@ -1,10 +1,20 @@
 import { writable, get } from 'svelte/store';
 import { io, Socket } from 'socket.io-client';
-import { isActionableDetection } from '../lib/utils/incidentQueue';
 import { getFacultyForIP, networkPolicyState, refreshNetworkPolicy } from './faculties';
+import { isVisibleAlert, mergeAlerts, endpointOrganization } from '../lib/utils/alertStream';
+
+function isWallboard() { return typeof window !== 'undefined' && window.location.pathname.startsWith('/wallboard'); }
 
 
 export function enrichEventWithCVE(e: any) {
+  if (!isWallboard() && e.networkContext) {
+    return { ...e, organization: endpointOrganization(e.networkContext.target?.scope === 'organization' ? e.networkContext.target : e.networkContext.source),
+      sourceOrganization: endpointOrganization(e.networkContext.source),
+      targetOrganization: endpointOrganization(e.networkContext.target),
+      sourceScope: e.networkContext.source?.scope || 'unknown',
+      targetScope: e.networkContext.target?.scope || 'unknown',
+      direction: e.networkContext.direction || 'unknown', action: e.action || e.outcome };
+  }
   if (e.incident_id) {
     e.id = e.incident_id;
     e.ip = e.entities?.source_ip || '';
@@ -16,8 +26,10 @@ export function enrichEventWithCVE(e: any) {
     e.payload = JSON.stringify(e);
   }
   
-  const fac = getFacultyForIP(e.destIp || e.dst_ip || '');
-  e.organization = fac?.name || null;
+  const fac = getFacultyForIP(e.ip);
+  if (fac) {
+    e.organization = fac.name;
+  }
   return e;
 }
 
@@ -36,9 +48,12 @@ export const latestAttackStore = writable<any>(null);
 export const isHistoricalMode = writable<boolean>(false);
 export const selectedDateStore = writable<string>(new Date().toISOString().split('T')[0]);
 export const systemHealthStore = writable<any>(null);
+export const attackStatsStore = writable<any>(null);
+export const dashboardDataStore = writable<any>(null);
 
 let socket: Socket | null = null;
 let networkPolicyTimer: ReturnType<typeof setInterval> | null = null;
+let historyGeneration = 0;
 async function refreshEventScope() {
   const previous = get(networkPolicyState).version;
   if (await refreshNetworkPolicy() && previous !== get(networkPolicyState).version && socket?.connected) {
@@ -96,8 +111,8 @@ export function initSocket() {
         // Merge mock data for demonstration
         const combined = [...data];
         const enriched = combined.map(enrichEventWithCVE);
-        eventsStore.set(enriched.slice(0, 1000));
-        if (typeof localStorage !== 'undefined') {
+        eventsStore.set(isWallboard() ? enriched.slice(0, 1000) : mergeAlerts(get(eventsStore), enriched));
+        if (isWallboard() && typeof localStorage !== 'undefined') {
           localStorage.setItem('cachedEvents', JSON.stringify(enriched));
         }
       }
@@ -107,6 +122,8 @@ export function initSocket() {
   socket.on('system_health', (data: any) => {
     systemHealthStore.set(data);
   });
+  socket.on('attack_stats', (data: any) => { if (!get(isHistoricalMode)) attackStatsStore.set(data); });
+  socket.on('dashboard_data', (data: any) => { if (!get(isHistoricalMode)) dashboardDataStore.set(data); });
 
   socket.on('new_attack', (data: any) => {
     // Ignore real-time updates if in historical mode
@@ -116,10 +133,8 @@ export function initSocket() {
     if (!isHistorical) {
       const enriched = enrichEventWithCVE(data);
       eventsStore.update(events => {
-        const previous = enriched.id == null ? null : events.find(event => event.id === enriched.id);
-        const merged = { ...previous, ...enriched, hitCount: Math.max(Number(previous?.hitCount || 1), Number(enriched.hitCount || 1)) };
-        const newEvents = [merged, ...events.filter(event => enriched.id == null || event.id !== enriched.id)].slice(0, 1000); // Prevent memory leak and localStorage quota errors
-        if (typeof localStorage !== 'undefined') {
+        const newEvents = isWallboard() ? [enriched, ...events].slice(0, 1000) : mergeAlerts(events, [enriched]);
+        if (isWallboard() && typeof localStorage !== 'undefined') {
           try {
             localStorage.setItem('cachedEvents', JSON.stringify(newEvents));
           } catch (e) {
@@ -128,14 +143,8 @@ export function initSocket() {
         }
         return newEvents;
       });
-      if (get(networkPolicyState).loaded && isInternalIP(enriched.destIp || '')
-          && isActionableDetection(enriched)) latestAttackStore.set(enriched);
+      if (isWallboard() || isVisibleAlert(enriched)) latestAttackStore.set(enriched);
     }
-  });
-
-  socket.on('attack_count_updated', (data: { id: number; hitCount: number }) => {
-    eventsStore.update(events => events.map(event => event.id === data.id
-      ? { ...event, hitCount: Math.max(Number(event.hitCount || 1), data.hitCount) } : event));
   });
 
   socket.on('status_updated', (data: { id: number; status: string }) => {
@@ -167,6 +176,8 @@ export function initSocket() {
 }
 
 export function disconnectSocket() {
+  historyGeneration++;
+  if (!isWallboard()) { eventsStore.set([]); latestAttackStore.set(null); dashboardDataStore.set(null); attackStatsStore.set(null); }
   if (networkPolicyTimer) { clearInterval(networkPolicyTimer); networkPolicyTimer = null; }
   if (socket) {
     socket.disconnect();
@@ -177,6 +188,23 @@ export function disconnectSocket() {
 }
 
 export async function fetchHistoricalEvents(dateStr: string) {
+  if (!isWallboard()) {
+    const generation = ++historyGeneration;
+    isHistoricalMode.set(true); selectedDateStore.set(dateStr);
+    eventsStore.set([]); dashboardDataStore.set(null); attackStatsStore.set(null);
+    const headers = { Authorization: 'Bearer ' + localStorage.getItem('token') };
+    const responses = await Promise.all([
+      fetch('/api/attacks/history?date=' + encodeURIComponent(dateStr), { headers }),
+      fetch('/api/attacks/stats?date=' + encodeURIComponent(dateStr), { headers }),
+      fetch('/api/attacks/dashboard?date=' + encodeURIComponent(dateStr), { headers })
+    ]);
+    if (responses.some(response => !response.ok)) throw new Error('Historical alerts unavailable');
+    const [events, stats, dashboard] = await Promise.all(responses.map(response => response.json()));
+    if (generation !== historyGeneration) return;
+    eventsStore.set(mergeAlerts([], events).map(enrichEventWithCVE));
+    attackStatsStore.set(stats); dashboardDataStore.set(dashboard);
+    return;
+  }
   isHistoricalMode.set(true);
   selectedDateStore.set(dateStr);
   
@@ -188,7 +216,7 @@ export async function fetchHistoricalEvents(dateStr: string) {
     });
     if (res.ok) {
       const data = await res.json();
-      eventsStore.set(data.map(enrichEventWithCVE));
+      eventsStore.set(data);
     }
   } catch (err) {
     console.error('Failed to fetch historical events:', err);
@@ -212,10 +240,10 @@ import { isInternalIP } from './faculties';
 export const lanEventsStore = derived([eventsStore, networkPolicyState], ([$events, policy]) =>
   $events.filter((e) => {
     if (!policy.loaded) return false;
-    return isInternalIP(e.destIp || e.dst_ip || '');
-  }).map(event => enrichEventWithCVE({ ...event })).sort((a, b) => {
-    return new Date(b.createdAt || b.timestampMs).getTime() - new Date(a.createdAt || a.timestampMs).getTime();
+    if (!isVisibleAlert(e)) return false;
+    if (e.networkScope?.ruleVersion === policy.version) return e.networkScope.inScope === true;
+    return isInternalIP(e.destIp || '') || isInternalIP(e.ip || '');
+  }).sort((a, b) => {
+    return Number(b.lastSeenMs || b.timestampMs || Date.parse(b.createdAt)) - Number(a.lastSeenMs || a.timestampMs || Date.parse(a.createdAt));
   })
 );
-
-export const lanDetectionsStore = derived(lanEventsStore, events => events.filter(isActionableDetection));

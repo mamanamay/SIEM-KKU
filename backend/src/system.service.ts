@@ -4,10 +4,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SystemMetric } from './entities/system-metric.entity';
 import * as os from 'os';
+import * as fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { EventsGateway } from './events.gateway';
-import { LogService } from './log.service';
+import { cgroupMemory, runtimeMemory } from './runtime-memory';
+import { ApiLogMiddleware } from './api-log/api-log.middleware';
 
 const execAsync = promisify(exec);
 
@@ -20,7 +22,6 @@ export class SystemService implements OnModuleInit {
     @InjectRepository(SystemMetric)
     private metricRepository: Repository<SystemMetric>,
     @Inject(forwardRef(() => EventsGateway)) private eventsGateway: EventsGateway,
-    @Inject(forwardRef(() => LogService)) private logService: LogService,
   ) {}
 
   onModuleInit() {
@@ -34,9 +35,12 @@ export class SystemService implements OnModuleInit {
     try {
       const cpuUsage = this.calculateCpuUsage();
       
-      const totalMem = os.totalmem();
-      const freeMem = os.freemem();
-      const usedMem = totalMem - freeMem;
+      let totalMem = os.totalmem();
+      let usedMem = totalMem - os.freemem();
+      const containerMemory=cgroupMemory();
+      if(containerMemory?.limitBytes) {totalMem=containerMemory.limitBytes;usedMem=containerMemory.currentBytes;}
+      if(process.env.MEMORY_DIAGNOSTICS_LOG==='true')
+        this.logger.log('[memory] '+JSON.stringify({as_of:Date.now(),...runtimeMemory(),apiLogs:ApiLogMiddleware.diagnostics()}));
       const ramUsedGb = usedMem / (1024 ** 3);
       const ramTotalGb = totalMem / (1024 ** 3);
       const ramUsage = (usedMem / totalMem) * 100;
@@ -60,52 +64,16 @@ export class SystemService implements OnModuleInit {
       this.eventsGateway.broadcastSystemHealth(metric);
 
       // Self-Monitoring Alerting
-      await this.handleRamPressure(ramUsage);
-
       if (ramUsage > 90 || diskStats.usage > 90) {
         this.logger.warn(`[!] System Health Warning! RAM: ${ramUsage.toFixed(1)}%, Disk: ${diskStats.usage.toFixed(1)}%`);
       }
 
-      // ?? EMERGENCY DISK SAVER: If Disk > 85%, forcefully delete oldest 100,000 logs!
       if (diskStats.usage > 85) {
-        this.logger.error('[EMERGENCY] Disk space exceeded 85%! Initiating emergency log purge to prevent OS crash...');
-        try {
-          // TypeORM raw query to delete oldest 100,000 rows quickly
-          await this.metricRepository.query('DELETE FROM attack WHERE id IN (SELECT id FROM attack ORDER BY "createdAt" ASC LIMIT 100000);');
-          this.logger.log('[EMERGENCY] 100,000 oldest logs deleted successfully.');
-        } catch (e) {
-          this.logger.error('[EMERGENCY] Failed to purge logs', e);
-        }
+        this.logger.error('Disk usage exceeded 85%; preserve evidence and apply the reviewed archive/retention policy');
       }
 
     } catch (error) {
       this.logger.error('Failed to collect system metrics', error);
-    }
-  }
-
-  
-  private readonly RAM_WARNING_THRESHOLD = 70;
-  private readonly RAM_CRITICAL_THRESHOLD = 85;
-  private readonly RAM_EMERGENCY_THRESHOLD = 92;
-
-  private async handleRamPressure(ramUsage: number) {
-    if (ramUsage >= this.RAM_EMERGENCY_THRESHOLD) {
-      this.logService.emergencyClearAllCaches();
-      if (global.gc) {
-        global.gc();
-        this.logger.warn('[RAM Guardian] EMERGENCY GC triggered');
-      }
-      try {
-        await this.metricRepository.query('DELETE FROM attack WHERE id IN (SELECT id FROM attack ORDER BY "createdAt" ASC LIMIT 50000);');
-      } catch(e) {}
-      this.logger.error(`[RAM Guardian] EMERGENCY: RAM at ${ramUsage.toFixed(1)}%! Cleared ALL caches + purged 50K oldest logs`);
-    } else if (ramUsage >= this.RAM_CRITICAL_THRESHOLD) {
-      this.logService.aggressiveCacheCleanup();
-      if (global.gc) global.gc();
-      this.logger.warn(`[RAM Guardian] CRITICAL: RAM at ${ramUsage.toFixed(1)}% — Aggressive cache cleanup`);
-    } else if (ramUsage >= this.RAM_WARNING_THRESHOLD) {
-      this.logService.cleanupStaleCaches();
-      this.logger.log(`[RAM Guardian] WARNING: RAM at ${ramUsage.toFixed(1)}% — Soft cache cleanup`);
     }
   }
 
@@ -147,7 +115,7 @@ export class SystemService implements OnModuleInit {
           usage: (usedBytes / totalBytes) * 100
         };
       } else {
-        const { stdout } = await execAsync('df -k /hostfs 2>/dev/null | tail -n 1 || df -k / | tail -n 1');
+        const { stdout } = await execAsync('df -k /app/siem-logs 2>/dev/null | tail -n 1');
         const parts = stdout.trim().split(/\s+/);
         const totalKb = parseInt(parts[1], 10);
         const usedKb = parseInt(parts[2], 10);
@@ -168,6 +136,7 @@ export class SystemService implements OnModuleInit {
     return this.metricRepository.createQueryBuilder('metric')
       .where('metric.timestamp >= :timeAgo', { timeAgo })
       .orderBy('metric.timestamp', 'ASC')
+      .take(1500)
       .getMany();
   }
 
@@ -176,6 +145,8 @@ export class SystemService implements OnModuleInit {
       order: { timestamp: 'DESC' },
       take: 1
     });
-    return latest.length > 0 ? latest[0] : null;
+    return latest.length > 0 ? { ...latest[0], processMemory: process.memoryUsage(),
+      memoryScope: cgroupMemory()?.limitBytes ? 'container' : 'host',
+      processUptime: process.uptime() } : null;
   }
 }

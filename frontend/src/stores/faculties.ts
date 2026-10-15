@@ -16,7 +16,6 @@ interface SubnetDef {
 
 let compiledSubnets: SubnetDef[] = [];
 let ipv6Records: any[] = [];
-const networkMatchCache = new Map<string, { route: string; faculty: { code: string; name: string } | null } | null>();
 
 function ipv6Words(ip: string): number[] | null {
   if (!ip || !/^[0-9a-f:.]+$/i.test(ip)) return null;
@@ -42,7 +41,6 @@ function matchesIpv6(ip: string, route: string) {
 
 export function setNetworkRecords(records: any[], version = '') {
 compiledSubnets = [];
-networkMatchCache.clear();
 ipv6Records = records.filter(record => record.Route?.includes(':'));
 
 for (const r of records) {
@@ -54,11 +52,12 @@ for (const r of records) {
   if (subnet.includes(':') || !Number.isInteger(maskBits) || maskBits <= 0 || maskBits > 32) continue;
   
   let facultyObj = null;
-  if (typeof r['Faculty/Dept'] === 'string' && !['—', '-', '', 'Unknown'].includes(r['Faculty/Dept'].trim())) {
+  if (r['Faculty/Dept'] && r['Faculty/Dept'].trim() !== '—' && r['Faculty/Dept'].trim() !== '-' && r['Faculty/Dept'].trim() !== '') {
     let code = String(r['Faculty/Dept']).split('—')[0].split('-')[0].trim().toUpperCase();
     if (code === 'MS/KKBS') code = 'MS/KKBS';
-    facultyObj = { code, name: String(r['Faculty/Dept']).trim() };
-
+    facultyObj = { code, name: String(r['Faculty/Dept']) };
+  } else if (r.Route.startsWith('10.52.') || r.Route.startsWith('10.101.')) {
+    facultyObj = { code: 'ODT', name: 'ODT-สำนักเทคโนโลยีดิจิทัล' };
   }
   
   const maskLong = (0xffffffff << (32 - maskBits)) >>> 0;
@@ -71,8 +70,6 @@ for (const r of records) {
     rawCidr: r.Route
   });
 }
-compiledSubnets.sort((a, b) => b.maskBits - a.maskBits);
-ipv6Records.sort((a, b) => Number(b.Route.split('/')[1]) - Number(a.Route.split('/')[1]));
 networkRecordsStore.set(records);
 networkPolicyState.set({ loaded: true, version, error: '' });
 }
@@ -87,7 +84,7 @@ export async function refreshNetworkPolicy() {
     if (!response.ok) throw new Error('โหลดกฎ LAN ไม่สำเร็จ (HTTP ' + response.status + ')');
     const records = await response.json();
     if (!Array.isArray(records)) throw new Error('Network policy response is invalid');
-    setNetworkRecords(records, response.headers.get('X-SIEM-Network-Rule-Version') || '');
+    setNetworkRecords(records, response.headers.get('X-SIEM-Network-Rule-Version') || response.headers.get('ETag')?.replace(/"/g, '') || '');
     return true;
   } catch (error) {
     networkPolicyState.update(policy => ({ ...policy, error: error instanceof Error ? error.message : 'โหลดกฎ LAN ไม่สำเร็จ' }));
@@ -107,42 +104,51 @@ export function getCustomLanCidrs(): string[] {
  * ip_records.json or custom configured CIDRs.
  * NO generic 10.x.x.x fallbacks are allowed.
  */
-export function getFacultyCode(name: string): string {
-  return name.split('—')[0].split('-')[0].trim().toUpperCase();
-}
-
-function findNetworkMatch(ip: string) {
-  if (typeof ip !== 'string' || !ip) return null;
-  if (/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.test(ip)) ip = ip.slice(7);
-  if (ip === '0.0.0.0') return null;
-  if (networkMatchCache.has(ip)) return networkMatchCache.get(ip)!;
-  let match: { route: string; faculty: { code: string; name: string } | null } | null = null;
-  if (ip.includes(':')) {
-    const record = ipv6Records.find(record => matchesIpv6(ip, record.Route));
-    if (record) {
-      const name = typeof record['Faculty/Dept'] === 'string' ? record['Faculty/Dept'].trim() : '';
-      match = { route: record.Route, faculty: name && !['—', '-', 'Unknown'].includes(name) ? { code: getFacultyCode(name), name } : null };
-    }
-  } else if (isIpInCidr(ip, ip + '/32')) {
-    const value = ipToLong(ip);
-    const subnet = compiledSubnets.find(sub => (value & sub.maskLong) === (sub.subnetLong & sub.maskLong));
-    if (subnet) match = { route: subnet.rawCidr, faculty: subnet.faculty };
-  }
-  if (networkMatchCache.size >= 10000) networkMatchCache.clear();
-  networkMatchCache.set(ip, match);
-  return match;
-}
-
 export function isInternalIP(ip: string): boolean {
-  return findNetworkMatch(ip) !== null;
+  if (!ip) return false;
+
+  if (ip === '127.0.0.1' || ip === '::1') return true;
+  if (/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.test(ip)) ip = ip.slice(7);
+  if (ip.includes(':')) return ipv6Records.some(record => matchesIpv6(ip, record.Route));
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip) || ip.split('.').some(part => Number(part) > 255)) return false;
+
+  // STRICT KKU compiled subnets from ip_records.json
+  const ipLong = ipToLong(ip);
+  for (const sub of compiledSubnets) {
+    if ((ipLong & sub.maskLong) === (sub.subnetLong & sub.maskLong)) {
+      return true;
+    }
+  }
+
+  // Custom CIDRs from Settings
+  const customCidrs = getCustomLanCidrs();
+  for (const cidr of customCidrs) {
+    if (isIpInCidr(ip, cidr)) return true;
+  }
+
+  return false;
 }
 
+/**
+ * Longest-prefix-match: maps an IP to its faculty/dept from ip_records.json.
+ */
 export function getFacultyForIP(ip: string) {
-  return findNetworkMatch(ip)?.faculty || null;
-}
+  if (!isInternalIP(ip)) return null;
 
-export function getNetworkRouteForIP(ip: string): string | null {
-  return findNetworkMatch(ip)?.route || null;
+  const ipLong = ipToLong(ip);
+  let bestMatch = null;
+  let maxMask = -1;
+
+  for (const sub of compiledSubnets) {
+    if ((ipLong & sub.maskLong) === (sub.subnetLong & sub.maskLong)) {
+      if (sub.faculty && sub.maskBits > maxMask) {
+        bestMatch = sub.faculty;
+        maxMask = sub.maskBits;
+      }
+    }
+  }
+
+  return bestMatch;
 }
 
 export function getServerName(ip: string): string | null {

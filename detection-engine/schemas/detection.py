@@ -15,6 +15,10 @@ class LogLLMEvidence(BaseModel):
     risk_level: str
 
 class DetectionEvidence(BaseModel):
+    shadow_model: Optional[Dict[str, Any]] = None
+    processing_mode: str = 'heuristic'
+    score_kind: str = 'rule_weight_not_calibrated_probability'
+    attack_signals: List[Dict[str, Any]] = Field(default_factory=list)
     isolation_forest: Optional[IsolationForestEvidence] = None
     xgboost: Optional[XGBoostEvidence] = None
     logllm_semantic: Optional[LogLLMEvidence] = None

@@ -1,4 +1,5 @@
 <script>
+  import { safeHtml } from '$lib/utils/safeHtml';
   import { onMount } from 'svelte';
   import { showNotification } from '../../../../stores/notificationStore';
   import ConfirmModal from '$lib/components/ConfirmModal.svelte';
@@ -67,7 +68,7 @@
 
   async function viewPreview(id) {
     try {
-      const res = await fetch(`/api/export/download/${id}?inline=true`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
+      const res = await fetch(`/api/export/preview/${id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
       if (res.ok) {
         const text = await res.text();
         previewHtml = text;
@@ -78,10 +79,15 @@
     }
   }
 
-  function downloadReport() {
-    if (previewId) {
-      window.open(`/api/export/download/${previewId}?token=${localStorage.getItem('token')}`, '_blank');
-    }
+  async function downloadReport() {
+    if(!previewId)return;
+    try {
+      const res=await fetch(`/api/export/download/${previewId}`,{headers:{Authorization:`Bearer ${localStorage.getItem('token')}`}});
+      if(!res.ok)throw new Error('Download failed');
+      const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');
+      a.href=url;a.download=res.headers.get('Content-Disposition')?.match(/filename="([^"\n]+)"/)?.[1]||`Report_${previewId}`;
+      a.click();URL.revokeObjectURL(url);
+    }catch{showNotification('Report','Download failed','error');}
   }
 
 </script>
@@ -164,7 +170,7 @@
         </div>
       </div>
       <div class="modal-body">
-        {@html previewHtml}
+        <iframe title="Report Preview" srcdoc={safeHtml(previewHtml, true)} sandbox="" style="width:100%;height:70vh;border:0;display:block;"></iframe>
       </div>
     </div>
   </div>

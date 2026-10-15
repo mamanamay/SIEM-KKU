@@ -4,7 +4,7 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { lanDetectionsStore as eventsStore } from '../../../stores/events';
+  import { lanEventsStore as eventsStore } from '../../../stores/events';
   import type { AiBriefingContext } from '../../../lib/ReportEngine/types';
   
   import AiSecuritySituation from '../../../lib/components/ai-analyst/AiSecuritySituation.svelte';

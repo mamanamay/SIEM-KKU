@@ -8,11 +8,13 @@
   let countdown = returnDelay;
   let countdownInterval: ReturnType<typeof setInterval> | undefined;
   const controller = new AbortController();
+  let destroyed = false;
+  let requestTimeout: ReturnType<typeof setTimeout> | undefined;
 
   function goBack() { clearInterval(countdownInterval); window.location.href = '/'; }
   function fail(reason: string) {
     error = reason; isLoading = false;
-    countdownInterval = setInterval(() => { countdown--; if (countdown <= 0) goBack(); }, 1000);
+    // Keep the failure visible until the user chooses to return.
   }
 
   onMount(() => {
@@ -20,21 +22,24 @@
     if (!code) { fail('ไม่พบรหัสยืนยันจาก KKU SSO กรุณาเข้าสู่ระบบอีกครั้ง'); return; }
     (async () => {
       try {
+        requestTimeout = setTimeout(() => controller.abort(), 35000);
         const res = await fetch('/api/auth/sso/callback', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }), signal: controller.signal });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ message: `เซิร์ฟเวอร์ตอบกลับ HTTP ${res.status} โดยไม่มีข้อมูลยืนยันตัวตน` }));
         if (!res.ok) { fail(Array.isArray(data.message) ? data.message.join(' · ') : data.message || 'ไม่สามารถยืนยันตัวตนผ่าน KKU SSO ได้'); return; }
         if (data.stage === 'verify') window.location.href = '/?verify=true';
         else {
+          if (!data.access_token) { fail('เซิร์ฟเวอร์ไม่ได้ส่งผลยืนยันตัวตน กรุณาตรวจสอบ backend และ proxy'); return; }
           localStorage.setItem('token', data.access_token);
           localStorage.setItem('role', data.role);
           if (data.username) localStorage.setItem('username', data.username);
           localStorage.setItem('lastActive', Date.now().toString());
           window.location.href = '/dashboard';
         }
-      } catch { if (!controller.signal.aborted) fail('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองอีกครั้ง'); }
+      } catch { if (!destroyed) fail(controller.signal.aborted ? 'การยืนยันตัวตนหมดเวลา กรุณาตรวจสอบการเชื่อมต่อ KKU SSO จากเซิร์ฟเวอร์' : 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองอีกครั้ง'); }
+      finally { clearTimeout(requestTimeout); }
     })();
   });
-  onDestroy(() => { controller.abort(); clearInterval(countdownInterval); });
+  onDestroy(() => { destroyed = true; controller.abort(); clearTimeout(requestTimeout); clearInterval(countdownInterval); });
 </script>
 
 <svelte:head><title>ยืนยันตัวตน KKU SSO · SIEM KKU</title></svelte:head>
@@ -44,10 +49,9 @@
     <h2 class="auth-heading">กำลังยืนยันตัวตน</h2><p class="auth-description">กำลังเชื่อมต่อบัญชีของคุณกับ KKU SSO<br />กรุณารอสักครู่ ระบบจะพาคุณไปยังขั้นตอนถัดไป</p>
     <div class="sso-progress" role="status"><span class="auth-spinner"></span><div><strong>ตรวจสอบบัญชีมหาวิทยาลัย</strong><p>ดำเนินการผ่านระบบ KKU SSO</p></div></div>
   {:else}
-    <h2 class="auth-heading">เข้าใช้งานไม่สำเร็จ</h2><p class="auth-description">กรุณาตรวจสอบสิทธิ์บัญชีของคุณแล้วลองอีกครั้ง</p>
+    <h2 class="auth-heading">เข้าใช้งานไม่สำเร็จ</h2><p class="auth-description">รายละเอียดด้านล่างช่วยระบุขั้นตอนที่เชื่อมต่อไม่สำเร็จ</p>
     <div class="auth-alert" role="alert"><AuthIcon name="alert" />{error}</div>
     <button class="auth-button" type="button" on:click={goBack}><AuthIcon name="back" size={17} /> กลับสู่หน้าเข้าสู่ระบบ</button>
-    <p class="return-countdown">กลับอัตโนมัติใน {countdown} วินาที</p><div class="countdown-track" aria-hidden="true"><span style:width={`${countdown / returnDelay * 100}%`}></span></div>
   {/if}
 </AuthShell>
 

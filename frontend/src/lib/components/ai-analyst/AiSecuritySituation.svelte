@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { safeHtml } from '$lib/utils/safeHtml';
   import { createEventDispatcher } from 'svelte';
   export let summary = '';
   export let riskLevel = 'Low';
@@ -32,7 +33,7 @@
   <div class="ai-card-body">
     <div class="ai-summary">
       {#if summary}
-        {@html summary}
+        {@html safeHtml(summary)}
       {:else}
         <div class="empty-state">ยังไม่มีบทสรุปจาก AI กรุณากด "ประมวลผลใหม่" (Regenerate)</div>
       {/if}

@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { WebhookConfig } from './entities/webhook-config.entity';
 import { WebhookDelivery } from './entities/webhook-delivery.entity';
 import * as crypto from 'crypto';
+import { safeHttp } from './outbound-http';
 
 @Injectable()
 export class WebhookService {
@@ -39,18 +40,18 @@ export class WebhookService {
       delivery.payload = payloadString;
 
       try {
-        const response = await fetch(webhook.url, {
+        const response = await safeHttp({ url: webhook.url,
           method: webhook.method || 'POST',
           headers,
-          body: payloadString,
+          data: payloadString,
         });
 
         const endTime = Date.now();
-        delivery.status = response.ok ? 'Success' : 'Failed';
+        delivery.status = response.status >= 200 && response.status < 300 ? 'Success' : 'Failed';
         delivery.httpCode = response.status;
         delivery.responseTime = endTime - startTime;
 
-        if (!response.ok) {
+        if (response.status >= 300) {
           delivery.errorReason = `HTTP Error: ${response.statusText}`;
         }
       } catch (error: any) {

@@ -1,3 +1,6 @@
+import {ReportDraft} from './entities/report-draft.entity';
+import {ReportQueryService} from './report-query.service';
+import {IncidentReportController} from './incident-report.controller';
 import { SystemMetric } from './entities/system-metric.entity';
 import { SystemService } from './system.service';
 import { SystemController } from './system.controller';
@@ -11,6 +14,8 @@ import { WebhookConfig } from './entities/webhook-config.entity';
 import { WebhookDelivery } from './entities/webhook-delivery.entity';
 
 import { SettingsController } from './settings.controller';
+import { LogApiController } from './log-api.controller';
+import { LogApiService } from './log-api.service';
 import { AuditController } from './audit.controller';
 import { ExportController } from './export.controller';
 import { CVEController } from './cve.controller';
@@ -39,15 +44,20 @@ import { ApiLog } from './entities/api-log.entity';
 import { SeedService } from './seed.service';
 import { ApiLogModule } from './api-log/api-log.module';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { RawEvent } from './entities/raw-event.entity';
+import { ReceiptService } from './receipt.service';
+import { APP_GUARD } from '@nestjs/core';
+import { AuthGuard } from './auth.guard';
+import { NetworkMapController } from './network-map.controller';
+import { AlertQueryService } from './alert-query.service';
 import { ApiToken } from './entities/api-token.entity';
 import { IntegrationObservation } from './entities/integration-observation.entity';
+import { AlertNotification, AlertPolicy } from './entities/alert-notification.entity';
 import { ApiAccessService } from './developer-api/access.service';
 import { DeveloperSessionGuard, DeveloperTokenGuard } from './developer-api/access.guard';
-import { IntegrationCatalogService } from './developer-api/catalog.service';
 import { DeveloperApiController, DeveloperManagementController } from './developer-api/developer-api.controller';
-import { NetworkPolicy } from './entities/network-policy.entity';
 import { NetworkPolicyController } from './developer-api/network-policy.controller';
-import { AlertNotification, AlertPolicy } from './entities/alert-notification.entity';
+import { IntegrationCatalogService } from './developer-api/catalog.service';
 import { SlackAlertService } from './developer-api/slack-alert.service';
 import { AlertPolicyController } from './developer-api/alert-policy.controller';
 
@@ -63,17 +73,17 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Production: PostgreSQL ─────────────────────────────────────────
       type: 'postgres',
       url: DATABASE_URL,
-      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, NetworkPolicy, AlertNotification, AlertPolicy],
-      synchronize: true, // กลับมาเปิด Auto-sync เพราะไม่มี Migrations
+      entities: [ReportDraft, RawEvent, User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, AlertNotification, AlertPolicy],
+      synchronize: process.env.NODE_ENV !== 'production',
       ssl: process.env.DB_SSL === 'true'
-        ? { rejectUnauthorized: false }
+        ? { rejectUnauthorized: true }
         : false,
     }
   : {
       // ── Development: SQLite (fallback เมื่อรัน local โดยไม่มี .env) ──
       type: 'sqlite',
       database: 'database.sqlite',
-      entities: [User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, NetworkPolicy, AlertNotification, AlertPolicy],
+      entities: [ReportDraft, RawEvent, User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, AlertNotification, AlertPolicy],
       synchronize: true,
     };
 
@@ -86,12 +96,12 @@ const typeOrmConfig: any = DATABASE_URL
       limit: 100, // 100 requests per minute
     }]),
     TypeOrmModule.forRoot(typeOrmConfig),
-    TypeOrmModule.forFeature([User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, NetworkPolicy, AlertNotification, AlertPolicy]),
+    TypeOrmModule.forFeature([ReportDraft, RawEvent, User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, AlertNotification, AlertPolicy]),
     ApiLogModule,
   ],
   // WazuhController — Legacy compatibility shim (ยังคง /api/wazuh ไว้เพื่อ backward compat)
-  controllers: [AuthController, AttacksController, IngestController, WazuhController, SettingsController, AuditController, ExportController, CVEController, WebhookController, SystemController, DeveloperApiController, DeveloperManagementController, NetworkPolicyController, AlertPolicyController],
-  providers: [NetworkMapService,
-    LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService, AuditService, ExportService, WebhookService, SystemService, ApiAccessService, DeveloperSessionGuard, DeveloperTokenGuard, IntegrationCatalogService, SlackAlertService],
+  controllers: [LogApiController, DeveloperApiController, DeveloperManagementController, NetworkPolicyController, AlertPolicyController, IncidentReportController, AuthController, AttacksController, IngestController, WazuhController, SettingsController, AuditController, ExportController, CVEController, WebhookController, SystemController],
+  providers: [ApiAccessService, DeveloperSessionGuard, DeveloperTokenGuard, IntegrationCatalogService, SlackAlertService, ReportQueryService, AlertQueryService, AuthGuard, { provide: APP_GUARD, useExisting: AuthGuard }, ReceiptService, NetworkMapService,
+    LogApiService, LogService, AiService, EventsGateway, SeedService, CryptoService, TotpService, AuditService, ExportService, WebhookService, SystemService],
 })
 export class AppModule {}

@@ -1,5 +1,6 @@
 <script>
     import AlertPolicyPanel from '../../../../lib/components/settings/AlertPolicyPanel.svelte';
+    import HelpHint from '../../../../lib/components/HelpHint.svelte';
     import { roleStore } from '../../../../stores/events';
     import ChangeSummary from '../../../../lib/components/workspace/ChangeSummary.svelte';
     import { onMount } from 'svelte';
@@ -67,10 +68,12 @@
                 const data = await res.json();
                 models = data.models || [];
             } else {
-                showNotification('warning', 'Warning', 'Failed to load AI models');
+                const data = await res.json().catch(() => ({}));
+                showNotification('warning', 'โหลดโมเดล AI ไม่สำเร็จ', Array.isArray(data.message) ? data.message.join(' · ') : data.message || `HTTP ${res.status}`);
             }
         } catch (error) {
             console.error('Error fetching models:', error);
+            showNotification('error', 'โหลดโมเดล AI ไม่สำเร็จ', 'ไม่สามารถเชื่อมต่อ backend ได้');
         } finally {
             fetchingModels = false;
         }
@@ -91,7 +94,8 @@
                 showNotification('success', 'Success', 'Connection successful');
                 await handleSave(); // Auto-save on successful test
             } else {
-                showNotification('error', 'Error', 'Connection failed');
+                const data = await res.json().catch(() => ({}));
+                showNotification('error', 'เชื่อมต่อไม่สำเร็จ', Array.isArray(data.message) ? data.message.join(' · ') : data.message || `HTTP ${res.status}`);
             }
         } catch (error) {
             console.error('Error testing connection:', error);
@@ -164,7 +168,7 @@
         <div class="cards">
             <!-- KKU AI Copilot -->
             <div class="card">
-                <h2>KKU AI Copilot</h2>
+                <h2>KKU AI Copilot<HelpHint id="ai-detection-role" text="AI KKU ช่วยอธิบายและสืบค้น incident ตามคำขอของผู้ใช้ แยกจาก rule/heuristic ที่ตรวจ log ทุกชุด ไม่ส่ง log ทุกบรรทัดไป LLM หาก AI ภายนอกไม่พร้อม ผลตรวจและหลักฐานใน SIEM ยังใช้ได้" /></h2>
                 <div class="form-group">
                     <label for="aiApiUrl">API Endpoint</label>
                     <input type="text" id="aiApiUrl" bind:value={apiConfig.aiApiUrl} class="input-field" placeholder="https://api.openai.com/v1" />

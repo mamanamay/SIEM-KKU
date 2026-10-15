@@ -40,12 +40,17 @@ export class SlackAlertService implements OnModuleInit {
     const scope = this.network.evaluate(event);
     if (!policy.enabled) return { send: false, reason: 'ALERTS_DISABLED', severity: 'none', network: scope };
     if (!scope.inScope) return { send: false, reason: scope.reason, severity: 'none', network: scope };
+    const signals = Array.isArray(event.detectionEvidence?.attack_signals) ? event.detectionEvidence.attack_signals : [];
+    const knownSignal = signals.some((signal: any) => ['ips_signature', 'malware_signature', 'malicious_url', 'network_scan', 'deny_burst', 'sensor_rule', 'web_attack', 'authentication_attack'].includes(signal.kind) || signal.rule_id);
+    const modelEvidence = event.detectionEvidence?.xgboost?.predicted_class && event.detectionEvidence.xgboost.predicted_class !== 'BENIGN';
+    const semanticEvidence = ['High','Critical'].includes(event.detectionEvidence?.logllm_semantic?.risk_level);
     const evidence = String(event.type || '') + ' ' + String(event.detail || '');
     const criticalEvidence = /\b(ransomware|malware|trojan|backdoor|botnet|exfiltration|command.and.control|c2|ddos|drop\s+table|rm\s+-rf|disk\s+wipe)\b/i.test(evidence);
     const highEvidence = /\b(sql\s*inject\w*|xss|rce|remote\s+code\s+execution|exploit\w*|path\s+traversal|brute\s*force|credential\s+stuffing)\b/i.test(evidence);
     const score = Number(event.threatScore);
-    if (criticalEvidence && Number.isFinite(score) && score >= 85) return { send: true, reason: 'CRITICAL_EVIDENCE_IN_LAN', severity: 'critical', network: scope };
-    if (highEvidence && Number.isFinite(score) && score >= policy.minHighScore) return { send: true, reason: 'HIGH_EVIDENCE_IN_LAN', severity: 'high', network: scope };
+    const classified = knownSignal || modelEvidence || semanticEvidence || criticalEvidence || highEvidence;
+    if (classified && (criticalEvidence || String(event.severity).toLowerCase() === 'critical') && Number.isFinite(score) && score >= 85) return { send: true, reason: 'CRITICAL_EVIDENCE_IN_LAN', severity: 'critical', network: scope };
+    if (classified && Number.isFinite(score) && score >= policy.minHighScore) return { send: true, reason: 'HIGH_EVIDENCE_IN_LAN', severity: 'high', network: scope };
     return { send: false, reason: 'INSUFFICIENT_EVIDENCE_OR_SCORE', severity: 'none', network: scope };
   }
   async preview(event: any) {
@@ -60,6 +65,7 @@ export class SlackAlertService implements OnModuleInit {
   }
   private incidentKey(event: any, channelKey: string) { return createHash('sha256').update(JSON.stringify([channelKey, event.ruleId || event.type, event.ip, event.destIp, event.source || 'unknown'])).digest('hex'); }
   async enqueue(event: any, attackId?: number) {
+    const contribution = Math.max(1, Math.min(1000, Math.floor(Number(event.notificationHitCount) || 1)));
     const policy = await this.policy();
     const decision = this.evaluate(event, policy);
     if (!decision.send) return decision;
@@ -72,16 +78,16 @@ export class SlackAlertService implements OnModuleInit {
       const repository = manager.getRepository(AlertNotification);
       const previous = await repository.findOne({ where: { incidentKey, createdAt: MoreThanOrEqual(new Date(Date.now() - policy.cooldownSeconds * 1000)) }, order: { createdAt: 'DESC' } });
       if (previous && !(previous.severity === 'high' && decision.severity === 'critical')) {
-        await repository.increment({ id: previous.id }, 'hitCount', 1);
+        await repository.increment({ id: previous.id }, 'hitCount', contribution);
         return { send: false, reason: 'DUPLICATE_COOLDOWN', id: previous.id };
       }
       if (previous?.status === 'queued' && decision.severity === 'critical') {
         await repository.update(previous.id, { severity: 'critical', nextAttemptAt: new Date() });
-        await repository.increment({ id: previous.id }, 'hitCount', 1);
+        await repository.increment({ id: previous.id }, 'hitCount', contribution);
         return { send: true, reason: 'ESCALATED', id: previous.id };
       }
       const summary = { type: String(event.type || 'Security incident').slice(0, 100), sourceIp: String(event.ip || '').slice(0, 60), targetIp: String(event.destIp || '').slice(0, 60), sensor: String(event.source || 'unknown').slice(0, 60), score: Number(event.threatScore), attackId: attackId || null, ruleVersion: decision.network.ruleVersion, reason: decision.reason };
-      const saved = await repository.save(repository.create({ incidentKey, channelKey, severity: decision.severity, summary, status: 'queued', nextAttemptAt: new Date(Date.now() + (decision.severity === 'high' ? policy.highGroupSeconds * 1000 : 0)), sentAt: null, lastHttpStatus: null }));
+      const saved = await repository.save(repository.create({ incidentKey, channelKey, severity: decision.severity, summary, hitCount: contribution, status: 'queued', nextAttemptAt: new Date(Date.now() + (decision.severity === 'high' ? policy.highGroupSeconds * 1000 : 0)), sentAt: null, lastHttpStatus: null }));
       return { send: true, reason: decision.reason, id: saved.id };
     }));
     this.enqueueTail = operation.catch(() => undefined);
@@ -105,7 +111,7 @@ export class SlackAlertService implements OnModuleInit {
         if (await repository.countBy({ channelKey, status: 'sent', sentAt: MoreThanOrEqual(new Date(Date.now() - 60000)) }) >= policy.maxPerMinute) return;
         const candidate = await repository.createQueryBuilder('n').where('n.status = :status AND n.channelKey = :channelKey AND n.nextAttemptAt <= :now', { status: 'queued', channelKey, now: new Date() }).orderBy("CASE WHEN n.severity = 'critical' THEN 0 ELSE 1 END", 'ASC').addOrderBy('n.createdAt', 'ASC').getOne();
         if (!candidate) return;
-        if (!this.network.evaluate({ destIp: candidate.summary.targetIp }).inScope) { await repository.update(candidate.id, { status: 'suppressed' }); return; }
+        if (!this.network.evaluate({ ip: candidate.summary.sourceIp, destIp: candidate.summary.targetIp }).inScope) { await repository.update(candidate.id, { status: 'suppressed' }); return; }
         const escape = (value: any) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const text = `[${candidate.severity.toUpperCase()}] ${escape(candidate.summary.type)}\nSource: ${escape(candidate.summary.sourceIp)} → Target: ${escape(candidate.summary.targetIp)}\nScore: ${candidate.summary.score}/100 · Events: ${candidate.hitCount}\n${PUBLIC_BASE_URL}/dashboard/hunting`;
         try {

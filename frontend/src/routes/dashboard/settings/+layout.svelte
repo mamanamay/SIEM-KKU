@@ -1,12 +1,20 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { roleStore } from '../../../stores/events';
+  import { onMount } from 'svelte';
+  let sessionReady = false;
+  onMount(() => {
+    const savedRole = localStorage.getItem('role');
+    if (savedRole) roleStore.set(savedRole);
+    sessionReady = true;
+  });
   
   const menuItems = [
     { id: 'profile', label: 'My Profile', icon: 'ti-user', roles: ['admin', 'analyst', 'guest'] },
     { id: 'users', label: 'User Access Control', icon: 'ti-users', roles: ['admin'] },
     { id: 'config', label: 'System Config', icon: 'ti-settings', roles: ['admin'] },
     { id: 'integrations', label: 'Integrations', icon: 'ti-plug', roles: ['admin', 'analyst', 'guest'] },
+    { id: 'log-api', label: 'Log API', icon: 'ti-database-import', roles: ['admin'] },
     { id: 'developer-api', label: 'API & MCP', icon: 'ti-code', roles: ['admin', 'analyst', 'guest'] },
     { id: 'api-history', label: 'API History', icon: 'ti-history', roles: ['admin'] },
     { id: 'report-history', label: 'Report History', icon: 'ti-file-report', roles: ['admin', 'analyst', 'guest'] },
@@ -14,14 +22,15 @@
     { id: 'security', label: 'Security & 2FA', icon: 'ti-shield-lock', roles: ['admin', 'analyst', 'guest'] }
   ];
 
-  $: allowedItems = menuItems.filter(item => item.roles.includes($roleStore));
+  $: menuRole = ['analyst_l2', 'threat_hunter'].includes($roleStore) ? 'analyst' : $roleStore === 'viewer' ? 'guest' : $roleStore;
+  $: allowedItems = menuItems.filter(item => item.roles.includes(menuRole));
 
   $: {
     // Route guard logic
-    if ($roleStore) {
+    if (sessionReady && $roleStore) {
       const currentPath = $page.url.pathname;
       const currentMenu = menuItems.find(m => currentPath.includes(`/dashboard/settings/${m.id}`));
-      if (currentMenu && !currentMenu.roles.includes($roleStore)) {
+      if (currentMenu && !currentMenu.roles.includes(menuRole)) {
         // Unauthorized! Redirect to profile which everyone has
         if (typeof window !== 'undefined') {
           window.location.href = '/dashboard/settings/profile';
