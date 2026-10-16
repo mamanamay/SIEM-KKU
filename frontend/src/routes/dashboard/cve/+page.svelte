@@ -15,6 +15,23 @@
   let cveData: any = null;
   let aiBriefing: any = null;
   let errorMsg = '';
+  let thaiInfo:any=null;
+  let translationLoading=false;
+  const thaiTerms:Record<string,string>={NETWORK:'ผ่านเครือข่าย',ADJACENT_NETWORK:'เครือข่ายใกล้เคียง',LOCAL:'ภายในเครื่อง',PHYSICAL:'ต้องเข้าถึงอุปกรณ์',LOW:'ต่ำ',HIGH:'สูง',NONE:'ไม่ต้องมี',REQUIRED:'จำเป็น',PASSIVE:'แบบรับข้อมูล',ACTIVE:'ต้องดำเนินการ',UNKNOWN:'ไม่ระบุ',CRITICAL:'วิกฤต',MEDIUM:'ปานกลาง'};
+  const thaiValue=(value:string)=>thaiTerms[String(value).toUpperCase()]||value;
+  const canTranslate=()=>['admin','analyst','analyst_l2','threat_hunter'].includes(localStorage.getItem('role')||'');
+  async function translateThai(id:string,run=searchGeneration){
+    if(!canTranslate()||translationLoading)return;
+    translationLoading=true;
+    try {
+      const response=await fetch('/api/cve/'+encodeURIComponent(id)+'/thai',{method:'POST',headers:{Authorization:'Bearer '+localStorage.getItem('token')}});
+      const data=await response.json();
+      if(run!==searchGeneration)return;
+      thaiInfo=response.ok?data:{status:'unavailable',issue:{message:data.message||'แปลภาษาไทยไม่สำเร็จ'}};
+      if(thaiInfo.status==='ready')aiBriefing={...aiBriefing,aiSummary:thaiInfo.descriptionTh,mitigation:thaiInfo.solutionsTh?.length?thaiInfo.solutionsTh:['ตรวจเอกสารและคำแนะนำของผู้พัฒนาจากแหล่งอ้างอิงด้านล่าง ต้นฉบับไม่มีแนวทางแก้ไขในช่อง solutions']};
+    }catch {if(run===searchGeneration)thaiInfo={status:'unavailable',issue:{message:'เชื่อมต่อบริการแปลไม่สำเร็จ'}};}
+    finally{if(run===searchGeneration)translationLoading=false;}
+  }
   
   $: fullMappedCVEs = Object.values($eventsStore.reduce((acc, e) => {
     if (e.cve && e.cve.id) {
@@ -114,22 +131,23 @@
   async function searchVulnerability(query: string) {
     const run=++searchGeneration;
     let id=query.trim().toUpperCase();if(/^\d{4}-\d{4,}$/.test(id))id='CVE-'+id;
-    searchQuery=id;errorMsg='';aiBriefing=null;loading=true;analyzing=false;
+    searchQuery=id;errorMsg='';aiBriefing=null;thaiInfo=null;translationLoading=false;loading=true;analyzing=false;
     try {
       if(!/^CVE-\d{4}-\d{4,19}$/.test(id))throw new Error('กรุณาระบุ CVE ID ที่ถูกต้อง');
       const headers={Authorization:'Bearer '+localStorage.getItem('token')};
       const response=await fetch('/api/cve/'+id,{headers});const data=await response.json();
       if(!response.ok)throw new Error(data.message||'อ่าน CVE จากแหล่งอ้างอิงไม่สำเร็จ');
       if(run!==searchGeneration)return;
-      cveData=data;const d=data.siem;
+      cveData=data;const d=data.siem;thaiInfo=data.thai;
       if(d.state!=='PUBLISHED')throw new Error('CVE นี้มีสถานะ '+d.state+' และยังไม่ใช้เป็นผลความสัมพันธ์ที่ตรวจสอบแล้ว');
       aiBriefing={cveId:d.cveId,state:d.state,published:data.cveMetadata?.datePublished?.slice(0,10)||'ไม่ระบุ',
         assigner:data.cveMetadata?.assignerShortName||'ไม่ระบุ',cvss:d.cvssScore,severity:d.severity||'UNKNOWN',
         attackVector:d.attackVector||'UNKNOWN',complexity:d.complexity||'UNKNOWN',privileges:d.privileges||'UNKNOWN',
-        userInteraction:d.userInteraction||'UNKNOWN',aiSummary:d.description||'ไม่มีคำอธิบายจากแหล่งอ้างอิง',
-        mitigation:(data.containers?.cna?.solutions||[]).map((item:any)=>item.value).filter(Boolean),
+        userInteraction:d.userInteraction||'UNKNOWN',aiSummary:thaiInfo?.descriptionTh||d.description||'ไม่มีคำอธิบายจากแหล่งอ้างอิง',
+        mitigation:thaiInfo?.solutionsTh?.length?thaiInfo.solutionsTh:(data.containers?.cna?.solutions||[]).map((item:any)=>item.value).filter(Boolean),
         affected:[d.affectedProduct||'ไม่ระบุ'],affectedInternal:cveFindings.some(f=>f.cveId===d.cveId)};
       if(!aiBriefing.mitigation.length)aiBriefing.mitigation=['ตรวจข้อมูลและคำแนะนำแก้ไขในเอกสารของผู้พัฒนาที่แนบกับ CVE นี้'];
+      if(thaiInfo?.status!=='ready'&&canTranslate())void translateThai(id,run);
       const saved=await fetch('/api/cve/history',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({cveId:id,aiSummary:d.description})});
       if(saved.ok&&run===searchGeneration){const entry=await saved.json();cveSimilarityEntries=[entry,...cveSimilarityEntries.filter(h=>h.cveId!==entry.cveId)].slice(0,100);}
     }catch(error:any){if(run===searchGeneration)errorMsg=error.message;}
@@ -265,6 +283,8 @@
   .brief-section-title { font-size: 13px; font-weight: 800; color: #a855f7; text-transform: uppercase; letter-spacing: 0.1em; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
   .brief-section-title i { font-size: 18px; }
   
+  .cve-original {padding:12px;border:1px solid var(--border);border-radius:8px;overflow-wrap:anywhere;}
+  .translation-status {font-size:12px;color:var(--text-secondary);line-height:1.6;}
   .ai-text { font-size: 14px; line-height: 1.7; color: var(--text-primary); background: rgba(168,85,247,0.05); border-left: 3px solid #a855f7; padding: 16px; border-radius: 0 8px 8px 0; }
   
   .mitigation-list { margin: 0; padding-left: 20px; list-style-type: none; }
@@ -287,7 +307,7 @@
   
   <section class="siem-page siem-page--cve" aria-label="cve">
 <div style="display:flex;flex-direction:column;height:100%;gap:16px;">
-    <PageHeader title="CVE Database" description="Vulnerability Intelligence and Threat Analysis." icon="ti-shield-search">
+    <PageHeader title="ฐานข้อมูล CVE" description="คำอธิบายช่องโหว่ภาษาไทย พร้อมต้นฉบับและหลักฐานที่เกี่ยวข้อง" icon="ti-shield-search">
       <div slot="actions">
         <ExportBtn 
           config={{ pageType: 'cve', reportTitle: 'CVE Analysis Report', supportedFormats:['pdf','html','csv'], aiEnabled:true, csvEnabled:true, sections:[] }}
@@ -303,20 +323,20 @@
     <div class="ai-status-card">
       <div class="pulse-dot"></div>
       <div>
-        <div class="status-text">CVE REFERENCE LOOKUP</div>
-        <div class="status-sub">Connected to Global Threat DB</div>
+        <div class="status-text">ข้อมูลอ้างอิง CVE</div>
+        <div class="status-sub">อ่านข้อมูลจากทะเบียน CVE</div>
       </div>
     </div>
 
     <div class="trending-card">
-      <div class="trending-title"><i class="ti ti-flame"></i> Info</div>
+      <div class="trending-title"><i class="ti ti-flame"></i> วิธีค้นหา</div>
       <div style="font-size:12px; color:var(--text-secondary); line-height:1.5;">
-        Natural Language Search is disabled. Please enter an exact CVE ID (e.g., CVE-2021-44228) to fetch live data from the MITRE API.
+        ระบุรหัส CVE เช่น CVE-2021-44228 เพื่ออ่านต้นฉบับจากทะเบียน CVE และคำอธิบายภาษาไทยเมื่อมี
       </div>
     </div>
 
     <div class="trending-card" style="margin-top:20px;">
-      <div class="trending-title" style="color: #a855f7;"><i class="ti ti-link"></i> Mapped CVEs from Attacks</div>
+      <div class="trending-title" style="color: #a855f7;"><i class="ti ti-link"></i> CVE ที่เชื่อมโยงจากเหตุการณ์</div>
       {#each mappedCVEs as cve}
         <div class="trend-item" on:click={() => searchVulnerability(cve.id)}>
           <div class="t-head">
@@ -327,7 +347,7 @@
         </div>
       {:else}
         <div style="font-size:12px; color:var(--text-secondary); text-align: center; padding: 10px;">
-          No CVEs mapped from recent attacks.
+          ยังไม่มี CVE ที่เชื่อมโยงจากเหตุการณ์ล่าสุด
         </div>
       {/each}
     </div>
@@ -347,7 +367,7 @@
 
     <div class="trending-card" style="margin-top:20px;">
       <div class="trending-title" style="color: #00d4ff; display: flex; justify-content: space-between; align-items: center;">
-        <span><i class="ti ti-history"></i> Recent CVE Searches</span>
+        <span><i class="ti ti-history"></i> ประวัติการค้นหา CVE</span>
         {#if selectedHistoryIds.length > 0}
           <button on:click={requestDeleteHistory} style="background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 4px; transition: 0.2s;">
             <i class="ti ti-trash"></i> Delete Selected ({selectedHistoryIds.length})
@@ -380,14 +400,14 @@
   <div class="hub-main" style="margin-top: 0 !important; padding-top: 0 !important;">
     
     <div class="search-hero">
-      <div class="hero-title">Vulnerability Intelligence</div><p class="siem-panel-note">ค้นหาด้วย CVE ID · อ่านข้อมูลจากแหล่งอ้างอิงและเชื่อมกลับ Incident ที่เกี่ยวข้อง</p>
+      <div class="hero-title">รายละเอียดช่องโหว่</div><p class="siem-panel-note">ค้นหาด้วย CVE ID · อ่านข้อมูลจากแหล่งอ้างอิงและเชื่อมกลับ Incident ที่เกี่ยวข้อง</p>
       
       
       <div class="ai-search-bar">
         <i class="ti ti-sparkles"></i>
         <input type="text" bind:value={searchQuery} on:keydown={handleKeydown} placeholder="CVE-2021-44228" />
         <button class="btn-search" on:click={() => searchVulnerability(searchQuery)} disabled={loading}>
-          {loading ? 'Analyzing...' : 'Analyze'}
+          {loading ? 'กำลังค้นหา…' : 'ค้นหา CVE'}
         </button>
       </div>
     </div>
@@ -415,39 +435,39 @@
             <div class="cvss-gauge-wrap">
               <div class="cvss-circle {aiBriefing.severity.toLowerCase()}">
                 <div class="cvss-score">{aiBriefing.cvss.toFixed(1)}</div>
-                <div class="cvss-lbl">CVSS จากแหล่งอ้างอิง</div>
+                <div class="cvss-lbl" title="คะแนนจากแหล่งอ้างอิง">CVSS</div>
               </div>
             </div>
 
             <div class="vector-grid">
-              <div class="v-box {aiBriefing.attackVector === 'Network' ? 'danger' : ''}">
-                <div class="v-box-lbl">Attack Vector</div>
-                <div class="v-box-val">{aiBriefing.attackVector}</div>
+              <div class="v-box {String(aiBriefing.attackVector).toUpperCase() === 'NETWORK' ? 'danger' : ''}">
+                <div class="v-box-lbl">ช่องทางการโจมตี</div>
+                <div class="v-box-val">{thaiValue(aiBriefing.attackVector)}</div>
               </div>
               <div class="v-box">
-                <div class="v-box-lbl">Complexity</div>
-                <div class="v-box-val">{aiBriefing.complexity}</div>
+                <div class="v-box-lbl">ความซับซ้อน</div>
+                <div class="v-box-val">{thaiValue(aiBriefing.complexity)}</div>
               </div>
               <div class="v-box">
-                <div class="v-box-lbl">Privileges Req.</div>
-                <div class="v-box-val">{aiBriefing.privileges}</div>
+                <div class="v-box-lbl">สิทธิ์ที่ต้องมี</div>
+                <div class="v-box-val">{thaiValue(aiBriefing.privileges)}</div>
               </div>
               <div class="v-box">
-                <div class="v-box-lbl">User Interact.</div>
-                <div class="v-box-val">{aiBriefing.userInteraction}</div>
+                <div class="v-box-lbl">การโต้ตอบของผู้ใช้</div>
+                <div class="v-box-val">{thaiValue(aiBriefing.userInteraction)}</div>
               </div>
             </div>
           {:else}
             <div style="text-align:center; color:var(--text-muted); padding: 40px 0;">
               <i class="ti ti-chart-radar" style="font-size:40px; opacity:0.3; margin-bottom:10px; display:block;"></i>
-              CVSS Data not provided by MITRE API for this record.
+              แหล่งอ้างอิงไม่มีคะแนน CVSS สำหรับรายการนี้
             </div>
           {/if}
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
-            <div class="v-box-lbl">Published Date</div>
+            <div class="v-box-lbl">วันที่เผยแพร่</div>
             <div style="color:var(--text-primary); font-size:13px;">{aiBriefing.published}</div>
-            <div class="v-box-lbl" style="margin-top:10px;">Assigner</div>
+            <div class="v-box-lbl" style="margin-top:10px;">หน่วยงานผู้กำหนด CVE</div>
             <div style="color:var(--text-primary); font-size:13px;">{aiBriefing.assigner}</div>
           </div>
         </div>
@@ -456,12 +476,21 @@
         <div class="b-right">
           
           <div>
-            <div class="brief-section-title"><i class="ti ti-robot"></i> คำอธิบายจากแหล่งอ้างอิง</div>
+            <div class="brief-section-title"><i class="ti ti-robot"></i> {thaiInfo?.status==='ready'?'คำอธิบายภาษาไทย':'คำอธิบายต้นฉบับ — ยังไม่มีคำแปลไทย'}</div>
+            <p class="translation-status" role="status">{translationLoading?'กำลังแปลจากต้นฉบับ…':thaiInfo?.status==='ready'?(thaiInfo.source==='official-th'?'ภาษาไทยจากผู้เผยแพร่ CVE':'คำแปลด้วย AI จากต้นฉบับ ควรตรวจทานคำศัพท์และเงื่อนไข'):(thaiInfo?.issue?.message||'ยังไม่ได้แปล คงข้อความต้นฉบับไว้')}
+              {#if canTranslate()&&thaiInfo?.status!=='ready'}<button class="btn-search" on:click={()=>translateThai(aiBriefing.cveId)} disabled={translationLoading}>แปลและอธิบายภาษาไทย</button>{/if}
+            </p>
             <div class="ai-text">
               {aiBriefing.aiSummary}
             </div>
           </div>
 
+          <details class="cve-original"><summary>ดูคำอธิบายต้นฉบับและแหล่งอ้างอิง</summary><p>{cveData?.siem?.description}</p>
+            {#each (cveData?.containers?.cna?.references||[]) as ref}{#if /^https?:\/\//i.test(ref.url)}<p><a href={ref.url} target="_blank" rel="noopener noreferrer">{ref.url}</a></p>{/if}{/each}
+          </details>
+          <div><div class="brief-section-title">รุ่นที่ได้รับผลกระทบตามต้นฉบับ</div>
+            {#each (cveData?.containers?.cna?.affected||[]) as product}<p>{product.vendor} {product.product}</p><ul>{#each product.versions||[] as version}<li>{version.version}{version.lessThan?' < '+version.lessThan:''}{version.lessThanOrEqual?' ≤ '+version.lessThanOrEqual:''} — {version.status==='affected'?'ได้รับผลกระทบ':version.status==='unaffected'?'ไม่ได้รับผลกระทบ':'ไม่ทราบสถานะ'}{#each version.changes||[] as change}<span> · {change.at}: {change.status}</span>{/each}</li>{/each}</ul>{/each}
+          </div>
           {#if aiBriefing.affectedInternal}
             <div class="am-i-affected">
               <i class="ti ti-radar aia-icon"></i>
@@ -473,7 +502,7 @@
           {/if}
 
           <div>
-            <div class="brief-section-title" style="color: #10b981;"><i class="ti ti-shield-check"></i> Remediation & Mitigation</div>
+            <div class="brief-section-title" style="color: #10b981;"><i class="ti ti-shield-check"></i> แนวทางแก้ไขและลดความเสี่ยง</div>
             <ul class="mitigation-list">
               {#each aiBriefing.mitigation as step}
                 <li>{step}</li>
@@ -482,7 +511,7 @@
           </div>
 
           <div>
-            <div class="brief-section-title" style="color: #3b82f6;"><i class="ti ti-box"></i> Affected Products</div>
+            <div class="brief-section-title" style="color: #3b82f6;"><i class="ti ti-box"></i> ผลิตภัณฑ์ที่ได้รับผลกระทบ</div>
             <div class="affected-tags">
               {#each aiBriefing.affected as aff}
                 <span class="aff-tag">{aff}</span>
@@ -492,7 +521,7 @@
 
           {#if currentSearchedCveData && currentSearchedCveData.ipsArray && currentSearchedCveData.ipsArray.length > 0}
             <div style="margin-top: 10px;">
-              <div class="brief-section-title" style="color: #ef4444;"><i class="ti ti-server"></i> Affected Internal IPs</div>
+              <div class="brief-section-title" style="color: #ef4444;"><i class="ti ti-server"></i> IP ภายในที่มีหลักฐานสัมพันธ์</div>
               <div style="max-height: 120px; overflow-y: auto; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-wrap: wrap; gap: 8px;">
                 {#each currentSearchedCveData.ipsArray as ip}
                   <span style="background: var(--bg-panel); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; color: #ef4444;">{ip}</span>
@@ -502,7 +531,7 @@
           {/if}
           
           <div style="margin-top: auto; display:flex; gap:10px; padding-top: 20px;">
-            <a href="https://nvd.nist.gov/vuln/detail/{aiBriefing.cveId}" target="_blank" class="btn-search" style="background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--border); box-shadow:none;"><i class="ti ti-external-link"></i> View on NVD Database</a>
+            <a href="https://nvd.nist.gov/vuln/detail/{aiBriefing.cveId}" target="_blank" class="btn-search" style="background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--border); box-shadow:none;"><i class="ti ti-external-link"></i> เปิดข้อมูลต้นฉบับบน NVD</a>
           </div>
 
         </div>

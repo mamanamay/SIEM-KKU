@@ -131,7 +131,7 @@ Export รักษาตัวกรอง IP/ประเภท/ประเ�
 
 ## เอกสารเพิ่มเติม
 
-[README](README.md), [CLAUDE](CLAUDE.md), [DEPLOY](DEPLOY.md) และ [CONTRIBUTING](CONTRIBUTING.md) ปรับตามซอร์สปัจจุบันแล้ว ผลตรวจส่งต่ออยู่ใน [HANDOFF_READINESS](docs/HANDOFF_READINESS.md) เอกสารใน `docs/deployment-history/` เป็นบันทึกย้อนหลัง คำสั่งที่อ้าง `ecs-release`, `.patch` หรือ helper รุ่นเก่าไม่ใช่ขั้นตอนปัจจุบัน ส่วน `deploy.ps1` ที่รากโครงการส่ง source ของ Incident / Report / CVE / Wallboard จำนวน 42 ไฟล์จากโฟลเดอร์หลักผ่าน SCP โดยตรง แล้ว build/up เฉพาะสามบริการ ตาม [DEPLOY](DEPLOY.md)
+[README](README.md), [CLAUDE](CLAUDE.md), [DEPLOY](DEPLOY.md) และ [CONTRIBUTING](CONTRIBUTING.md) ปรับตามซอร์สปัจจุบันแล้ว ผลตรวจส่งต่ออยู่ใน [HANDOFF_READINESS](docs/HANDOFF_READINESS.md) เอกสารใน `docs/deployment-history/` เป็นบันทึกย้อนหลัง คำสั่งที่อ้าง `ecs-release`, `.patch` หรือ helper รุ่นเก่าไม่ใช่ขั้นตอนปัจจุบัน ส่วน `deploy.ps1` ที่รากโครงการส่ง source ของ Incident / Report / CVE / Wallboard จำนวน 47 ไฟล์จากโฟลเดอร์หลักผ่าน SCP โดยตรง แล้ว build/up เฉพาะสามบริการ ตาม [DEPLOY](DEPLOY.md)
 
 ## ก่อนส่งซอร์สขึ้น Git ขององค์กร
 

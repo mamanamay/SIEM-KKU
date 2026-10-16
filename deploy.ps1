@@ -29,15 +29,21 @@ $sourceFiles = @(
     'backend/src/ai.service.ts'
     'backend/src/app.module.ts'
     'backend/src/attacks.controller.ts'
+    'backend/src/auth.controller.ts'
     'backend/src/cve-intel.service.ts'
     'backend/src/cve.controller.ts'
     'backend/src/data-source.ts'
+    'backend/src/developer-api/catalog.service.ts'
     'backend/src/entities/attack.entity.ts'
     'backend/src/entities/cve-finding.entity.ts'
     'backend/src/events.gateway.ts'
     'backend/src/http-context.ts'
     'backend/src/incident-evidence.service.ts'
     'backend/src/incident-local-analysis.ts'
+    'backend/src/report-narrative.ts'
+    'backend/src/cve-translation.ts'
+    'backend/src/entities/cve-translation.entity.ts'
+    'backend/src/migrations/1792137600000-CveThaiTranslation.ts'
     'backend/src/incident-report-template.ts'
     'backend/src/incident-report.controller.ts'
     'backend/src/ingest.controller.ts'
@@ -62,12 +68,14 @@ $sourceFiles = @(
     'frontend/src/routes/dashboard/explorer/+page.svelte'
     'frontend/src/routes/dashboard/hunting/+page.svelte'
     'frontend/src/routes/dashboard/soar/+page.svelte'
+    'frontend/src/routes/dashboard/settings/developer-api/+page.svelte'
     'frontend/src/routes/wallboard/+page.svelte'
     'frontend/src/stores/events.ts'
     'frontend/src/stores/faculties.ts'
     'frontend/src/stores/globalReportStore.ts'
     'frontend/src/lib/utils/wallboardMap.ts'
     'frontend/src/lib/utils/kkuai.ts'
+    'frontend/src/lib/workspace/layout.css'
 )
 $fileCount = $sourceFiles.Count
 function ConvertTo-ShellLiteral([string]$Value) {
@@ -163,12 +171,14 @@ if [[ "$mode" = check ]]; then echo 'CHECK_COMPLETE: __FILE_COUNT__ source files
 legacy_pids="$(pgrep -u "$(id -u)" -f '[.]siem-incident-[a-f0-9]+/remote-entry[.]sh' || true)"
 [[ -z "$legacy_pids" ]] || { echo 'PREVIOUS_DEPLOY_RUNNING: stop the old deployment with Ctrl+C first' >&2; exit 1; }
 if [[ "$mode" = deploy ]]; then
-  postgres_id="$(dc ps -q postgres)"
+  postgres_id="$(dc ps -a -q postgres)"
   [[ -n "$postgres_id" ]] || { echo EXISTING_POSTGRES_NOT_FOUND >&2; exit 1; }
-  processes="$(sudo docker top "$postgres_id" -eo pid,comm)"
-  if awk 'NR > 1 && $2 == "pg_dump" { found=1 } END { exit !found }' <<< "$processes"; then
-    echo 'PREVIOUS_PG_DUMP_RUNNING: finish or stop the previous backup before restarting backend' >&2
-    exit 1
+  if [[ "$(sudo docker inspect --format '{{.State.Running}}' "$postgres_id")" = true ]]; then
+    processes="$(sudo docker top "$postgres_id" -eo pid,comm)"
+    if awk 'NR > 1 && $2 == "pg_dump" { found=1 } END { exit !found }' <<< "$processes"; then
+      echo 'PREVIOUS_PG_DUMP_RUNNING: finish or stop the previous backup before restarting backend' >&2
+      exit 1
+    fi
   fi
 fi
 printf 'STEP 2/4: copying __FILE_COUNT__ source files\n'
@@ -205,14 +215,27 @@ printf 'UPLOAD_COMPLETE___FILE_COUNT___FILES\n'
 if [[ "$mode" = upload ]]; then exit 0; fi
 printf 'STEP 3/4: building backend, frontend, detection-engine\n'
 dc --progress plain build backend frontend detection-engine
+# Start the existing database without replacing its container or persistent volume.
+ensure_postgres_ready() {
+  printf 'Waiting for the existing PostgreSQL database (up to 120 seconds)\n'
+  if ! dc up -d --no-deps --no-build --no-recreate --wait --wait-timeout 120 postgres; then
+    echo 'POSTGRES_NOT_READY: deployment stopped before migration checks; inspect PostgreSQL logs' >&2
+    dc ps -a postgres || true
+    dc logs --no-color --tail=60 postgres || true
+    return 1
+  fi
+}
+ensure_postgres_ready
 # Backend startup applies migrations; reject unrelated pending work before up.
 migrations="$(dc run -T --rm --no-deps -e FORCE_COLOR=0 backend npm run migration:show)"
 printf '%s\n' "$migrations"
 clean="$(printf '%s\n' "$migrations" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' | tr -d '\r')"
-grep -Eq '^\[(X| )\] ([0-9]+ )?IncidentEvidence1792100000000$' <<< "$clean" || { echo EXPECTED_MIGRATION_NOT_FOUND >&2; exit 1; }
+for expected in IncidentEvidence1792100000000 CveThaiTranslation1792137600000; do
+  grep -Eq "^\[(X| )\] ([0-9]+ )?$expected$" <<< "$clean" || { printf 'EXPECTED_MIGRATION_NOT_FOUND: %s\n' "$expected" >&2; exit 1; }
+done
 pending="$(sed -n 's/^[[:space:]]*\[ \][[:space:]]*//p' <<< "$clean")"
 while IFS= read -r migration; do
-  [[ -z "$migration" || "$migration" = IncidentEvidence1792100000000 ]] || { printf 'OTHER_PENDING_MIGRATION: %s\n' "$migration" >&2; exit 1; }
+  [[ -z "$migration" || "$migration" = IncidentEvidence1792100000000 || "$migration" = CveThaiTranslation1792137600000 ]] || { printf 'OTHER_PENDING_MIGRATION: %s\n' "$migration" >&2; exit 1; }
 done <<< "$pending"
 printf 'STEP 4/4: starting the three updated services\n'
 for service in detection-engine backend frontend; do

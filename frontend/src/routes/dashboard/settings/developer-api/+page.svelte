@@ -25,7 +25,7 @@
   const scopeNames: Record<string, string> = { 'catalog:read': 'อ่านทะเบียน endpoint', 'integrations:read': 'อ่านการเชื่อมต่อที่ตัดข้อมูลลับ', 'health:read': 'อ่านสถานะ API' };
   $: tokens = (overview?.tokens?.items || []) as Token[];
   $: activeCount = tokens.filter(token => !token.revokedAt && Date.parse(token.expiresAt) > Date.now()).length;
-  $: baseUrl = overview?.baseUrl || 'https://odt-siem-uat.kku.ac.th';
+  $: baseUrl = overview?.baseUrl || 'https://siem.kku.ac.th';
   $: curlExample = 'curl -H "Authorization: Bearer <YOUR_TOKEN>" "' + baseUrl + '/api/v1/integration-catalog"';
   $: mcpConfiguration = JSON.stringify({ mcpServers: { 'siem-kku': { url: baseUrl + '/api/v1/mcp', headers: { Authorization: 'Bearer <YOUR_TOKEN>' } } } }, null, 2);
 

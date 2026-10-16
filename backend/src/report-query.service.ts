@@ -116,13 +116,15 @@ export class ReportQueryService {
         .addSelect('SUBSTR("a"."detail",1,1500)','detailExcerpt').addSelect('SUBSTR("a"."notes",1,1500)','notesExcerpt')
         .addSelect('SUBSTR("a"."detectionEvidence",1,2000)','detectionExcerpt')
         .addSelect('SUBSTR("a"."httpContext",1,8000)','httpExcerpt')
+        .addSelect(this.db.options.type==='postgres'?`SUBSTR(CAST("a"."aiInvestigation" AS jsonb)->>'analysis',1,3000)`:`SUBSTR(json_extract("a"."aiInvestigation",'$.analysis'),1,3000)`,'analysisExcerpt')
         .orderBy('a.severity','ASC').addOrderBy('a.lastSeenMs','DESC').addOrderBy('a.id','ASC').limit(30).getRawMany();
       const parsed=events.map(row=>{
         const result:any={};for(const c of columns)result[c]=row['a_'+c];
         result.networkContext=row.contextExcerpt;
         if(typeof result.networkContext==='string'){try{result.networkContext=JSON.parse(result.networkContext);}catch{result.networkContext=null;}}
         let http = null; try { http = JSON.parse(row.httpExcerpt || 'null'); } catch {}
-        return {...result,httpContext:http,detail:row.detailExcerpt,notes:row.notesExcerpt,detectionEvidenceExcerpt:row.detectionExcerpt};
+        const savedAnalysis=row.analysisExcerpt?{analysis:String(row.analysisExcerpt).slice(0,3000),source:'saved-incident-analysis',verified:false}:null;
+        return {...result,savedAnalysis,httpContext:http,detail:row.detailExcerpt,notes:row.notesExcerpt,detectionEvidenceExcerpt:row.detectionExcerpt};
       });
       const windowCounts=await r.clone().andWhere('a.id IN (:...sampleIds)',{sampleIds:parsed.map(e=>e.id)})
         .select('a.id','id').addSelect('MIN("r"."eventTimestampMs")','first').addSelect('MAX("r"."eventTimestampMs")','last')

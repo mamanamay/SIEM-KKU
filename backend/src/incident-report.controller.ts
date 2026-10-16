@@ -1,3 +1,4 @@
+import {reportNarrative,parseReportNarrative,REPORT_WRITING_PROMPT} from './report-narrative';
 import { Controller, Post, Body, Request, Res, ConflictException, BadRequestException, HttpException } from '@nestjs/common';
 import type { Response } from 'express';
 import { DataSource, In } from 'typeorm';
@@ -8,7 +9,7 @@ import * as path from 'path';
 import { PDFDocument } from 'pdf-lib';
 import { ReportQueryService } from './report-query.service';
 import { ExportService } from './export.service';
-import { AiService } from './ai.service';
+import { AiService, aiFailure } from './ai.service';
 import { ReportDraft } from './entities/report-draft.entity';
 import { Report } from './entities/report.entity';
 import { ExportAudit } from './entities/export-audit.entity';
@@ -28,6 +29,21 @@ export class IncidentReportController {
 
   @Post('options') options(@Body() body:any) {return this.query.options(body);}
   @Post('snapshot') snapshot(@Body() body:any,@Request() req:any) {return this.query.snapshot(body,req.user);}
+
+  @Post('write')
+  async write(@Body() body:any,@Request() req:any) {
+    const row=await this.query.owned(body.snapshotId,req.user);
+    if(body.revision!==row.revision)throw new ConflictException('Report revision changed; reload the preview');
+    if(!['local','ai'].includes(body.mode))throw new BadRequestException('Invalid report writing mode');
+    const snapshot=JSON.parse(row.snapshotJson),draft=row.draftJson?JSON.parse(row.draftJson):{};
+    const language=body.language==='en'?'en':'th';
+    if(body.mode==='local')return {mode:'local',edits:reportNarrative(snapshot,language)};
+    try {
+      const answer=await this.ai.callUnifiedAI(Number(req.user.sub),[{role:'system',content:REPORT_WRITING_PROMPT},
+        {role:'user',content:JSON.stringify({language,snapshot,currentDraft:draft,request:String(body.request||'เรียบเรียงรายงานจากหลักฐาน').slice(0,1500)})}],2800,0.1);
+      return {mode:'ai',edits:parseReportNarrative(answer)};
+    }catch(error){return {mode:'local',edits:reportNarrative(snapshot,language),issue:aiFailure(error)};}
+  }
 
   @Post('preview')
   async preview(@Body() body:any,@Request() req:any) {
@@ -59,7 +75,7 @@ export class IncidentReportController {
     const pageCount=await reportPageCount(bytes);
     const issues:any[]=[];
     if(snapshot.incidentsWithoutReceipts)issues.push({level:'warning',category:'evidence',message:'Some incidents have no retained receipts: log counts are incomplete and explicitly labelled.'});
-    if(!draft.edits.rootCause||!draft.edits.impact||!draft.edits.resolution)issues.push({level:'warning',category:'evidence',message:'Root cause, impact or resolution remains unverified. This is a preliminary report.'});
+    if(draft.stage!=='final')issues.push({level:'warning',category:'evidence',message:'Root cause, impact or resolution remains unverified. This is a preliminary report.'});
     try {
       const aiResult=await this.ai.validateReportContent(req.user.sub,row.html,{actualEventCount:snapshot.receiptCount,
         statedEventCount:snapshot.receiptCount,events:snapshot.events});
@@ -108,7 +124,7 @@ export class IncidentReportController {
           sha256Hash,selectedIpCount:snapshot.selectedIPs.length,selectedFieldCount:draft.fields.length,
           filtersJson:JSON.stringify({range:snapshot.range,selectedIPs:snapshot.selectedIPs,incidentId:snapshot.incidentId,
             selectedTargetIPs:snapshot.selectedTargetIPs,
-             filters:snapshot.filters,cveFindings:draft.cves,selectedFields:draft.fields,selectedSections:draft.sections,includeRawLogs:draft.includeRawLogs,manualEdits:draft.edits,assessment:draft.assessment}),
+             filters:snapshot.filters,cveFindings:draft.cves,selectedFields:draft.fields,selectedSections:draft.sections,includeRawLogs:draft.includeRawLogs,manualEdits:draft.edits,assessment:draft.assessment,reportStage:draft.stage,followUpOwner:draft.followUpOwner,followUpDue:draft.followUpDue}),
           revisionHistoryJson:row.revisionHistoryJson,
            snapshotJson:JSON.stringify({...snapshot,cveFindings:draft.cves}),reviewJson:JSON.stringify(review),contentDigest:row.contentDigest,pageCount});
         await m.getRepository(ExportAudit).save({action:'EXPORT_REPORT',reportId:draft.reportId,reportTitle:draft.title,reportType:snapshot.reportType,

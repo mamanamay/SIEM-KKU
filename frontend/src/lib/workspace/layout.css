@@ -136,6 +136,8 @@
 .siem-workspace.siem-workspace.siem-workspace.siem-workspace .wizard-container .preview-header { flex-wrap: wrap; gap: 12px; }
 .siem-workspace.siem-workspace.siem-workspace.siem-workspace .wizard-container .preview-actions { flex-wrap: wrap; gap: 8px; }
 .siem-workspace.siem-workspace.siem-workspace.siem-workspace .wizard-container .preview-split { display: grid; grid-template-columns: minmax(240px,.4fr) minmax(0,1fr); gap: 20px; }
+.siem-workspace.siem-workspace.siem-workspace.siem-workspace .wizard-container .preview-split.live-editing { grid-template-columns: minmax(0,1fr); }
+.siem-workspace.siem-workspace.siem-workspace.siem-workspace .wizard-container .preview-frame-container { grid-column: auto; }
 .siem-workspace.siem-workspace.siem-workspace.siem-workspace .wizard-container .manual-edit-panel { width: 100%; min-width: 0; }
 .siem-workspace.siem-workspace.siem-workspace.siem-workspace .wizard-container .preview-frame-container { min-width: 0; min-height: 480px; }
 .siem-workspace.siem-workspace.siem-workspace.siem-workspace .wizard-container :is(.group-name,.section-name,.ip-addr,.cb-label,.checklist-row,.format-option,.field-group h4,.checklist-card h4) { color: var(--text-primary); }

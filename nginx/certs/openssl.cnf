@@ -11,7 +11,7 @@ ST = Khon Kaen
 L  = Khon Kaen
 O  = Khon Kaen University
 OU = SIEM Security Operations Center
-CN = odt-siem-uat.kku.ac.th
+CN = siem.kku.ac.th
 
 [v3_req]
 subjectAltName = @alt_names
@@ -20,7 +20,7 @@ extendedKeyUsage = serverAuth
 basicConstraints = CA:FALSE
 
 [alt_names]
-DNS.1 = odt-siem-uat.kku.ac.th
+DNS.1 = siem.kku.ac.th
 DNS.2 = localhost
 IP.1  = 127.0.0.1
 IP.2  = 10.101.104.234

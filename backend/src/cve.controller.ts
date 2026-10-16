@@ -21,11 +21,12 @@ export class CVEController {
 
   @Post('history')
   async saveHistory(@Body() body: any) {
-    const id = cveId(body.cveId), { details } = await this.intel.lookup(id);
+    const id = cveId(body.cveId), { data, details } = await this.intel.lookup(id);
     if (details.state !== 'PUBLISHED') throw new BadRequestException('Only published CVEs can be saved to search history');
     const existing = await this.history.findOne({ where: { cveId: id }, order: { createdAt: 'DESC' } });
+    const thai=await this.intel.translation(data,0,false);
     return this.history.save({ ...existing, cveId: id, description: details.description, severity: details.severity,
-      cvssScore: details.cvssScore, aiSummary: typeof body.aiSummary === 'string' ? body.aiSummary.slice(0, 6000) : details.description,
+      cvssScore: details.cvssScore, aiSummary: thai.descriptionTh || details.description,
       createdAt: new Date() });
   }
 
@@ -36,8 +37,15 @@ export class CVEController {
     return this.history.delete({ cveId: In(body.ids.map(cveId)) });
   }
 
-  @Get(':id') async getCVE(@Param('id') id: string) {
+  @Post(':id/thai')
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter')
+  translateThai(@Param('id') id:string,@Req() req:any) { return this.intel.thai(id,Number(req.user.sub),true); }
+
+  @Get(':id/thai')
+  getThai(@Param('id') id:string,@Req() req:any) { return this.intel.thai(id,Number(req.user.sub),false); }
+
+  @Get(':id') async getCVE(@Param('id') id: string,@Req() req:any) {
     const result = await this.intel.lookup(id);
-    return { ...result.data, siem: result.details };
+    return { ...result.data, siem: result.details, thai:result.details.state==='PUBLISHED'?await this.intel.translation(result.data,Number(req.user.sub),false):null };
   }
 }

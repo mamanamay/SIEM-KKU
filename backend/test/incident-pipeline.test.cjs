@@ -69,6 +69,9 @@ test('additive migration upgrades existing schema and is idempotent',{skip:!inte
     await q.dropTable('cve_finding');await q.dropColumn('attack','httpContext');await q.dropColumn('attack','aiInvestigation');
     const {IncidentEvidence1792100000000}=require('../dist/migrations/1792100000000-IncidentEvidence');
     const migration=new IncidentEvidence1792100000000();await migration.up(q);await migration.up(q);
+    const {CveThaiTranslation1792137600000}=require('../dist/migrations/1792137600000-CveThaiTranslation');
+    await q.dropTable('cve_translation');const thaiMigration=new CveThaiTranslation1792137600000();await thaiMigration.up(q);await thaiMigration.up(q);
+    assert.equal(await q.hasTable('cve_translation'),true);
     assert.equal(await q.hasColumn('attack','httpContext'),true);assert.equal(await q.hasTable('cve_finding'),true);
     assert.equal(await q.manager.getRepository('Attack').count(),3);
   }finally{await q.rollbackTransaction();await q.release();}
@@ -183,6 +186,20 @@ test('real Nest HTTP and Wallboard WebSocket load matching evidence, enforce rol
     assert.equal(localAnalysis.ok,true);const localResult=await localAnalysis.json();
     assert.equal(localResult.mode,'rule-based');assert.equal(localResult.aiStatus,null);assert.ok(localResult.analysis.includes('### 6.'));
     const invalidMode=await fetch(base+'/api/attacks/analyze-event',{method:'POST',headers,body:JSON.stringify({incidentId:en.id,mode:'other'})});assert.equal(invalidMode.status,400);
+    const selection=await query.snapshot({...period,reportType:'incident',sourcePage:'soar',selectedIPs:[en.ip],incidentId:en.id},user);
+    assert.ok(selection.snapshot.events[0].savedAnalysis.analysis.includes(en.ip));
+    const written=await fetch(base+'/api/export/report/write',{method:'POST',headers,body:JSON.stringify({snapshotId:selection.snapshotId,revision:0,mode:'local',snapshot:{events:[{ip:'spoofed'}]}})});
+    assert.equal(written.status,201);const prose=await written.json();assert.ok(prose.edits.executiveSummary.includes(en.ip));assert.ok(!prose.edits.executiveSummary.includes('spoofed'));
+    const badFinal=await fetch(base+'/api/export/report/preview',{method:'POST',headers,body:JSON.stringify({snapshotId:selection.snapshotId,revision:0,reportStage:'final'})});assert.equal(badFinal.status,400);
+    const intel=app.get(CveIntelService),originalLookup=intel.lookup.bind(intel);
+    const cveFixture={cveMetadata:{cveId:'CVE-2026-12345',state:'PUBLISHED',dateUpdated:'2026-10-16'},containers:{cna:{descriptions:[{lang:'en',value:'Example 1.2.3 permits file reads.'}],solutions:[],affected:[]}}};
+    intel.lookup=async id=>id==='CVE-2026-12345'?{data:cveFixture,details:cveDetails(cveFixture)}:originalLookup(id);
+    app.get(require('../dist/ai.service').AiService).callUnifiedAI=async()=>JSON.stringify({descriptionTh:'Example 1.2.3 อาจทำให้มีการอ่านไฟล์ได้ตามเงื่อนไขในต้นฉบับ',solutionsTh:[]});
+    const guestThai=await fetch(base+'/api/cve/CVE-2026-12345/thai',{method:'POST',headers:{Authorization:'Bearer '+signAccessToken(guest)}});assert.equal(guestThai.status,403);
+    const translated=await fetch(base+'/api/cve/CVE-2026-12345/thai',{method:'POST',headers});assert.equal(translated.status,201);assert.equal((await translated.json()).status,'ready');
+    const cached=await fetch(base+'/api/cve/CVE-2026-12345',{headers});const cacheBody=await cached.json();assert.equal(cacheBody.thai.cached,true);assert.equal(cacheBody.siem.description,'Example 1.2.3 permits file reads.');
+    const historySave=await fetch(base+'/api/cve/history',{method:'POST',headers,body:JSON.stringify({cveId:'CVE-2026-12345',aiSummary:'spoofed browser prose'})});assert.equal(historySave.status,201);assert.equal((await historySave.json()).aiSummary,cacheBody.thai.descriptionTh);assert.ok(cacheBody.thai.descriptionTh.includes('1.2.3'));
+    cveFixture.cveMetadata.dateUpdated='2026-10-17';const invalidated=await fetch(base+'/api/cve/CVE-2026-12345/thai',{headers});assert.equal((await invalidated.json()).status,'not-translated');
     const forbidden=await fetch(base+'/api/ingest/events',{headers:{Authorization:'Bearer '+signAccessToken(guest)}});assert.equal(forbidden.status,403);
   } finally { ws?.close(); await app.close(); }
 });

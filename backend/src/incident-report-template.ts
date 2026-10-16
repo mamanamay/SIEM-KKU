@@ -1,3 +1,4 @@
+import {reportNarrative} from './report-narrative';
 import { BadRequestException } from '@nestjs/common';
 import { escapeHtml as esc } from './report-safety';
 
@@ -15,7 +16,11 @@ export function reportDraftInput(body:any, snapshot:any, actor:string) {
   if(body.selectedSections!==undefined&&(!Array.isArray(body.selectedSections)||body.selectedSections.length>8))throw new BadRequestException('Too many selected sections');
   const fields=Array.isArray(body.selectedFields)?[...new Set(body.selectedFields.filter((f:any)=>REPORT_FIELDS.includes(f)))]:REPORT_FIELDS;
   const sections=Array.isArray(body.selectedSections)?body.selectedSections.filter((s:any)=>typeof s==='string'&&s.length<64).slice(0,8):[];
-  return {title:text(body.reportTitle,200)||'Incident Security Report',reportId:text(body.reportId,80),
+  if(body.reportStage!==undefined&&!['preliminary','final'].includes(body.reportStage))throw new BadRequestException('Invalid report stage');
+  const stage=body.reportStage||'preliminary';
+  if(stage==='final'&&(['rootCause','impact','resolution'].some(k=>!edits[k].trim())||!body.analystAssessment||body.analystAssessment==='NeedsInvestigation'))throw new BadRequestException('รายงานสรุปผลต้องมีสาเหตุ ผลกระทบ ผลตรวจยืนยัน และข้อประเมินที่ตรวจทานแล้ว');
+  const due=text(body.followUpDue,10);if(due&&(!/^\d{4}-\d{2}-\d{2}$/.test(due)||(!Number.isFinite(Date.parse(due))||new Date(due).toISOString().slice(0,10)!==due)))throw new BadRequestException('Invalid follow-up date');
+  return {stage,followUpOwner:text(body.followUpOwner,120),followUpDue:due,title:text(body.reportTitle,200)||'Incident Security Report',reportId:text(body.reportId,80),
     language:body.language==='en'?'en':'th',preparedBy:actor,reviewedBy:actor,
     assessment:text(body.analystAssessment,40)||'NeedsInvestigation',edits,fields,sections,
     includeRawLogs:snapshot.reportType==='technical'&&body.includeRawLogs===true,
@@ -25,13 +30,15 @@ export function reportDraftInput(body:any, snapshot:any, actor:string) {
 
 export function incidentReportHtml(s:any,d:any,revision:number) {
   const en=d.language==='en'; const t=(th:string,eng:string)=>en?eng:th;
-  const unknown=t('ยังไม่มีหลักฐานยืนยัน — อยู่ระหว่างตรวจสอบ','Not established by available evidence — investigation pending');
+  const defaults:Record<string,string>=reportNarrative(s,d.language);
+  const unknown=defaults.rootCause;
   const time=(v:any)=>Number.isFinite(Number(v))&&Number(v)>0?new Date(Number(v)).toLocaleString('en-GB',{timeZone:'Asia/Bangkok',hour12:false}):t('ไม่ระบุ','Unknown');
-  const editable=(key:string,title:string,fallback:string)=>`<section class="narrative-section"><h2>${esc(title)}</h2><div data-edit-key="${key}" class="narrative">${esc(d.edits[key]||fallback)}</div></section>`;
+  const editable=(key:string,title:string,fallback:string)=>`<section class="narrative-section"><h2>${esc(title)}</h2><div data-edit-key="${key}" class="narrative">${esc(d.edits[key]||defaults[key]||fallback)}</div></section>`;
   const table=(headers:string[],rows:any[][])=>`<table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   const titles:Record<string,string>={executive:'Executive Summary',incident:'Incident Deep Dive',technical:'Technical Details'};
   const title=titles[s.reportType]||'Report';
-  const header=`<header><div class="report-brand"><span class="brand-mark">K</span><div><b>KKU SIEM</b><small>SECURITY OPERATIONS · ${esc(title)}</small></div><span class="version">v1.${revision}</span></div><h1 data-edit-key="reportTitle">${esc(d.title)}</h1><div class="document-id">${esc(d.reportId)} · ${esc(t('ผู้จัดทำ / ผู้ตรวจทาน','Prepared / reviewed by'))}: ${esc(d.preparedBy)}</div></header>`;
+  const stageLabel=d.stage==='final'?t('รายงานสรุปผล','Final report'):t('รายงานเบื้องต้น — ยังไม่ใช่ข้อยืนยันการปิดเหตุการณ์','Preliminary report — closure unverified');
+  const header=`<header><div class="report-brand"><span class="brand-mark">K</span><div><b>KKU SIEM</b><small>SECURITY OPERATIONS · ${esc(title)}</small></div><span class="version">v1.${revision}</span></div><h1 data-edit-key="reportTitle">${esc(d.title)}</h1><div class="report-stage">${esc(stageLabel)}</div><div class="document-id">${esc(d.reportId)} · ${esc(t('ผู้จัดทำ / ผู้ตรวจทาน','Prepared / reviewed by'))}: ${esc(d.preparedBy)}</div></header>`;
   const targetFilter=s.selectedTargetIPs?.length?`<br>${esc(t('เครื่องเป้าหมายที่เลือก','Selected targets'))}: ${esc(s.selectedTargetIPs.join(', '))}`:'';
   const filterLabels:Record<string,string>={ip:'IP / CIDR',type:t('ประเภทเหตุการณ์','Event type'),country:t('ประเทศต้นทาง','Source country'),severity:t('ความรุนแรง','Severity')};
   const filterText=Object.entries(s.filters||{}).filter(([key,value])=>filterLabels[key]&&value&&value!=='all').map(([key,value])=>`${filterLabels[key]}: ${value}`).join(' · ')||t('ไม่มีตัวกรองเพิ่มเติม','No additional filters');
@@ -66,7 +73,8 @@ export function incidentReportHtml(s:any,d:any,revision:number) {
   const actions=`<section><h2>${esc(t('การดำเนินการที่บันทึกในระบบ','Recorded system actions'))}</h2><p>${esc(actionFacts)}</p></section>`+
     editable('actionsTaken',t('บันทึกการแก้ไขของผู้จัดทำ (ระบุเวลา/หลักฐาน)','Analyst action record (include time/evidence)'),t('ยังไม่มีบันทึกการดำเนินการเพิ่มเติม','No additional action record supplied'));
   const resolution=editable('resolution',t('ผลการแก้ไข / วิธีตรวจยืนยัน','Resolution / verification'),unknown);
-  const remaining=editable('remainingWork',t('งานที่ยังค้าง / ผู้รับผิดชอบ / กำหนดเสร็จ','Remaining work / owner / due date'),t('ระบุผู้รับผิดชอบ ตรวจ log ปลายทาง และยืนยันผลก่อนปิด Incident','Assign an owner, inspect target logs and verify results before closing the incident'));
+  const followUp=`<p class="note">${esc(t('ผู้รับผิดชอบ','Follow-up owner'))}: ${esc(d.followUpOwner||t('ยังไม่กำหนด','Unassigned'))} · ${esc(t('กำหนดตรวจ','Due date'))}: ${esc(d.followUpDue||t('ยังไม่กำหนด','Not set'))}</p>`;
+  const remaining=followUp+editable('remainingWork',t('งานที่ยังค้าง / ผู้รับผิดชอบ / กำหนดเสร็จ','Remaining work / owner / due date'),t('ระบุผู้รับผิดชอบ ตรวจ log ปลายทาง และยืนยันผลก่อนปิด Incident','Assign an owner, inspect target logs and verify results before closing the incident'));
   const recs=editable('recommendations',t('มาตรการที่เสนอ (ยังไม่ใช่การดำเนินการแล้ว)','Recommendations (not completed actions)'),t('ตรวจหลักฐานปลายทางและทบทวน policy ตามเหตุการณ์ที่เลือก','Review target evidence and applicable controls for the selected incidents'));
   const timeline=`<section><h2>${esc(t('Timeline จาก receipt','Receipt timeline'))}</h2>${table([t('เวลา UTC+7','Time UTC+7'),'Incident',t('ต้นทาง → เป้าหมาย','Source → target')],s.evidence.map((e:any)=>[time(e.timestampMs),e.attackId,`${e.sourceIp||'unknown'} → ${e.targetIp||'unknown'}`]))}<p>${s.evidence.length} / ${s.receiptCount} ${esc(t('receipt ตัวอย่างช่วงเริ่ม/ท้ายตามเวลา','start/end receipt samples'))}</p></section>`;
   const evidence=`<section><h2>${esc(t('หลักฐาน / การตรวจจับ','Evidence / detection'))}</h2>${s.evidence.slice(0,3).map((e:any)=>`<div class="evidence"><b>Receipt ${esc(e.id)}</b> · Incident ${esc(e.attackId)}<br>SHA-256: ${esc(e.rawDigest||t('ไม่มี hash บันทึก','No recorded hash'))}${d.includeRawLogs?`<pre>${esc(e.excerpt?.slice(0,400)||t('เนื้อหาไม่พร้อมใช้งาน','Content unavailable'))}</pre>`:''}</div>`).join('')}${d.fields.includes('detail')?events.slice(0,3).map((e:any)=>`<p>Incident ${e.id}: ${esc(e.detail?.slice(0,400)||'')+(e.detectionEvidenceExcerpt?' · '+esc(e.detectionEvidenceExcerpt.slice(0,200)):'')}</p>`).join(''):''}<p>${esc(t('ข้อความหลักฐานตัดเป็น snippet; hash อ้างถึง raw ต้นฉบับเมื่อมีบันทึก','Evidence excerpts are bounded snippets; recorded hashes refer to original raw content'))}</p></section>`;
@@ -85,8 +93,8 @@ export function incidentReportHtml(s:any,d:any,revision:number) {
   }
   else if(s.reportType==='executive') {
     const causeImpact=`<section><h2>${esc(t('สาเหตุ / ผลกระทบ (ข้อประเมิน Analyst)','Root cause / impact (analyst assessment)'))}</h2><div class="columns">`+
-      `<div><b>${esc(t('สาเหตุ','Root cause'))}</b><div data-edit-key="rootCause" class="narrative">${esc(d.edits.rootCause||unknown)}</div></div>`+
-      `<div><b>${esc(t('ผลกระทบ','Impact'))}</b><div data-edit-key="impact" class="narrative">${esc(d.edits.impact||unknown)}</div></div></div></section>`;
+      `<div><b>${esc(t('สาเหตุ','Root cause'))}</b><div data-edit-key="rootCause" class="narrative">${esc(d.edits.rootCause||defaults.rootCause)}</div></div>`+
+      `<div><b>${esc(t('ผลกระทบ','Impact'))}</b><div data-edit-key="impact" class="narrative">${esc(d.edits.impact||defaults.impact)}</div></div></div></section>`;
     const compactActions=actions.replace(esc(actionFacts),esc(compactActionFacts));
     pages=[page(meta+counts+summary+rows+topology+websites+causeImpact+compactActions+resolution+remaining+recs+cves+limitation+review)];
   }
@@ -97,7 +105,7 @@ export function incidentReportHtml(s:any,d:any,revision:number) {
     *{box-sizing:border-box}html{background:#edf2f6}body{margin:0;color:#243447;font:11.5px/1.55 'Noto Sans Thai','Tahoma',sans-serif;overflow-wrap:anywhere}
     article{background:#fff}.report-chapter+.report-chapter{margin-top:14px;padding-top:10px;border-top:1px solid #deeaec}
     header{border-bottom:2px solid #14796b;padding-bottom:12px;margin-bottom:14px}
-    .report-brand{display:flex;align-items:center;gap:10px;color:#123c49}.brand-mark{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:#14796b;color:#fff;font:bold 25px/1 Georgia,serif}.report-brand b{font-size:14px;letter-spacing:1.4px}.report-brand small{display:block;font-size:8px;letter-spacing:1px;color:#667b87}.version{margin-left:auto;border:1px solid #d3e4e5;border-radius:5px;padding:3px 8px;color:#14796b;font-size:10px}
+    .report-stage{font-weight:700;color:#14796b;margin-bottom:5px}.report-brand{display:flex;align-items:center;gap:10px;color:#123c49}.brand-mark{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:#14796b;color:#fff;font:bold 25px/1 Georgia,serif}.report-brand b{font-size:14px;letter-spacing:1.4px}.report-brand small{display:block;font-size:8px;letter-spacing:1px;color:#667b87}.version{margin-left:auto;border:1px solid #d3e4e5;border-radius:5px;padding:3px 8px;color:#14796b;font-size:10px}
     h1{font-size:20px;line-height:1.45;margin:12px 0 5px;color:#102f3b;font-weight:700}.document-id{font-size:10px;color:#687c88}
     h2{font-size:12px;color:#155d57;line-height:1.5;margin:0 0 6px;font-weight:700}section{margin:13px 0;break-inside:auto}section>h2{border-bottom:1px solid #deeaec;padding-bottom:5px;break-after:avoid}
     p{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}.narrative{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;min-height:20px}

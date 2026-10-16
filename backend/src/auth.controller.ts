@@ -327,7 +327,7 @@ export class AuthController {
     const clientSecret = process.env.SSO_CLIENT_SECRET || '';
     
     // IMPORTANT: This URL MUST EXACTLY match the one registered in the KKU SSO dashboard!
-    const redirectUrl = process.env.SSO_CALLBACK_URL || 'https://odt-siem-uat.kku.ac.th/callback';
+    const redirectUrl = process.env.SSO_CALLBACK_URL || `${(process.env.PUBLIC_ORIGIN || 'https://siem.kku.ac.th').replace(/\/$/, '')}/callback`;
     const ssoApiUrl = process.env.SSO_API_URL || 'https://ssonext-api.kku.ac.th';
 
     try {

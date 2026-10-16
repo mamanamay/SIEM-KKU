@@ -6,7 +6,7 @@ import axios from 'axios';
 import { IntegrationObservation } from '../entities/integration-observation.entity';
 import { User } from '../entities/user.entity';
 
-export const PUBLIC_BASE_URL = (process.env.SIEM_PUBLIC_BASE_URL || 'https://odt-siem-uat.kku.ac.th').replace(/\/$/, '');
+export const PUBLIC_BASE_URL = (process.env.SIEM_PUBLIC_BASE_URL || process.env.PUBLIC_ORIGIN || 'https://siem.kku.ac.th').replace(/\/$/, '');
 export const EXPORTED_ENDPOINTS = [
   { method: 'GET', path: '/api/v1/me', scope: null, operationId: 'getCurrentApiIdentity', description: 'Current API identity and effective permissions' },
   { method: 'GET', path: '/api/v1/integration-catalog', scope: 'catalog:read', operationId: 'getIntegrationCatalog', description: 'Published SIEM endpoint catalog' },

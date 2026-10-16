@@ -1,3 +1,4 @@
+import { CveTranslation } from './entities/cve-translation.entity';
 import { CveFinding } from './entities/cve-finding.entity';
 import { CveIntelService } from './cve-intel.service';
 import { IncidentEvidenceService } from './incident-evidence.service';
@@ -76,7 +77,7 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Production: PostgreSQL ─────────────────────────────────────────
       type: 'postgres',
       url: DATABASE_URL,
-      entities: [CveFinding, ReportDraft, RawEvent, User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, AlertNotification, AlertPolicy],
+      entities: [CveTranslation, CveFinding, ReportDraft, RawEvent, User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, AlertNotification, AlertPolicy],
       synchronize: process.env.NODE_ENV !== 'production',
       ssl: process.env.DB_SSL === 'true'
         ? { rejectUnauthorized: true }
@@ -86,7 +87,7 @@ const typeOrmConfig: any = DATABASE_URL
       // ── Development: SQLite (fallback เมื่อรัน local โดยไม่มี .env) ──
       type: 'sqlite',
       database: 'database.sqlite',
-      entities: [CveFinding, ReportDraft, RawEvent, User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, AlertNotification, AlertPolicy],
+      entities: [CveTranslation, CveFinding, ReportDraft, RawEvent, User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, AlertNotification, AlertPolicy],
       synchronize: true,
     };
 
@@ -99,7 +100,7 @@ const typeOrmConfig: any = DATABASE_URL
       limit: 100, // 100 requests per minute
     }]),
     TypeOrmModule.forRoot(typeOrmConfig),
-    TypeOrmModule.forFeature([CveFinding, ReportDraft, RawEvent, User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, AlertNotification, AlertPolicy]),
+    TypeOrmModule.forFeature([CveTranslation, CveFinding, ReportDraft, RawEvent, User, Attack, LoginSession, ApiLog, SystemConfig, AuditLog, Report, ExportAudit, WebhookConfig, WebhookDelivery, CveHistory, SystemMetric, ApiToken, IntegrationObservation, AlertNotification, AlertPolicy]),
     ApiLogModule,
   ],
   // WazuhController — Legacy compatibility shim (ยังคง /api/wazuh ไว้เพื่อ backward compat)

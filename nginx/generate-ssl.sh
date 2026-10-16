@@ -1,5 +1,6 @@
 #!/bin/bash
 # Generate a self-signed SSL certificate for the Honeypot Dashboard
+set -e
 
 CERTS_DIR="$(dirname "$0")/certs"
 mkdir -p "$CERTS_DIR"
@@ -13,6 +14,6 @@ echo "Generating self-signed SSL certificate..."
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout "$CERTS_DIR/key.pem" \
     -out "$CERTS_DIR/cert.pem" \
-    -subj "/C=TH/ST=Khon Kaen/L=Khon Kaen/O=KKU/OU=IT/CN=odt-siem-uat.kku.ac.th"
+    -config "$CERTS_DIR/openssl.cnf"
 
 echo "SSL Certificate generated successfully in $CERTS_DIR."

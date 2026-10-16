@@ -183,6 +183,9 @@ export interface FinalReviewChecklist {
 // ─── Export Session (v3) ──────────────────────────────────────────────────────
 
 export interface ExportSession {
+  reportStage: 'preliminary' | 'final';
+  followUpOwner: string;
+  followUpDue: string;
   snapshotId: string;
   snapshot: any | null;
   selectedIncidentId: number | null;

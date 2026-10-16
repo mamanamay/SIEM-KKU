@@ -25,7 +25,7 @@ export function reportRangeFromData(data:any[], filters:any = {}) {
 }
 export function reportInputSignature(s:ExportSession) {
   return JSON.stringify([reportSelectionKey(s),s.reportTitle,s.reportId,s.language,s.selectedFields,s.selectedSections,
-    s.manualEdits,s.analystAssessment,s.includeRawLogs,s.cveSimilarityResults]);
+    s.manualEdits,s.reportStage,s.followUpOwner,s.followUpDue,s.analystAssessment,s.includeRawLogs,s.cveSimilarityResults]);
 }
 export async function reportApi(action:string,body:any) {
   const response=await fetch('/api/export/report/'+action,{method:'POST',headers:{'Content-Type':'application/json',
