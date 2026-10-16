@@ -14,7 +14,14 @@ export function bangkokDay(now=new Date()) {
   return {from:day+'T00:00',to:day+'T23:59:59.999'};
 }
 export function reportSelectionKey(s:ExportSession) {
-  return JSON.stringify([s.dateRange,s.reportType,s.sourcePage,[...s.selectedIPs].sort(),s.reportType==='incident'?[]:[...(s.selectedTargetIPs||[])].sort(),s.selectedIncidentId]);
+  return JSON.stringify([s.dateRange,s.filters,s.reportType,s.sourcePage,[...s.selectedIPs].sort(),s.reportType==='incident'?[]:[...(s.selectedTargetIPs||[])].sort(),s.selectedIncidentId]);
+}
+export function reportRangeFromData(data:any[], filters:any = {}) {
+  const times=data.flatMap(e=>[e.firstSeenMs||e.timestampMs||e.time||e.createdAt,e.lastSeenMs||e.timestampMs||e.time||e.createdAt])
+    .map(v=>typeof v==='number'||/^\d+$/.test(String(v))?Number(v):Date.parse(v)).filter(Number.isFinite);
+  const first=times.length?bangkokDay(new Date(Math.min(...times))).from:bangkokDay().from;
+  const last=times.length?bangkokDay(new Date(Math.max(...times))).to:bangkokDay().to;
+  return {from:filters.from||first,to:filters.to||last};
 }
 export function reportInputSignature(s:ExportSession) {
   return JSON.stringify([reportSelectionKey(s),s.reportTitle,s.reportId,s.language,s.selectedFields,s.selectedSections,

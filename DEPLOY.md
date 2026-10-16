@@ -1,6 +1,29 @@
 # ติดตั้งและดูแล KKUSIEM
 
-คู่มือนี้ใช้ `docker-compose.yml` ที่รากโครงการโดยตรง มี 6 services: nginx, frontend, backend, pdf-renderer, postgres และ detection-engine ไม่มี release archive หรือ deploy helper ที่ต้องเรียกเพิ่มเติม
+คู่มือนี้ใช้ `docker-compose.yml` ที่รากโครงการโดยตรง มี 6 services: nginx, frontend, backend, pdf-renderer, postgres และ detection-engine
+
+## อัปเดต Incident / Report / CVE / Wallboard บน server เดิม
+
+รันจาก Windows PowerShell ในโฟลเดอร์หลัก:
+
+```powershell
+cd 'C:\Users\InternCY\Documents\GitHub\Demo_Honeypot'
+.\deploy.ps1 -ServerIP 10.101.104.234 -Username napat -RemoteDir '~/siem_v2'
+```
+
+ตัวนี้ส่งไฟล์จริงผ่าน SCP จาก source ปัจจุบันในโฟลเดอร์หลัก ตามรายการ 42 ไฟล์ที่ระบุใน `deploy.ps1` แล้ว build/up เฉพาะ backend, frontend, detection-engine ไม่สร้าง archive ไม่ใช้ patch และไม่รัน pg_dump สำรองฐานข้อมูล ใช้ Compose project, Compose files และ env file ของ backend เดิม การเริ่ม backend ยังรัน migration ตาม Dockerfile เดิม และ helper จะหยุดหากมี migration อื่นค้างอยู่
+
+ถ้าต้องการส่งไฟล์อย่างเดียวแล้วจัดการ Docker เอง ให้เพิ่ม `-UploadOnly`:
+
+```powershell
+.\deploy.ps1 -ServerIP 10.101.104.234 -Username napat -RemoteDir '~/siem_v2' -UploadOnly
+```
+
+จะเห็น `UPDATED <path>` ทุกไฟล์ และ `UPLOAD_COMPLETE_42_FILES` เมื่อคัดลอกครบ หากเลือก deploy เต็มจะมีสถานะ build/start ต่อ และจบด้วย `DEPLOY_COMPLETE` ตัวเลือก `-CheckOnly` ตรวจไฟล์ที่ส่งกับ project เดิมโดยยังไม่คัดลอกเข้าแอปหรือ build/start ส่วน `-Port`, `-IdentityFile`, `-ComposeProjectName`, `-EnvFile` ยังใช้ได้
+
+ใส่รหัสผ่าน SCP/SSH และ sudo เมื่อ terminal ขอ ตัวสคริปต์พักไฟล์ในโฟลเดอร์ชั่วคราวให้อัตโนมัติเพื่อใช้ SCP ครั้งเดียว และใช้ sudo วางไฟล์ที่เดิมเป็นของ root โดยรักษาสิทธิ์/เจ้าของของไฟล์เดิม ไม่เปลี่ยนสิทธิ์ทั้งโปรเจกต์ รายการที่ส่งไม่รวม `.env`, Compose, manifests/lockfiles หรือไฟล์อื่น และไม่สั่ง down หรือลบ volumes
+
+ก่อนใช้ตัวนี้ ให้หยุด deploy รุ่นเก่าด้วย Ctrl+C หากยังมี pg_dump เก่าค้าง ตัว deploy เต็มจะหยุดก่อนคัดลอกไฟล์ เพื่อไม่ให้ backup เก่าขวาง migration; `-UploadOnly` ส่ง source ได้หลังตัว deploy เก่าหยุดแล้ว
 
 อ่าน [ผลตรวจส่งต่อ](docs/HANDOFF_READINESS.md) ก่อนใช้ production รอบตรวจนี้ยังไม่ได้ทำ end-to-end deployment บนเครื่องใหม่
 

@@ -44,6 +44,9 @@ class NginxParser:
             bytes_match = re.search(r'HTTP/[0-9.]+"\s+[0-9]{3}\s+(\d+)', raw_log)
             if bytes_match:
                 parsed_log['body_bytes_sent'] = bytes_match.group(1)
+            quoted = re.findall(r'"([^"\r\n]*)"', raw_log)
+            if len(quoted) >= 3:
+                parsed_log['http_user_agent'] = quoted[2]
                 
         elif isinstance(raw_log, dict):
             if raw_log.get('ecs') or raw_log.get('event', {}).get('module') or '@timestamp' in raw_log:
@@ -69,6 +72,8 @@ class NginxParser:
                     sensor_ip=optional_ip(raw_log.get('observer', {}).get('ip')),
                     src_port=src.get('port'), dst_port=destination.get('port') or upstream_port,
                     protocol='HTTP', action='ALLOW', http_method=method, uri=uri,
+                    host=raw_log.get('url', {}).get('domain') or access.get('server_name'),
+                    scheme=raw_log.get('url', {}).get('scheme'),
                     http_status=int(status) if status is not None else None,
                     user_agent=raw_log.get('user_agent', {}).get('original', ''),
                     bytes_sent=http.get('response', {}).get('body', {}).get('bytes', 0),
@@ -80,10 +85,17 @@ class NginxParser:
             parsed_log = raw_log
         else:
             raise ValueError('Nginx log must be text or an object')
+        request_line = parsed_log.get('request')
+        if isinstance(request_line, str):
+            observed = re.match(r'^([A-Z]{1,16})\s+(\S+)\s+HTTP/[\d.]+$', request_line)
+            if observed:
+                parsed_log.setdefault('request_method', observed[1])
+                parsed_log.setdefault('request_uri', observed[2])
         if not parsed_log.get('remote_addr') or not parsed_log.get('request_method'):
             raise ValueError('Invalid Nginx access log')
             
-        status = int(parsed_log.get("status", 200)) if str(parsed_log.get("status", 200)).isdigit() else 200
+        status_value = parsed_log.get('status', parsed_log.get('response_status'))
+        status = int(status_value) if str(status_value).isdigit() and 100 <= int(status_value) <= 599 else None
         bytes_sent = int(parsed_log.get("body_bytes_sent", 0)) if str(parsed_log.get("body_bytes_sent", 0)).isdigit() else 0
             
         return NormalizedEvent(
@@ -96,7 +108,9 @@ class NginxParser:
             protocol="HTTP",
             action="ALLOW",
             http_method=parsed_log.get("request_method", "GET"),
-            uri=parsed_log.get("request_uri", "/"),
+            host=parsed_log.get('host') or parsed_log.get('http_host') or parsed_log.get('server_name'),
+            scheme=parsed_log.get('scheme'),
+            uri=parsed_log.get("request_uri") or (parsed_log.get('request', '').split(' ')[1] if len(parsed_log.get('request', '').split(' ')) >= 2 else None),
             http_status=status,
             user_agent=parsed_log.get("http_user_agent", ""),
             bytes_sent=bytes_sent,

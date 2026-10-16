@@ -6,6 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "test": "npm run build && node --test test/*.test.cjs",
     "build": "nest build",
     "migration:run": "typeorm migration:run -d dist/data-source.js",
     "migration:show": "typeorm migration:show -d dist/data-source.js",

@@ -1,3 +1,4 @@
+import { httpContext } from './http-context';
 import { Cron } from '@nestjs/schedule';
 import { Injectable, OnApplicationBootstrap, OnModuleDestroy, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -377,6 +378,7 @@ export class LogService implements OnApplicationBootstrap, OnModuleDestroy {
       lastProcessedMs:Date.now(),
       networkContext:normalized.network_context,targetScope:normalized.network_context.target.scope,
       source: row.source, eventId: row.id, timestamp, ip: sourceIp, destIp,
+      httpContext: httpContext(normalized, row.rawLog),
       srcPort: normalized.src_port, destPort: normalized.dst_port, protocol: normalized.protocol,
       ruleId: detection.ruleId || normalized.ruleId || null,
       outcome: normalized.outcome || normalized.action || null,
@@ -446,6 +448,7 @@ export class LogService implements OnApplicationBootstrap, OnModuleDestroy {
       if (severityRank[payload.severity] > severityRank[current.severity]) current.severity = payload.severity;
       current.threatScore = Math.max(current.threatScore, payload.threatScore);
       current.detail = payload.detail;
+      current.httpContext = payload.httpContext || current.httpContext;
       current.detectionEvidence = payload.detectionEvidence || current.detectionEvidence;
       current.correlationChain = payload.correlationChain;
       current.aiAnalysis = payload.aiAnalysis || current.aiAnalysis;

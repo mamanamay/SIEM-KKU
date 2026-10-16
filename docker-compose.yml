@@ -121,7 +121,7 @@ services:
       - DETECTION_API_KEY=${DETECTION_API_KEY:?required}
       - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:?required}
       - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD:-}
-      - OUTBOUND_ALLOWED_HOSTS=${OUTBOUND_ALLOWED_HOSTS:-gen.ai.kku.ac.th,hooks.slack.com,.webhook.office.com,ssonext-api.kku.ac.th}
+      - OUTBOUND_ALLOWED_HOSTS=${OUTBOUND_ALLOWED_HOSTS:-gen.ai.kku.ac.th,hooks.slack.com,.webhook.office.com,ssonext-api.kku.ac.th,cveawg.mitre.org}
       - LOG_SCOPE=${LOG_SCOPE:-related}
       - LOG_COLLECTION_MODE=${LOG_COLLECTION_MODE:-api}
       - FIREWALL_SENSOR_IP=${FIREWALL_SENSOR_IP:-}

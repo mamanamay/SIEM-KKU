@@ -38,6 +38,8 @@ class FirewallParser:
                     'logid': event.get('code'), 'policyid': raw_log.get('rule', {}).get('id'),
                     'policyname': raw_log.get('rule', {}).get('name'),
                     'level': raw_log.get('log', {}).get('level')}
+                parsed_log['hostname'] = raw_log.get('url', {}).get('domain') or vendor.get('hostname')
+                parsed_log['url'] = raw_log.get('url', {}).get('original') or vendor.get('url')
                 # rule.id identifies a policy in ordinary traffic; it is not an IPS signature.
                 # event.severity is source-specific/syslog severity; never treat it as a threat score.
                 if dst.get('nat', {}).get('ip'):
@@ -112,6 +114,8 @@ class FirewallParser:
             dst_port=dst_port,
             protocol={'6': 'TCP', '17': 'UDP', '1': 'ICMP'}.get(str(parsed_log.get('proto')), str(parsed_log.get('proto', 'UNKNOWN')).upper()),
             action=str(parsed_log.get("action", "UNKNOWN")).upper(),
+            host=parsed_log.get('hostname') or parsed_log.get('http_host'),
+            uri=parsed_log.get('url'),
             bytes_sent=bytes_sent,
             bytes_received=number(parsed_log.get('rcvdbyte', 0)),
             firewall_fields=fields,

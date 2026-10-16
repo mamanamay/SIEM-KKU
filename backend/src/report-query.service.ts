@@ -7,6 +7,8 @@ import { Attack } from './entities/attack.entity';
 import { RawEvent } from './entities/raw-event.entity';
 import { ReportDraft } from './entities/report-draft.entity';
 import { ALERT_POLICY_VERSION } from './alert-policy';
+import { applyReportFilters } from './report-filters';
+import { httpContext, httpJsonProjection } from './http-context';
 
 export function reportRange(body:any) {
   const parse=(v:any)=>{
@@ -55,19 +57,24 @@ export class ReportQueryService {
     const search=String(body.search||'').trim();
     if(search.length>64)throw new BadRequestException('Search exceeds 64 characters');
     const qb=this.attacks(this.db.manager,range);
+    applyReportFilters(qb, body.filters);
     // Exact IP substring match; parameters never become SQL or wildcard syntax.
     if(search)qb.andWhere('a.ip LIKE :search',{search:'%'+search.replace(/[\\%_]/g,'')+'%'});
     const rows=await qb.select('a.ip','ip').addSelect('COUNT(*)','eventCount')
       .groupBy('a.ip').orderBy('a.ip','ASC').offset(offset).limit(101).getRawMany();
     const selected=Array.isArray(body.selectedIPs)?body.selectedIPs:[];
     const targets=selected.length&&selected.length<=100&&selected.every((ip:any)=>typeof ip==='string'&&isIP(ip))
-      ?await this.attacks(this.db.manager,range).andWhere('a.ip IN (:...ips)',{ips:selected})
+      ?await this.filteredAttacks(range, body.filters).andWhere('a.ip IN (:...ips)',{ips:selected})
         .select('a.destIp','ip').addSelect('COUNT(*)','count').groupBy('a.destIp').orderBy('a.destIp','ASC').limit(100).getRawMany():[];
     const incidents=selected.length&&selected.length<=100&&selected.every((ip:any)=>typeof ip==='string'&&isIP(ip))
-      ?await this.attacks(this.db.manager,range).andWhere('a.ip IN (:...ips)',{ips:selected})
+      ?await this.filteredAttacks(range, body.filters).andWhere('a.ip IN (:...ips)',{ips:selected})
         .select(['a.id','a.ip','a.destIp','a.type','a.severity']).orderBy('a.lastSeenMs','DESC').take(100).getMany():[];
     return {ips:rows.slice(0,100).map(r=>({...r,eventCount:Number(r.eventCount),primaryType:'Incident',severity:'',country:'',events:[]})),
       hasMore:rows.length>100,offset,range,incidents,targets,scope:'organization',policy:ALERT_POLICY_VERSION};
+  }
+
+  private filteredAttacks(range: ReturnType<typeof reportRange>, filters: any) {
+    const query = this.attacks(this.db.manager, range); applyReportFilters(query, filters); return query;
   }
 
   async snapshot(body:any, user:any) {
@@ -87,6 +94,7 @@ export class ReportQueryService {
     const snapshot=await this.db.transaction(this.db.options.type==='postgres'?'REPEATABLE READ':'SERIALIZABLE',async m=>{
       const a=this.attacks(m,range).andWhere('a.ip IN (:...ips)',{ips});
       const r=this.receipts(m,range).andWhere('a.ip IN (:...ips)',{ips});
+      const filters = applyReportFilters(a, body.filters); applyReportFilters(r, body.filters);
       const validSources=await a.clone().select('COUNT(DISTINCT a.ip)','count').getRawOne();
       if(Number(validSources.count)!==ips.length)throw new BadRequestException('A selected source IP has no matching incident in this period');
       if(targetIPs.length){a.andWhere('a.destIp IN (:...targetIPs)',{targetIPs});r.andWhere('a.destIp IN (:...targetIPs)',{targetIPs});}
@@ -107,12 +115,14 @@ export class ReportQueryService {
         .addSelect('SUBSTR("a"."networkContext",1,4000)','contextExcerpt')
         .addSelect('SUBSTR("a"."detail",1,1500)','detailExcerpt').addSelect('SUBSTR("a"."notes",1,1500)','notesExcerpt')
         .addSelect('SUBSTR("a"."detectionEvidence",1,2000)','detectionExcerpt')
+        .addSelect('SUBSTR("a"."httpContext",1,8000)','httpExcerpt')
         .orderBy('a.severity','ASC').addOrderBy('a.lastSeenMs','DESC').addOrderBy('a.id','ASC').limit(30).getRawMany();
       const parsed=events.map(row=>{
         const result:any={};for(const c of columns)result[c]=row['a_'+c];
         result.networkContext=row.contextExcerpt;
         if(typeof result.networkContext==='string'){try{result.networkContext=JSON.parse(result.networkContext);}catch{result.networkContext=null;}}
-        return {...result,detail:row.detailExcerpt,notes:row.notesExcerpt,detectionEvidenceExcerpt:row.detectionExcerpt};
+        let http = null; try { http = JSON.parse(row.httpExcerpt || 'null'); } catch {}
+        return {...result,httpContext:http,detail:row.detailExcerpt,notes:row.notesExcerpt,detectionEvidenceExcerpt:row.detectionExcerpt};
       });
       const windowCounts=await r.clone().andWhere('a.id IN (:...sampleIds)',{sampleIds:parsed.map(e=>e.id)})
         .select('a.id','id').addSelect('MIN("r"."eventTimestampMs")','first').addSelect('MAX("r"."eventTimestampMs")','last')
@@ -120,17 +130,25 @@ export class ReportQueryService {
       for(const event of parsed){const c=windowCounts.find(c=>Number(c.id)===Number(event.id));
         Object.assign(event,{windowFirstSeenMs:c?Number(c.first):null,windowLastSeenMs:c?Number(c.last):null,verifiedReceiptCount:Number(c?.count||0)});}
       // SQL truncation bounds hydration even when original raw logs are very large.
-      const sample=()=>r.clone().select(['r.id','r.attackId','r.sourceIp','r.targetIp','r.eventTimestampMs','r.rawDigest']).addSelect('SUBSTR("r"."rawLog",1,1200)','excerpt');
+      const sample=()=>r.clone().select(['r.id','r.attackId','r.sourceIp','r.targetIp','r.eventTimestampMs','r.rawDigest'])
+        .addSelect('SUBSTR("r"."rawLog",1,1200)','excerpt')
+        .addSelect(httpJsonProjection('"r"."normalizedJson"',this.db.options.type),'httpFields');
       const first=await sample().orderBy('r.eventTimestampMs','ASC').addOrderBy('r.id','ASC').limit(4).getRawMany();
       const last=await sample().orderBy('r.eventTimestampMs','DESC').addOrderBy('r.id','DESC').limit(4).getRawMany();
       const evidence=[...new Map([...first,...last].map(e=>[e.r_id,e])).values()].sort((a,b)=>Number(a.r_eventTimestampMs)-Number(b.r_eventTimestampMs)||a.r_id.localeCompare(b.r_id));
-      return {schemaVersion:1,issuedAt:new Date().toISOString(),range,scope:'organization',policy:ALERT_POLICY_VERSION,
+      for (const event of parsed) if (!event.httpContext?.timestampMs || event.httpContext.timestampMs < range.start || event.httpContext.timestampMs > range.end) {
+        event.httpContext = null;
+        const row = evidence.find(e => Number(e.r_attackId) === Number(event.id));
+        if (row) { const n = typeof row.httpFields==='string'?JSON.parse(row.httpFields):row.httpFields; event.httpContext = httpContext(n, row.excerpt); }
+      }
+      return {schemaVersion:2,issuedAt:new Date().toISOString(),range,filters,scope:'organization',policy:ALERT_POLICY_VERSION,
         reportType:body.reportType,sourcePage:String(body.sourcePage||'').slice(0,40),selectedIPs:ips,incidentId:body.reportType==='incident'?incidentId:null,
         selectedTargetIPs:targetIPs,matchedSourceIPs:actors.map(a=>a.ip),targetCount:Number(targetCount.count),
         incidentCount,receiptCount,incidentsWithoutReceipts:incidentCount-Number(receiptIncidents?.count||0),
         counts:counts.map(c=>({...c,count:Number(c.count)})),targets:targetRows.slice(0,10),targetsTruncated:targetRows.length>10,
         events:parsed,evidence:evidence.map(e=>({id:e.r_id,attackId:e.r_attackId,sourceIp:e.r_sourceIp,targetIp:e.r_targetIp,
-          timestampMs:Number(e.r_eventTimestampMs),rawDigest:e.r_rawDigest,excerpt:e.excerpt})),
+          timestampMs:Number(e.r_eventTimestampMs),rawDigest:e.r_rawDigest,excerpt:e.excerpt,
+          httpContext: httpContext(typeof e.httpFields==='string'?JSON.parse(e.httpFields):e.httpFields,e.excerpt)})),
         samplePolicy:'30 incident summaries; earliest 4 and latest 4 matching receipts, deduplicated; bounded excerpts, not all raw logs'};
     });
     const ownerId=String(user.sub),repo=this.db.getRepository(ReportDraft);

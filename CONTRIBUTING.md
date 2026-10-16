@@ -12,7 +12,7 @@ npm --prefix frontend run build
 npm --prefix frontend run check
 ```
 
-ใช้ `npm ci` เพื่อรักษา lockfiles การติดตั้ง Backend อาจต้องมีเครื่องมือ build native SQLite และ Chromium/Puppeteer จึงแนะนำ Docker ตาม [DEPLOY](DEPLOY.md) เมื่อเตรียมเครื่องใหม่ ปัจจุบันยังไม่มี automated test suite ที่ส่งต่อมา อย่าอ้างว่า tests ผ่านจากการ build อย่างเดียว
+ใช้ `npm ci` เพื่อรักษา lockfiles การติดตั้ง Backend อาจต้องมีเครื่องมือ build native SQLite และ Chromium/Puppeteer จึงแนะนำ Docker ตาม [DEPLOY](DEPLOY.md) เมื่อเตรียมเครื่องใหม่ มี regression tests สำหรับ Incident/HTTP/CVE/Reports/Wallboard แล้ว ดู [วิธีทดสอบและขอบเขต](docs/incident-evidence-cve-report-validation.md) อย่าอ้างว่า tests ผ่านจากการ build อย่างเดียว และแยก unit cases ที่ผ่านออกจาก integration cases ที่ SKIP
 
 Frontend `prepare` เรียก `svelte-kit sync` เพื่อสร้าง `.svelte-kit` ใน checkout ใหม่ ไม่ต้อง commit generated directory คำสั่ง `check` ยังมีข้อผิดพลาดที่บันทึกใน readiness ต้องรายงานผลจริงก่อนส่ง PR
 

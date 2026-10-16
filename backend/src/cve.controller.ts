@@ -1,63 +1,43 @@
-import { Controller, Get, Post, Param, Body, HttpException, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards, Query, Req, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import axios from 'axios';
+import { Repository, In } from 'typeorm';
 import { AuthGuard } from './auth.guard';
 import { CveHistory } from './entities/cve-history.entity';
+import { CveIntelService, cveId } from './cve-intel.service';
+import { Roles } from './roles.guard';
 
 @Controller('api/cve')
 @UseGuards(AuthGuard)
 export class CVEController {
+  constructor(@InjectRepository(CveHistory) private readonly history: Repository<CveHistory>,
+    private readonly intel: CveIntelService) {}
 
-  constructor(
-    @InjectRepository(CveHistory)
-    private cveHistoryRepo: Repository<CveHistory>,
-  ) {}
+  @Get('history') getHistory() { return this.history.find({ order: { createdAt: 'DESC' }, take: 100 }); }
+  @Get('findings') findings(@Query('incidentId') id?: string) { return this.intel.findings(id === undefined ? undefined : Number(id)); }
 
-  @Get('history')
-  async getHistory() {
-    return await this.cveHistoryRepo.find({
-      order: { createdAt: 'DESC' },
-      take: 50,
-    });
-  }
+  @Post('similarity')
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter')
+  similarity(@Body() body: any, @Req() req: any) { return this.intel.analyzeSnapshot(body.snapshotId, req.user); }
 
   @Post('history')
   async saveHistory(@Body() body: any) {
-    if (!body.cveId) {
-      throw new HttpException('Missing cveId', HttpStatus.BAD_REQUEST);
-    }
-    const history = this.cveHistoryRepo.create({
-      cveId: body.cveId,
-      description: body.description,
-      severity: body.severity,
-      cvssScore: body.cvssScore,
-      aiSummary: body.aiSummary,
-    });
-    return await this.cveHistoryRepo.save(history);
+    const id = cveId(body.cveId), { details } = await this.intel.lookup(id);
+    if (details.state !== 'PUBLISHED') throw new BadRequestException('Only published CVEs can be saved to search history');
+    const existing = await this.history.findOne({ where: { cveId: id }, order: { createdAt: 'DESC' } });
+    return this.history.save({ ...existing, cveId: id, description: details.description, severity: details.severity,
+      cvssScore: details.cvssScore, aiSummary: typeof body.aiSummary === 'string' ? body.aiSummary.slice(0, 6000) : details.description,
+      createdAt: new Date() });
   }
 
   @Post('history/delete')
-  async deleteHistory(@Body() body: { ids: string[] }) {
-    if (!body.ids || !Array.isArray(body.ids)) throw new HttpException('Missing ids array', HttpStatus.BAD_REQUEST);
-    return await this.cveHistoryRepo.createQueryBuilder().delete().from(CveHistory).where("cveId IN (:...ids)", { ids: body.ids }).execute();
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter')
+  async deleteHistory(@Body() body: any) {
+    if (!Array.isArray(body.ids) || !body.ids.length || body.ids.length > 100) throw new BadRequestException('Select 1–100 CVEs');
+    return this.history.delete({ cveId: In(body.ids.map(cveId)) });
   }
 
-  @Get(':id')
-  async getCVE(@Param('id') id: string) {
-    if (!/^CVE-\d{4}-\d{4,}$/i.test(id)) throw new HttpException('Invalid CVE ID', HttpStatus.BAD_REQUEST);
-    if (id === 'history') return; // Prevent clash
-    if (id === 'history/delete') return; // Prevent clash
-    try {
-      // Proxy to MITRE to bypass CORS
-      const mitreRes = await axios.get(`https://cveawg.mitre.org/api/cve/${id}`, { timeout: 5000 });
-      return mitreRes.data;
-    } catch (e: any) {
-      if (e.response && e.response.status === 404) {
-        throw new HttpException('CVE not found', HttpStatus.NOT_FOUND);
-      }
-      // Fallback to NVD if MITRE fails? MITRE is usually fine.
-      throw new HttpException('Failed to fetch CVE data from upstream API', HttpStatus.BAD_GATEWAY);
-    }
+  @Get(':id') async getCVE(@Param('id') id: string) {
+    const result = await this.intel.lookup(id);
+    return { ...result.data, siem: result.details };
   }
 }

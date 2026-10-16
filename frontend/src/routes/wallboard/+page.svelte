@@ -7,45 +7,51 @@
   import { onMount, onDestroy } from 'svelte';
   import { browser } from '$app/environment';
   import OrgBadge from '../../lib/components/OrgBadge.svelte';
-  import { eventsStore } from '../../stores/events';
-  import { getFacultyForIP } from '../../stores/faculties';
+  import { lanEventsStore as eventsStore, resumeLiveEvents, disconnectSocket, connectionState, initialDataLoaded } from '../../stores/events';
+  import { formatEventTime } from '../../lib/formatTime';
+  import { incidentUrl } from '../../lib/utils/incidentLink';
+  import { sourceFacultyStats } from '../../lib/utils/wallboardMap';
+  import { endpointOrganization } from '../../lib/utils/alertStream';
+  import { networkRecordsStore, networkPolicyState } from '../../stores/faculties';
+
   import facultyCoords from '$lib/data/faculty_coordinates.json';
 
   const FACULTY_BASE = [
-    { code: 'AG', nameEn: 'Agriculture', subnets: ['10.53.64.0/20','10.53.80.0/20'], wifiSubnets: ['10.53.79.254/20'], color: '#22c55e' },
-    { code: 'AMS', nameEn: 'Allied Health Sci.', subnets: ['10.53.96.0/20'], wifiSubnets: ['10.53.111.254/20'], color: '#0ea5e9' },
-    { code: 'ARCH', nameEn: 'Architecture', subnets: ['10.53.208.0/20'], wifiSubnets: ['10.53.223.254/20'], color: '#f97316' },
-    { code: 'ART', nameEn: 'Fine & Applied Arts', subnets: ['10.53.160.0/20'], wifiSubnets: ['10.53.175.254/20'], color: '#a855f7' },
-    { code: 'COLA', nameEn: 'Local Govt. College', subnets: ['10.53.240.0/20'], wifiSubnets: ['10.53.255.254/20'], color: '#06b6d4' },
-    { code: 'CP', nameEn: 'Computing', subnets: ['10.198.0.0/16'], wifiSubnets: [], color: '#3b82f6' },
-    { code: 'DENT', nameEn: 'Dentistry', subnets: ['10.146.0.0/16'], wifiSubnets: [], color: '#ec4899' },
-    { code: 'EDU', nameEn: 'Education', subnets: ['10.53.176.0/20'], wifiSubnets: ['10.53.191.254/20'], color: '#84cc16' },
-    { code: 'EN', nameEn: 'Engineering', subnets: ['10.53.32.0/20'], wifiSubnets: ['10.53.47.254/20'], color: '#f59e0b' },
-    { code: 'GS', nameEn: 'Graduate School', subnets: ['10.135.0.0/16'], wifiSubnets: [], color: '#64748b' },
-    { code: 'HUSO', nameEn: 'Humanities & Social', subnets: ['10.136.0.0/16'], wifiSubnets: [], color: '#d97706' },
-    { code: 'LAW', nameEn: 'Law', subnets: ['10.53.16.0/20'], wifiSubnets: ['10.53.31.254/20'], color: '#dc2626' },
-    { code: 'MBA', nameEn: 'MBA College', subnets: ['10.117.0.0/16'], wifiSubnets: [], color: '#7c3aed' },
-    { code: 'MED', nameEn: 'Medicine', subnets: ['10.87.0.0/16'], wifiSubnets: [], color: '#ef4444' },
-    { code: 'MS/KKBS', nameEn: 'Business & Acct.', subnets: ['10.114.0.0/16'], wifiSubnets: [], color: '#0891b2' },
-    { code: 'NU', nameEn: 'Nursing', subnets: ['10.53.128.0/20'], wifiSubnets: ['10.53.143.254/20'], color: '#db2777' },
-    { code: 'ODT', nameEn: 'Digital Tech. (HQ)', subnets: ['10.52.0.0/20','10.101.0.0/16'], wifiSubnets: ['10.52.15.254/20'], color: '#00d4ff', isHQ: true },
-    { code: 'PH', nameEn: 'Public Health', subnets: ['10.53.224.0/20'], wifiSubnets: ['10.53.239.254/20'], color: '#10b981' },
-    { code: 'Px', nameEn: 'Pharmacy', subnets: ['10.53.112.0/20'], wifiSubnets: ['10.53.127.254/20'], color: '#22d3ee' },
-    { code: 'SC', nameEn: 'Science', subnets: ['10.53.48.0/20','10.53.64.0/24'], wifiSubnets: ['10.53.63.254/20'], color: '#6366f1' },
-    { code: 'TE', nameEn: 'Technology', subnets: ['10.53.80.0/20'], wifiSubnets: ['10.53.95.254/20'], color: '#f97316' },
-    { code: 'VET', nameEn: 'Veterinary', subnets: ['10.52.144.0/20'], wifiSubnets: ['10.52.159.254/20'], color: '#84cc16' },
-    { code: 'NKC', nameEn: 'Nong Khai Campus', subnets: [], wifiSubnets: [], color: '#a3e635' }
+    { code: 'AG', nameEn: 'Agriculture', color: '#22c55e' },
+    { code: 'AMS', nameEn: 'Allied Health Sci.', color: '#0ea5e9' },
+    { code: 'ARCH', nameEn: 'Architecture', color: '#f97316' },
+    { code: 'ART', nameEn: 'Fine & Applied Arts', color: '#a855f7' },
+    { code: 'COLA', nameEn: 'Local Govt. College', color: '#06b6d4' },
+    { code: 'CP', nameEn: 'Computing', color: '#3b82f6' },
+    { code: 'DENT', nameEn: 'Dentistry', color: '#ec4899' },
+    { code: 'EDU', nameEn: 'Education', color: '#84cc16' },
+    { code: 'EN', nameEn: 'Engineering', color: '#f59e0b' },
+    { code: 'GS', nameEn: 'Graduate School', color: '#64748b' },
+    { code: 'HUSO', nameEn: 'Humanities & Social', color: '#d97706' },
+    { code: 'LAW', nameEn: 'Law', color: '#dc2626' },
+    { code: 'MBA', nameEn: 'MBA College', color: '#7c3aed' },
+    { code: 'MED', nameEn: 'Medicine', color: '#ef4444' },
+    { code: 'MS/KKBS', nameEn: 'Business & Acct.', color: '#0891b2' },
+    { code: 'NU', nameEn: 'Nursing', color: '#db2777' },
+    { code: 'ODT', nameEn: 'Digital Tech. (HQ)', color: '#00d4ff', isHQ: true },
+    { code: 'PH', nameEn: 'Public Health', color: '#10b981' },
+    { code: 'Px', nameEn: 'Pharmacy', color: '#22d3ee' },
+    { code: 'SC', nameEn: 'Science', color: '#6366f1' },
+    { code: 'TE', nameEn: 'Technology', color: '#f97316' },
+    { code: 'VET', nameEn: 'Veterinary', color: '#84cc16' },
+    { code: 'NKC', nameEn: 'Nong Khai Campus', color: '#a3e635' }
   ];
 
   // Merge the base data with the coordinates from the JSON file
-  let FACULTY_DATA = FACULTY_BASE.map(base => {
+  $: FACULTY_DATA = FACULTY_BASE.map(base => {
     const coords = facultyCoords.find(c => c.code === base.code) || { name: base.code, lat: 16.45, lng: 102.82 };
     return {
       ...base,
       name: coords.name,
       lat: coords.lat,
       lng: coords.lng,
-      wifiSubnets: base.wifiSubnets || []
+      subnets: $networkRecordsStore.filter(r => String(r['Faculty/Dept'] || '').split(/[—-]/)[0].trim().toUpperCase() === base.code.toUpperCase()).map(r => r.Route),
+      wifiSubnets: []
     };
   });
 
@@ -74,6 +80,7 @@
   let L: any;
   let markerInstances: Record<string, any> = {};
 
+  let haveInitialSnapshot = false;
   const unsub = eventsStore.subscribe(val => {
     if (!isPaused) {
       const prevEvents = events;
@@ -97,10 +104,13 @@
   });
 
   onMount(async () => {
+    resumeLiveEvents();
     clockInterval = setInterval(() => {
       const d = new Date();
       timeTH = d.toLocaleTimeString('en-US', { timeZone: 'Asia/Bangkok', hour12: false });
       timeUTC = d.toLocaleTimeString('en-US', { timeZone: 'UTC', hour12: false });
+      eventCountsInWindow = eventCountsInWindow.filter(t => Date.now() - t < 5000);
+      currentEps = Math.floor(eventCountsInWindow.length / 5);
     }, 1000);
 
     if (browser) {
@@ -131,6 +141,7 @@
 
   onDestroy(() => {
     unsub();
+    disconnectSocket();
     if (clockInterval) clearInterval(clockInterval);
     if (audioCtx) audioCtx.close();
     if (map) map.remove();
@@ -174,9 +185,8 @@
   }
 
   function navigateToSoar(event: any) {
-    const ip = event.ip || event.sourceIp || '';
-    const time = event.time || event.createdAt || '';
-    window.open(`/dashboard/soar?ip=${ip}&time=${time}`, '_blank');
+    const url = incidentUrl(event);
+    if (url) window.open(url, '_blank', 'noopener');
   }
 
   function selectFaculty(fac: any) {
@@ -197,9 +207,9 @@
   $: gaugeColor = threatScore > 75 ? '#ff2a2a' : threatScore > 40 ? '#ff8c00' : '#22c55e';
 
   // Top Attackers
-  $: sourceIPs = events.reduce((acc, e) => {
+  $: sourceIPs = events.reduce<Record<string, any>>((acc, e) => {
     const ip = e.ip || e.sourceIp || 'Unknown';
-    if (!acc[ip]) acc[ip] = { count: 0, severity: e.severity, type: e.type, events: [], country: e.country || 'Unknown', latitude: e.latitude, longitude: e.longitude };
+    if (!acc[ip]) acc[ip] = { count: 0, severity: e.severity, type: e.type, events: [], country: e.country || 'Unknown', organization: e.sourceOrganization, latitude: e.latitude, longitude: e.longitude };
     acc[ip].count++;
     acc[ip].events.push(e);
     if (e.severity === 'critical') acc[ip].severity = 'critical';
@@ -208,33 +218,15 @@
   $: topAttackers = Object.entries(sourceIPs).map(([ip, data]: any) => ({ ip, ...data })).sort((a,b) => b.count - a.count).slice(0, 10);
   
   // Top Countries
-  $: sourceCountries = events.reduce((acc, e) => {
-    const c = e.country || 'Unknown';
+  $: sourceCountries = events.reduce<Record<string, number>>((acc, e) => {
+    const c = e.sourceScope === 'organization' ? e.sourceOrganization : e.country || 'Unknown';
     if(c !== 'Unknown') acc[c] = (acc[c] || 0) + 1;
     return acc;
   }, {});
   $: topCountriesList = Object.entries(sourceCountries).sort((a:any, b:any) => b[1] - a[1]).slice(0, 5);
 
-  // Faculty Attacks Stats
-  $: facultyStats = (() => {
-    const stats: Record<string, { count: number, events: any[] }> = {};
-    FACULTY_DATA.forEach(f => stats[f.code] = { count: 0, events: [] });
-    
-    events.forEach(e => {
-      const targetIp = e.destIp || e.ip || '';
-      const facData = getFacultyForIP(targetIp) || getFacultyForIP(e.sourceIp || '');
-      if (facData) {
-         let code = facData.code;
-         if (code === 'MS/KKBS') code = 'MS/KKBS'; 
-         const f = FACULTY_DATA.find(f => f.code === code || f.name === facData.name);
-         if (f) {
-           stats[f.code].count++;
-           if (stats[f.code].events.length < 5) stats[f.code].events.push(e);
-         }
-      }
-    });
-    return stats;
-  })();
+  // Red rings and counts show source organizations, never destination assets.
+  $: facultyStats = sourceFacultyStats(events, FACULTY_DATA);
 
   // Update Leaflet Markers when facultyStats changes
   $: if (browser && L && map) {
@@ -249,13 +241,13 @@
     const textColor = isActive ? '#ff2a2a' : '#ffffff';
     
     return `
-      <div class="siem-marker ${isActive ? 'is-attacked' : ''} ${isSelected ? 'is-selected' : ''}">
+      <div class="siem-marker ${isActive ? 'is-origin-active' : ''} ${isSelected ? 'is-selected' : ''}">
         ${isActive ? '<div class="pulse-ring"></div>' : ''}
         <div class="icon-circle" style="border-color: ${borderColor}; color: ${textColor};">
           ${fac.code}
         </div>
         <div class="label-badge">${fac.code}</div>
-        ${isActive ? '<div class="count-badge">' + count + '</div>' : ''}
+        ${isActive ? '<div title="Source incidents / เหตุการณ์จากต้นทาง" class="count-badge">' + count + '</div>' : ''}
       </div>
     `;
   }
@@ -312,7 +304,7 @@
     
     <div class="kpi-row">
       <div class="kpi-box">
-        <span class="label">LIVE EVENTS</span>
+        <span class="label">INCIDENTS (LATEST 500)</span>
         <span class="val text-info">{totalEvents.toLocaleString()}</span>
       </div>
       <div class="kpi-box">
@@ -320,11 +312,11 @@
         <span class="val text-critical">{criticalEvents.length}</span>
       </div>
       <div class="kpi-box">
-        <span class="label">LAN ATTACKS</span>
+        <span class="label">LAN ORIGIN INCIDENTS</span>
         <span class="val text-warning">{Object.values(facultyStats).reduce((a, b) => a + b.count, 0)}</span>
       </div>
       <div class="kpi-box eps-box">
-        <span class="label">EPS</span>
+        <span class="label">ALERT UPDATES</span>
         <span class="val text-success">{currentEps}<small>/s</small></span>
       </div>
     </div>
@@ -335,13 +327,13 @@
     </div>
 
     <div class="controls">
-      <div class="status {isPaused ? 'paused' : 'live'}">
-        <span class="dot"></span> {isPaused ? 'PAUSED' : 'LIVE'}
+      <div class="status {isPaused || !$connectionState || !$initialDataLoaded || !$networkPolicyState.loaded ? 'paused' : 'live'}" title={$networkPolicyState.error || 'ข้อมูลแจ้งเตือนในเครือข่ายที่ลงทะเบียน ล่าสุดไม่เกิน 500 Incident'}>
+        <span class="dot"></span> {isPaused ? 'PAUSED' : !$connectionState ? 'DISCONNECTED' : !$networkPolicyState.loaded ? 'WAITING NETWORK' : !$initialDataLoaded ? 'WAITING DATA' : 'LIVE'}
       </div>
       <button class="icon-btn" on:click={() => soundEnabled = !soundEnabled} title="Toggle Sound">
         <i class="ti {soundEnabled ? 'ti-volume' : 'ti-volume-off'}"></i>
       </button>
-      <button class="icon-btn" on:click={() => isPaused = !isPaused} title="Pause/Play">
+      <button class="icon-btn" on:click={() => { isPaused = !isPaused; if (!isPaused) events = $eventsStore; }} title="Pause/Play">
         <i class="ti {isPaused ? 'ti-player-play' : 'ti-player-pause'}"></i>
       </button>
       <button class="icon-btn" on:click={toggleFullscreen} title="Fullscreen">
@@ -377,7 +369,7 @@
         <div class="country-list custom-scrollbar">
            {#each topCountriesList as [country, count]}
              <div class="country-item">
-               <OrgBadge country={country} organization="" hideText={false} />
+               <OrgBadge country={country} organization={country.includes('—') ? country : ''} full={true} />
                <div class="c-bar">
                  <div class="c-fill" style="width: {Math.min(100, (count / events.length) * 500)}%"></div>
                </div>
@@ -397,7 +389,7 @@
       
       <!-- Overlay Title on Map -->
       <div class="map-overlay-title">
-        <div style="margin-bottom: 5px;"><i class="ti ti-map-pin"></i> CAMPUS SELECTOR</div>
+        <div style="margin-bottom: 5px;"><i class="ti ti-map-pin"></i> CAMPUS SELECTOR</div><div class="map-origin-legend">วงแดง = คณะต้นทาง · ตัวเลข = Incident จากต้นทาง</div>
         <div class="campus-btns">
           <button class="campus-btn" on:click={() => map.flyTo([16.468, 102.825], 15)}>🏢 Khon Kaen (Main)</button>
           <button class="campus-btn" on:click={() => map.flyTo([17.8276, 102.7380], 16)}>🚀 Nong Khai (NKC)</button>
@@ -494,7 +486,7 @@
              <div class="actor-list">
                 {#each topAttackers.slice(0,5) as attacker}
                   <div class="actor-item">
-                    <div class="ac-ip">{attacker.ip} <OrgBadge country={attacker.country} hideText={true} /></div>
+                    <div class="ac-ip">{attacker.ip} <OrgBadge country={attacker.country} organization={attacker.organization} full={true} /></div>
                     <div class="ac-bar"><div class="ac-fill bg-{attacker.severity}" style="width: {Math.min(100, attacker.count*5)}%"></div></div>
                     <div class="ac-cnt">{attacker.count}</div>
                   </div>
@@ -510,18 +502,18 @@
   <footer class="wb-footer">
     <div class="panel h-100 term-panel">
       <div class="term-header">
-        <i class="ti ti-terminal"></i> LIVE LOG STREAM (SYSLOG)
+        <i class="ti ti-terminal"></i> LIVE INCIDENT STREAM
         <div class="blink" style="margin-left: auto;">_</div>
       </div>
       <div class="term-body custom-scrollbar">
         {#each events.slice(0, 40) as event (event.id || event.time)}
           <div class="term-line {event.severity}" on:click={() => navigateToSoar(event)}>
-             <span class="t-time">[{new Date(event.time || event.createdAt).toISOString()}]</span>
-             <span class="t-ip">{event.ip || event.sourceIp} <OrgBadge country={event.country} hideText={true}/></span>
+             <span class="t-time">[{formatEventTime(event.lastSeenMs || event.timestampMs || event.time || event.createdAt)}]</span>
+             <span class="t-ip">{event.ip || event.sourceIp} <OrgBadge country={event.country} organization={event.sourceOrganization} full={true} /></span>
              <span class="t-dir">-></span>
-             <span class="t-dest">{getFacultyForIP(event.destIp || event.ip)?.code || 'LAN'} ({event.destIp || 'INTERNAL'})</span>
+             <span class="t-dest">{endpointOrganization(event.networkContext?.target)} ({event.destIp || 'Unknown'})</span>
              <span class="t-type">[{event.type || 'UNKNOWN'}]</span>
-             <span class="t-msg">{event.detail || event.description || 'Suspicious Activity Detected'}</span>
+             <span class="t-msg">{event.httpContext?.host || ''} {event.httpContext?.uri || event.detail || ''}</span>
           </div>
         {/each}
       </div>
@@ -667,10 +659,10 @@
     box-shadow: 0 0 10px #ff2a2a; border: 1px solid #fff;
   }
   
-  :global(.is-attacked .icon-circle) {
+  :global(.is-origin-active .icon-circle) {
     background: rgba(255, 42, 42, 0.25); box-shadow: 0 0 15px #ff2a2a; transform: scale(1.1);
   }
-  :global(.is-attacked .label-badge) {
+  :global(.is-origin-active .label-badge) {
     color: #ff2a2a; border-color: #ff2a2a; box-shadow: 0 0 5px rgba(255,42,42,0.5); background: #000;
   }
   

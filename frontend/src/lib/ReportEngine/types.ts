@@ -163,7 +163,7 @@ export interface ExportAiContent {
 export interface CveSimilarityResult {
   cveId: string;
   similarityLevel: 'high' | 'medium' | 'low';
-  similarityScore: number;         // 0-100
+  similarityScore: number | null;  // No invented confidence percentage for verified CVE correlations.
   severity: 'critical' | 'high' | 'medium' | 'low' | 'unknown';
   affectedProduct: string;
   attackPatternRelation: string;   // e.g. "Similar HTTP injection pattern"

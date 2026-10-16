@@ -1,6 +1,7 @@
 <script lang="ts">
   import { showUiMessage } from '../../../lib/workspace/feedback';
-  import { callKKUAI } from '../../../lib/utils/kkuai';
+  import { incidentUrl } from '../../../lib/utils/incidentLink';
+  import { formatEventTime } from '../../../lib/formatTime';
   import { lanEventsStore as eventsStore } from '../../../stores/events';
   import { onMount } from 'svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
@@ -96,186 +97,43 @@
     }
   }
 
+  let cveFindings: any[] = [];
+  let searchGeneration = 0;
+  function handleKeydown(event: KeyboardEvent) { if (event.key === 'Enter') void searchVulnerability(searchQuery); }
   onMount(async () => {
+    const headers = {Authorization:'Bearer '+localStorage.getItem('token')};
+    const params = new URLSearchParams(window.location.search);
+    const incident = params.get('incidentId');
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/cve/history', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        cveSimilarityEntries = await res.json();
-      }
-    } catch (e) {
-      console.error('Failed to load CVE history', e);
-    }
-    
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const s = params.get('search');
-      if (s) {
-        searchQuery = s;
-        searchVulnerability(s);
-      }
-    }
+      const [history, findings] = await Promise.all([fetch('/api/cve/history',{headers}),fetch('/api/cve/findings'+(incident?'?incidentId='+encodeURIComponent(incident):''),{headers})]);
+      if(history.ok)cveSimilarityEntries=await history.json();
+      if(findings.ok)cveFindings=await findings.json();
+    } catch { errorMsg='โหลดประวัติ CVE ไม่สำเร็จ'; }
+    const search=params.get('search');if(search)void searchVulnerability(search);
   });
-
-  // Real functional structure: We will fetch from public APIs (MITRE/NVD)
   async function searchVulnerability(query: string) {
-    if (!query) return;
-    let searchMode = 'standard';
-    
-    searchQuery = query;
-    loading = true;
-    analyzing = true;
-    errorMsg = '';
-    cveData = null;
-    aiBriefing = null;
-
-    let id = query.trim().toUpperCase();
-    if (/^\d{4}-\d{4,}$/.test(id)) id = 'CVE-' + id;
-
-    if (id.startsWith('CVE-')) {
-      try {
-        const res = await fetch(`/api/cve/${id}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        if (!res.ok) throw new Error('Not found in database.');
-        const data = await res.json();
-        
-        const desc = data.containers?.cna?.descriptions?.[0]?.value || 'No description provided.';
-        const affected = data.containers?.cna?.affected?.map((a:any) => `${a.vendor || 'Unknown'} ${a.product || 'Unknown'}`) || ["Unknown"];
-        
-        aiBriefing = {
-          cveId: data.cveMetadata?.cveId || id,
-          state: data.cveMetadata?.state || 'PUBLISHED',
-          published: data.cveMetadata?.datePublished?.substring(0,10) || 'Unknown',
-          assigner: data.cveMetadata?.assignerShortName || 'Unknown',
-          cvss: 0, 
-          severity: "UNKNOWN",
-          attackVector: "Unknown",
-          complexity: "Unknown",
-          privileges: "Unknown",
-          userInteraction: "Unknown",
-          aiSummary: "กำลังสร้างบทวิเคราะห์จาก KKU AI...",
-          mitigation: ["กำลังสร้างวิธีการแก้ไข..."],
-          affected: affected,
-          affectedInternal: false
-        };
-        
-        let thSummary = desc;
-        let thMitigations = ["โปรดอ้างอิงจากคำแนะนำของผู้พัฒนา (Vendor) เพื่อทำการอัปเดตแพตช์อย่างเป็นทางการ"];
-
-        if (id === 'CVE-2021-44228') {
-          thSummary = 'ช่องโหว่ใน Apache Log4j2 (เวอร์ชัน 2.0-beta9 ถึง 2.15.0) ฟีเจอร์ JNDI ที่ใช้ในการตั้งค่าและบันทึกข้อมูล (Log) ไม่มีการตรวจสอบป้องกันเพียงพอ ทำให้ผู้โจมตีที่สามารถส่งข้อมูลเข้าไปในระบบ Log สามารถสั่งรันโค้ดอันตรายทางไกล (Remote Code Execution - RCE) ผ่านการเชื่อมต่อกับเซิร์ฟเวอร์ LDAP ของผู้โจมตีได้ ช่องโหว่นี้ถูกแก้ไขแล้วโดยการปิดฟีเจอร์นี้ทิ้งในเวอร์ชัน 2.16.0 เป็นต้นไป';
-          thMitigations = [
-            'อัปเดตไลบรารี Apache Log4j2 ให้เป็นเวอร์ชัน 2.17.1 หรือใหม่กว่าทันที',
-            'ตั้งค่า environment variable "LOG4J_FORMAT_MSG_NO_LOOKUPS=true" (สำหรับเวอร์ชัน 2.10 ขึ้นไป)',
-            'ตรวจสอบและบล็อกการเชื่อมต่อขาออก (Outbound Traffic) ที่ไม่จำเป็นบนพอร์ต LDAP, RMI และ DNS'
-          ];
-          aiBriefing.cvss = 10.0;
-          aiBriefing.severity = 'CRITICAL';
-          aiBriefing.attackVector = 'NETWORK';
-          aiBriefing.complexity = 'LOW';
-          aiBriefing.privileges = 'NONE';
-          aiBriefing.userInteraction = 'NONE';
-        } else if (id === 'CVE-2023-38408') {
-          thSummary = 'ช่องโหว่ใน OpenSSH ssh-agent (CVE-2023-38408) ทำให้ผู้โจมตีแบบ Remote สามารถรันโค้ดทางไกล (Remote Code Execution) ได้ หากเหยื่อทำการส่งมอบ (Forwarding) ssh-agent ไปยังเครื่องที่ผู้โจมตีควบคุมอยู่';
-          thMitigations = [
-            'อัปเดต OpenSSH ให้เป็นเวอร์ชัน 9.3p2 หรือใหม่กว่า',
-            'หลีกเลี่ยงการเปิดใช้งาน ssh-agent forwarding (การใช้ตัวเลือก -A) หากไม่จำเป็นและไม่ไว้ใจเครื่องปลายทาง',
-            'จำกัดการเข้าถึงพอร์ต SSH จากเครือข่ายภายนอก'
-          ];
-          aiBriefing.cvss = 9.8;
-          aiBriefing.severity = 'CRITICAL';
-          aiBriefing.attackVector = 'NETWORK';
-          aiBriefing.complexity = 'LOW';
-          aiBriefing.privileges = 'NONE';
-          aiBriefing.userInteraction = 'NONE';
-        } else if (id === 'CVE-2021-34527') {
-          thSummary = 'ช่องโหว่ PrintNightmare (CVE-2021-34527) เกิดจากความบกพร่องใน Windows Print Spooler service ที่จัดการการพิมพ์ไฟล์ ผู้โจมตีสามารถรันโค้ดทางไกล (Remote Code Execution) โดยได้รับสิทธิ์ระดับ SYSTEM ซึ่งสามารถติดตั้งโปรแกรม เปลี่ยนแปลงข้อมูล หรือสร้างบัญชีผู้ใช้ใหม่ที่มีสิทธิ์ผู้ดูแลระบบได้';
-          thMitigations = [
-            'ติดตั้งแพตช์อัปเดตความปลอดภัยฉุกเฉินจาก Microsoft ทันที',
-            'หากไม่สามารถอัปเดตได้ ให้ปิดการใช้งาน Print Spooler service บนเครื่องเซิร์ฟเวอร์ที่ไม่ได้ใช้พิมพ์งาน',
-            'ปิดการใช้งาน Inbound Remote Printing ผ่าน Group Policy'
-          ];
-          aiBriefing.cvss = 8.8;
-          aiBriefing.severity = 'HIGH';
-          aiBriefing.attackVector = 'NETWORK';
-          aiBriefing.complexity = 'LOW';
-          aiBriefing.privileges = 'LOW';
-          aiBriefing.userInteraction = 'NONE';
-        } else if (id === 'CVE-2023-XXXX') {
-          thSummary = 'ช่องโหว่ SQL Injection เกิดจากแอปพลิเคชันไม่ได้ตรวจสอบข้อมูลนำเข้าอย่างเข้มงวด ทำให้ผู้โจมตีสามารถแทรกคำสั่ง SQL อันตรายเพื่อเข้าถึง ฐานข้อมูล ดัดแปลง หรือขโมยข้อมูลสำคัญของระบบได้';
-          thMitigations = [
-            'ใช้ Parameterized Queries หรือ Prepared Statements ในการเขียนโปรแกรมทั้งหมด',
-            'ติดตั้งและใช้งาน Web Application Firewall (WAF) เพื่อบล็อกคำสั่ง SQL ที่ผิดปกติ',
-            'ตรวจสอบและจำกัดสิทธิ์ของบัญชีที่ใช้เชื่อมต่อฐานข้อมูลให้ต่ำที่สุดเท่าที่จำเป็น'
-          ];
-          aiBriefing.cvss = 7.5;
-          aiBriefing.severity = 'HIGH';
-          aiBriefing.attackVector = 'NETWORK';
-          aiBriefing.complexity = 'LOW';
-          aiBriefing.privileges = 'NONE';
-          aiBriefing.userInteraction = 'NONE';
-        } else {
-          // Generic Fallback for any other CVEs searched via MITRE
-          thSummary = `คำอธิบายช่องโหว่ (แปลจากต้นฉบับภาษาอังกฤษ):\n${desc}`;
-          thMitigations = [
-            'ตรวจสอบแพตช์อัปเดตล่าสุดจากผู้พัฒนา (Vendor) อย่างเป็นทางการ',
-            'จำกัดการเข้าถึงระบบที่ได้รับผลกระทบจากเครือข่ายภายนอก (Internet)',
-            'เฝ้าระวังพฤติกรรมผิดปกติที่เกี่ยวข้องกับช่องโหว่นี้อย่างใกล้ชิด'
-          ];
-          
-          if (!aiBriefing.cvss || aiBriefing.cvss === 0) {
-            aiBriefing.cvss = 5.0;
-            aiBriefing.severity = 'MEDIUM';
-            aiBriefing.attackVector = 'UNKNOWN';
-            aiBriefing.complexity = 'UNKNOWN';
-            aiBriefing.privileges = 'UNKNOWN';
-            aiBriefing.userInteraction = 'UNKNOWN';
-          }
-        }
-
-        aiBriefing = { ...aiBriefing, aiSummary: thSummary, mitigation: thMitigations };
-
-        // Save history to backend
-        try {
-          const saveRes = await fetch('/api/cve/history', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({
-              cveId: aiBriefing.cveId,
-              description: desc,
-              severity: aiBriefing.severity,
-              cvssScore: aiBriefing.cvss,
-              aiSummary: thSummary
-            })
-          });
-          if (saveRes.ok) {
-            const newHistory = await saveRes.json();
-            // prepend to list
-            cveSimilarityEntries = [newHistory, ...cveSimilarityEntries.filter(h => h.cveId !== newHistory.cveId)].slice(0, 50);
-          }
-        } catch (err) {
-          console.error('Failed to save CVE history', err);
-        }
-
-      } catch (err: any) {
-        errorMsg = 'Could not find relevant data for this CVE ID in the MITRE database.';
-      }
-    } else {
-      errorMsg = 'Currently, the real API only supports exact CVE IDs (e.g., CVE-2021-44228).';
-    }
-
-    loading = false;
-    analyzing = false;
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') searchVulnerability(searchQuery);
+    const run=++searchGeneration;
+    let id=query.trim().toUpperCase();if(/^\d{4}-\d{4,}$/.test(id))id='CVE-'+id;
+    searchQuery=id;errorMsg='';aiBriefing=null;loading=true;analyzing=false;
+    try {
+      if(!/^CVE-\d{4}-\d{4,19}$/.test(id))throw new Error('กรุณาระบุ CVE ID ที่ถูกต้อง');
+      const headers={Authorization:'Bearer '+localStorage.getItem('token')};
+      const response=await fetch('/api/cve/'+id,{headers});const data=await response.json();
+      if(!response.ok)throw new Error(data.message||'อ่าน CVE จากแหล่งอ้างอิงไม่สำเร็จ');
+      if(run!==searchGeneration)return;
+      cveData=data;const d=data.siem;
+      if(d.state!=='PUBLISHED')throw new Error('CVE นี้มีสถานะ '+d.state+' และยังไม่ใช้เป็นผลความสัมพันธ์ที่ตรวจสอบแล้ว');
+      aiBriefing={cveId:d.cveId,state:d.state,published:data.cveMetadata?.datePublished?.slice(0,10)||'ไม่ระบุ',
+        assigner:data.cveMetadata?.assignerShortName||'ไม่ระบุ',cvss:d.cvssScore,severity:d.severity||'UNKNOWN',
+        attackVector:d.attackVector||'UNKNOWN',complexity:d.complexity||'UNKNOWN',privileges:d.privileges||'UNKNOWN',
+        userInteraction:d.userInteraction||'UNKNOWN',aiSummary:d.description||'ไม่มีคำอธิบายจากแหล่งอ้างอิง',
+        mitigation:(data.containers?.cna?.solutions||[]).map((item:any)=>item.value).filter(Boolean),
+        affected:[d.affectedProduct||'ไม่ระบุ'],affectedInternal:cveFindings.some(f=>f.cveId===d.cveId)};
+      if(!aiBriefing.mitigation.length)aiBriefing.mitigation=['ตรวจข้อมูลและคำแนะนำแก้ไขในเอกสารของผู้พัฒนาที่แนบกับ CVE นี้'];
+      const saved=await fetch('/api/cve/history',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({cveId:id,aiSummary:d.description})});
+      if(saved.ok&&run===searchGeneration){const entry=await saved.json();cveSimilarityEntries=[entry,...cveSimilarityEntries.filter(h=>h.cveId!==entry.cveId)].slice(0,100);}
+    }catch(error:any){if(run===searchGeneration)errorMsg=error.message;}
+    finally{if(run===searchGeneration){loading=false;analyzing=false;}}
   }
 </script>
 
@@ -432,7 +290,7 @@
     <PageHeader title="CVE Database" description="Vulnerability Intelligence and Threat Analysis." icon="ti-shield-search">
       <div slot="actions">
         <ExportBtn 
-          config={{ pageType: 'cve', reportTitle: 'CVE Analysis Report' }} 
+          config={{ pageType: 'cve', reportTitle: 'CVE Analysis Report', supportedFormats:['pdf','html','csv'], aiEnabled:true, csvEnabled:true, sections:[] }}
           data={exportData} 
           columns={['id', 'name', 'severity', 'score', 'count']} 
         />
@@ -445,7 +303,7 @@
     <div class="ai-status-card">
       <div class="pulse-dot"></div>
       <div>
-        <div class="status-text">AI INTELLIGENCE ACTIVE</div>
+        <div class="status-text">CVE REFERENCE LOOKUP</div>
         <div class="status-sub">Connected to Global Threat DB</div>
       </div>
     </div>
@@ -475,6 +333,19 @@
     </div>
 
     <div class="trending-card" style="margin-top:20px;">
+      <div class="trending-title">ประวัติ CVE จากการวิเคราะห์ Incident</div>
+      <p>ตรวจพบความสัมพันธ์กับ CVE ที่เผยแพร่แล้ว — ยังไม่ยืนยันการมีช่องโหว่หรือการเจาะสำเร็จ</p>
+      {#each cveFindings as finding}
+        <div class="trend-item">
+          <button class="btn-search" on:click={() => searchVulnerability(finding.cveId)}>{finding.cveId}</button>
+          <p>{finding.sourceIp} → {finding.targetIp || 'ไม่ระบุ'}<br>{finding.reason}</p>
+          <a href={incidentUrl({id:finding.incidentId}) || '/dashboard/soar'}>Incident {finding.incidentId} / หลักฐาน</a>
+          <p>{formatEventTime(finding.updatedAt)} · {finding.actor}</p>
+        </div>
+      {:else}<p>ยังไม่มีผล CVE ที่ตรวจสอบและบันทึกเชื่อมกับ Incident</p>{/each}
+    </div>
+
+    <div class="trending-card" style="margin-top:20px;">
       <div class="trending-title" style="color: #00d4ff; display: flex; justify-content: space-between; align-items: center;">
         <span><i class="ti ti-history"></i> Recent CVE Searches</span>
         {#if selectedHistoryIds.length > 0}
@@ -490,7 +361,7 @@
           <div style="flex: 1; cursor: pointer;" on:click={() => searchVulnerability(history.cveId)}>
             <div class="t-head">
               <span class="t-name" style="font-family: monospace;">{history.cveId}</span>
-              <span class="t-score {history.severity?.toLowerCase()}">{history.cvssScore?.toFixed(1) || '0.0'}</span>
+              <span class="t-score {history.severity?.toLowerCase()}">{history.cvssScore?.toFixed(1) ?? 'ไม่ระบุ'}</span>
             </div>
             <div style="font-size:11px; color:var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;">
               {history.aiSummary?.substring(0, 50)}...
@@ -509,7 +380,7 @@
   <div class="hub-main" style="margin-top: 0 !important; padding-top: 0 !important;">
     
     <div class="search-hero">
-      <div class="hero-title">Vulnerability Intelligence</div><p class="siem-panel-note">ค้นหาด้วย CVE ID · ผลค้นหาสำเร็จจะถูกบันทึกในประวัติตามระบบเดิม</p>
+      <div class="hero-title">Vulnerability Intelligence</div><p class="siem-panel-note">ค้นหาด้วย CVE ID · อ่านข้อมูลจากแหล่งอ้างอิงและเชื่อมกลับ Incident ที่เกี่ยวข้อง</p>
       
       
       <div class="ai-search-bar">
@@ -530,7 +401,7 @@
     {#if loading}
       <div class="loading-box">
         <i class="ti ti-loader"></i>
-        <div style="font-size: 16px; font-weight: 700; letter-spacing: 0.05em;">AI IS ANALYZING THREAT DATA...</div>
+        <div style="font-size: 16px; font-weight: 700; letter-spacing: 0.05em;">กำลังอ่านข้อมูลจากแหล่งอ้างอิง CVE...</div>
         <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">Parsing CVE records, CVSS vectors, and generating mitigation steps.</div>
       </div>
     {:else if aiBriefing}
@@ -540,11 +411,11 @@
         <div class="b-left">
           <div class="cve-id-badge">{aiBriefing.cveId}</div>
           
-          {#if aiBriefing.cvss > 0}
+          {#if aiBriefing.cvss != null}
             <div class="cvss-gauge-wrap">
               <div class="cvss-circle {aiBriefing.severity.toLowerCase()}">
                 <div class="cvss-score">{aiBriefing.cvss.toFixed(1)}</div>
-                <div class="cvss-lbl">CVSS v3.1</div>
+                <div class="cvss-lbl">CVSS จากแหล่งอ้างอิง</div>
               </div>
             </div>
 
@@ -585,7 +456,7 @@
         <div class="b-right">
           
           <div>
-            <div class="brief-section-title"><i class="ti ti-robot"></i> Executive Briefing</div>
+            <div class="brief-section-title"><i class="ti ti-robot"></i> คำอธิบายจากแหล่งอ้างอิง</div>
             <div class="ai-text">
               {aiBriefing.aiSummary}
             </div>
@@ -595,8 +466,8 @@
             <div class="am-i-affected">
               <i class="ti ti-radar aia-icon"></i>
               <div class="aia-text">
-                <h4>Internal Network is at Risk!</h4>
-                <p>AI Analyst detected assets in your Network Map that match the affected software for this vulnerability. Immediate patching is recommended.</p>
+                <h4>มี Incident ที่เชื่อมโยงกับ CVE นี้</h4>
+                <p>พบหลักฐานที่มีความสัมพันธ์กับ CVE นี้ ต้องตรวจผลิตภัณฑ์ เวอร์ชัน และผลกระทบของเครื่องเป้าหมายเพิ่มเติม ยังไม่ยืนยันว่ามีช่องโหว่หรือถูกเจาะสำเร็จ</p>
               </div>
             </div>
           {/if}

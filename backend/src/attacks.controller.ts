@@ -1,3 +1,5 @@
+import { CveIntelService } from './cve-intel.service';
+import { IncidentEvidenceService } from './incident-evidence.service';
 import { Controller, Patch, Post, Param, Body, HttpException, HttpStatus, Get, Headers, Delete, Query, UseGuards, Req, ParseIntPipe, NotFoundException } from '@nestjs/common';
 import { AuthGuard } from './auth.guard';
 import { AiService } from './ai.service';
@@ -43,6 +45,8 @@ export class AttacksController {
     private logService: LogService,
     private aiService: AiService,
     private alerts: AlertQueryService,
+    private readonly evidence: IncidentEvidenceService,
+    private readonly cveIntel: CveIntelService,
   ) {}
 
   // ── IP Map Registration (from proxy.js) ───────────────────────────────────
@@ -103,7 +107,7 @@ export class AttacksController {
   async getHistory(@Query('date') dateStr?: string) {
     if (!dateStr) {
       // Default to today if no date provided
-      dateStr = new Date().toISOString().split('T')[0];
+      dateStr = new Date(Date.now()+7*3600000).toISOString().split('T')[0];
     }
     
     // Parse date and create range for the whole day in UTC
@@ -134,7 +138,7 @@ export class AttacksController {
   async getIncident(@Param('id',ParseIntPipe) id:number,@Query('scope') scope='organization') {
     const event=await this.alerts.incident(id,scope);
     if(!event)throw new NotFoundException('Qualified incident not found in this scope');
-    return event;
+    return { ...event, httpEvidence: await this.evidence.forIncident(id), cveFindings: await this.cveIntel.findings(id) };
   }
 
   @Get('recent')
@@ -706,117 +710,14 @@ Extract search filters into this exact raw JSON format (and nothing else, no mar
 
   // ── AI Event Analysis (On-Demand) ─────────────────────────────────────────
   @Post('analyze-event')
-  async analyzeEvent(@Body() event: any, @Req() req: any) {
-    // สร้าง full raw log จากทุก field เพื่อให้ AI วิเคราะห์ได้ครบ
-    const fullRawLog = {
-      timestamp:         event.timeStr || event.time || event.createdAt,
-      src_ip:            event.ip,
-      dest_ip:           event.destIp || 'unknown',
-      event_type:        event.type,
-      severity:          event.severity,
-      detail:            event.detail,
-      payload:           event.payload,
-      mitre_code:        event.mitreCode,
-      mitre_tactic:      event.mitreTactic,
-      threat_score:      event.threatScore,
-      country:           event.country,
-      organization:      event.organization,
-      source_sensor:     event.source || event.clientVersion,
-      honeypot_port:     event.honeypotPort,
-      session_id:        event.sessionId,
-      correlation_chain: event.correlationChain || [],
-      attack_commands:   event.attackCommands || [],
-      credentials_used:  event.credentialsUsed || null,
-    };
-    const payloadText = JSON.stringify(fullRawLog, null, 2);
-
-    // ─── Rule-based fallback (ทำงานได้โดยไม่ต้องใช้ AI API) ───────────────
-    const generateRuleBasedAnalysis = () => {
-      const rawStr = JSON.stringify(fullRawLog).toLowerCase();
-      let intent = 'พยายามแสกนช่องโหว่ หรือเดารหัสผ่านเพื่อเข้าสู่ระบบ';
-      let outcome = '❌ ผลลัพธ์: ไม่ทราบ — ไม่มีข้อมูลการตอบกลับเพียงพอ';
-      let recommendation = 'บล็อก IP ทันที และตรวจสอบสิทธิ์การเข้าถึงเซิร์ฟเวอร์';
-      const destLabel = event.destIp ? `IP ${event.destIp}` : 'ระบบ Honeypot';
-      const srcLabel  = `IP ${event.ip || 'ไม่ทราบ'} (${event.country || 'ไม่ทราบ'})`;
-
-      if (/select|drop|union|or 1=1|--|insert|update|delete from/i.test(rawStr)) {
-        intent = 'พยายามเจาะฐานข้อมูล (SQL Injection)';
-        recommendation = 'ตรวจสอบ Input Validation ใน Web Application และบล็อก IP นี้';
-      } else if (/<script>|javascript:|alert\(|onerror=/i.test(rawStr)) {
-        intent = 'พยายามโจมตีด้วยสคริปต์ (XSS)';
-        recommendation = 'เปิดใช้งาน WAF และทำ Data Sanitization';
-      } else if (/brute|ssh.*login|login.*fail|authentication.*fail/i.test(rawStr)) {
-        intent = 'พยายามเดารหัสผ่าน (Brute Force) เข้าสู่ SSH/ระบบ';
-        recommendation = 'เปิด 2FA และตั้งค่า Lockout หลังใส่รหัสผิดเกินกำหนด';
-      } else if (/rm |rm -rf|wget |curl |chmod|exec|cmd:/i.test(rawStr)) {
-        intent = 'รันคำสั่งอันตรายบนระบบ (Command Execution)';
-        recommendation = 'ตรวจสอบ process ที่รันอยู่และ isolate เครื่องทันที';
-      }
-
-      if (/success|login.*ok|session.*open|http 200|200 ok/i.test(rawStr)) {
-        outcome = '✅ ผลลัพธ์: <strong>สำเร็จ</strong> — ผู้โจมตีเข้าถึงระบบได้';
-      } else if (/fail|block|403|401|reject|denied/i.test(rawStr)) {
-        outcome = '❌ ผลลัพธ์: <strong>ไม่สำเร็จ</strong> — ถูกระบบป้องกันบล็อก';
-      }
-
-      const analysis = `<strong>🎯 เป้าหมาย:</strong> ${destLabel}<br>` +
-        `<strong>👤 ผู้โจมตี:</strong> ${srcLabel}<br>` +
-        `<strong>⚔️ สิ่งที่ทำ:</strong> ${intent}<br>` +
-        `<strong>${outcome}</strong><br>` +
-        `<strong>⚠️ ความเสี่ยง:</strong> ${event.mitreCode || 'N/A'} — ตรวจสอบและรับมือทันที<br>` +
-        `<strong>🛡️ แนะนำ:</strong> ${recommendation}` +
-        `<br><br><em style="opacity:0.6;font-size:11px;">(💡 Rule-based Analysis — ไม่ต้องการ AI API)</em>`;
-
-      return { analysis, mode: 'rule-based' };
-    };
-
-    // ─── KKU AI Analysis ─────────────────────────────────────────────────────
-    const prompt = `# ROLE & CONTEXT
-คุณคือ Elite SOC Analyst หน้าที่ของคุณคือวิเคราะห์ Raw Security Logs และถอดรหัสออกมาเป็นรายงานที่ครอบคลุมทุกมิติ
-
-# CRITICAL RULES
-1. การระบุทิศทางต้องแม่นยำ: "srcip" (Source IP) หรือ "ip" ต้นทาง คือผู้เริ่มการเชื่อมต่อ เสมอ, "dstip" (Destination IP) คือเป้าหมายเสมอ ห้ามสลับฝั่ง
-2. ห้ามทึกทักว่าเป็น "การโจมตี" เสมอไป ให้ดูฟิลด์ action, msg, detail ประกอบ หากเป็นการเข้าเว็บปกติให้บอกว่าปกติ
-3. ต้องระบุ "ลำดับเวลา" (Timeline), "ระยะการโจมตี" (MITRE ATT&CK Phase) และ "เส้นทางการเชื่อมต่อ" (Network Path) เสมอ
-4. ตอบกลับในรูปแบบ Markdown 6 หัวข้อด้านล่างเป๊ะๆ ถ้าไม่มีข้อมูลให้เขียนว่า "ไม่มีข้อมูลใน Log"
-
-# RAW LOG DATA
-${payloadText}
-
-# REQUIRED OUTPUT FORMAT
-> **🚨 บทสรุปผู้บริหาร (Executive Summary)**
-[สรุป 1-2 บรรทัด]
-
-**🔍 1. ใครเป็นคนทำ (Source & Actor)**
-* **IP ต้นทาง:** [ระบุ srcip หรือ ip] (พิกัด: [country])
-* **อุปกรณ์/แอป:** [วิเคราะห์จาก agent/user-agent]
-* **พอร์ตต้นทาง:** [srcport]
-
-**🎯 2. เป้าหมายคือที่ไหน (Target & Asset)**
-* **IP ปลายทาง:** [dest_ip]
-* **เป้าหมาย:** [hostname, url, หรือ dstport]
-
-**🛠️ 3. ทำอะไร อย่างไร เมื่อไหร่ (Action, Phase & Timeline)**
-* **เวลาที่เกิดเหตุ (Timeline):** [ระบุ date, time, timezone]
-* **พฤติกรรม:** [อธิบายจาก detail, action, type]
-* **ระยะการโจมตี (Attack Phase):** [ประเมินระยะการโจมตี เช่น Reconnaissance, Delivery, Exploitation หรือ N/A หากเป็นการใช้งานปกติ]
-
-**🛡️ 4. ระบบที่ตรวจพบ และเส้นทาง (Detection & Network Path)**
-* **เส้นทางการเชื่อมต่อ (Route):** [ประเมินเส้นทาง เช่น External (Internet) -> Firewall -> DMZ Server]
-* **แหล่งที่มา/อุปกรณ์:** [source_sensor, devname, หรือ log type]
-
-**✅ 5. ผลลัพธ์สุดท้าย (Result & Impact)**
-* **สถานะ:** [action, msg, หรือ severity]
-
-**🤖 6. คำแนะนำ (AI Recommendation)**
-* [คำแนะนำ Action ที่ควรทำต่อ]`.trim();
-
-    try {
-      const resText = await this.aiService.callUnifiedAI(req.user.sub, [{ role: 'user', content: prompt }], 1024, 0.3);
-      return { analysis: resText.trim(), mode: 'ai' };
-    } catch (e) {
-      console.error('[Analyze Event] KKU AI call failed — using rule-based fallback:', e);
-      return generateRuleBasedAnalysis();
-    }
+  @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter')
+  async analyzeEvent(@Body() body: any, @Req() req: any) {
+    const id = Number(body.incidentId);
+    if (!Number.isSafeInteger(id) || id < 1) throw new HttpException('A persisted Incident ID is required', HttpStatus.BAD_REQUEST);
+    if (body.mode !== undefined && !['auto', 'local', 'ai'].includes(body.mode)) throw new HttpException('Invalid analysis mode', HttpStatus.BAD_REQUEST);
+    const result = await this.cveIntel.analyzeIncident(id, req.user, body.mode || 'auto');
+    const current = await this.attackRepository.findOneByOrFail({ id });
+    this.eventsGateway.broadcastAttack(current);
+    return result;
   }
 }

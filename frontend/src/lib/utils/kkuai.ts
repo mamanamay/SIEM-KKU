@@ -39,11 +39,12 @@ export async function callKKUAI(
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error((err as any).message || `API Error: ${response.status}`);
+    throw new Error(Array.isArray((err as any).message) ? (err as any).message.join(', ') : (err as any).message || `API Error: ${response.status}`);
   }
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content || '';
+  if (typeof content !== 'string' || !content.trim()) throw new Error('AI_EMPTY_RESPONSE: AI ตอบกลับโดยไม่มีข้อความวิเคราะห์ กรุณาทดสอบการเชื่อมต่อใน Settings > Integrations');
   
   if (onChunk) {
     // Simulate streaming for UI compatibility

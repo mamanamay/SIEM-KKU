@@ -1,249 +1,103 @@
-import { writable, get } from 'svelte/store';
-import { io, Socket } from 'socket.io-client';
-import { getFacultyForIP, networkPolicyState, refreshNetworkPolicy } from './faculties';
+import { writable, derived, get } from 'svelte/store';
+import { io, type Socket } from 'socket.io-client';
+import { networkPolicyState, refreshNetworkPolicy, isInternalIP } from './faculties';
 import { isVisibleAlert, mergeAlerts, endpointOrganization } from '../lib/utils/alertStream';
 
-function isWallboard() { return typeof window !== 'undefined' && window.location.pathname.startsWith('/wallboard'); }
-
-
-export function enrichEventWithCVE(e: any) {
-  if (!isWallboard() && e.networkContext) {
-    return { ...e, organization: endpointOrganization(e.networkContext.target?.scope === 'organization' ? e.networkContext.target : e.networkContext.source),
-      sourceOrganization: endpointOrganization(e.networkContext.source),
-      targetOrganization: endpointOrganization(e.networkContext.target),
-      sourceScope: e.networkContext.source?.scope || 'unknown',
-      targetScope: e.networkContext.target?.scope || 'unknown',
-      direction: e.networkContext.direction || 'unknown', action: e.action || e.outcome };
+export function enrichEventWithCVE(event: any) {
+  const e = { ...event }, context = e.networkContext;
+  for (const key of ['timestampMs','firstSeenMs','lastSeenMs','lastProcessedMs']) {
+    if (e[key] != null && /^\d+$/.test(String(e[key])) && Number.isSafeInteger(Number(e[key]))) e[key] = Number(e[key]);
   }
-  if (e.incident_id) {
-    e.id = e.incident_id;
-    e.ip = e.entities?.source_ip || '';
-    e.destIp = e.entities?.target || '';
-    e.type = e.attack_type || '';
-    e.severity = (e.severity || '').toLowerCase();
-    e.createdAt = e.detected_at;
-    e.timeStr = e.detected_at;
-    e.payload = JSON.stringify(e);
-  }
-  
-  const fac = getFacultyForIP(e.ip);
-  if (fac) {
-    e.organization = fac.name;
-  }
+  if (context) Object.assign(e, {
+    organization: endpointOrganization(context.target?.scope === 'organization' ? context.target : context.source),
+    sourceOrganization: endpointOrganization(context.source), targetOrganization: endpointOrganization(context.target),
+    sourceScope: context.source?.scope || 'unknown', targetScope: context.target?.scope || 'unknown', direction: context.direction || 'unknown',
+  });
+  e.action = e.action || e.outcome;
+  const cve = e.cveFindings?.[0] || e.aiInvestigation?.cves?.[0];
+  if (cve) e.cve = { id: cve.cveId, name: cve.reason, score: cve.cvssScore };
   return e;
 }
-
-const mockIncidents = [];
-
-const initialEvents = typeof window !== 'undefined'
-  ? mockIncidents.map(enrichEventWithCVE)
-  : [];
-
-export const eventsStore      = writable<any[]>(initialEvents);
-export const socketStore      = writable<Socket | null>(null);
-export const roleStore        = writable<string>('guest');
-export const usernameStore    = writable<string>('');
-export const connectionState  = writable<boolean>(false);
+const bangkokDate = () => new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+export const eventsStore = writable<any[]>([]);
+export const socketStore = writable<Socket | null>(null);
+export const roleStore = writable('guest');
+export const usernameStore = writable('');
+export const connectionState = writable(false);
+export const initialDataLoaded = writable(false);
 export const latestAttackStore = writable<any>(null);
-export const isHistoricalMode = writable<boolean>(false);
-export const selectedDateStore = writable<string>(new Date().toISOString().split('T')[0]);
+export const isHistoricalMode = writable(false);
+export const selectedDateStore = writable(bangkokDate());
 export const systemHealthStore = writable<any>(null);
 export const attackStatsStore = writable<any>(null);
 export const dashboardDataStore = writable<any>(null);
-
 let socket: Socket | null = null;
 let networkPolicyTimer: ReturnType<typeof setInterval> | null = null;
 let historyGeneration = 0;
+let snapshotPending = true;
+let pendingUpdates: any[] = [];
+function beginSnapshot() { snapshotPending = true; pendingUpdates = []; initialDataLoaded.set(false); }
 async function refreshEventScope() {
   const previous = get(networkPolicyState).version;
-  if (await refreshNetworkPolicy() && previous !== get(networkPolicyState).version && socket?.connected) {
+  if (await refreshNetworkPolicy() && previous && previous !== get(networkPolicyState).version && socket?.connected) {
     if (get(isHistoricalMode)) await fetchHistoricalEvents(get(selectedDateStore));
-    else socket.emit('refresh_scope');
+    else { beginSnapshot(); socket.emit('refresh_scope'); }
   }
 }
-
 export function initSocket() {
+  if (socket) return;
   const token = localStorage.getItem('token');
-  if (!token) {
-    window.location.href = '/?expired=true';
-    return;
-  }
-
-  // Guard: ถ้า token ยังเป็น fake string เดิม (ก่อน deploy JWT จริง) ให้ logout
-  if (token.startsWith('fake-jwt-token')) {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    window.location.href = '/?expired=true';
-    return;
-  }
-
-  const role = localStorage.getItem('role') || 'guest';
-  roleStore.set(role);
-  
-  const username = localStorage.getItem('username') || '';
-  usernameStore.set(username);
-
-  if (socket) return; // already connected
+  if (!token || token.startsWith('fake-jwt-token')) { window.location.href = '/?expired=true'; return; }
+  roleStore.set(localStorage.getItem('role') || 'guest');
+  usernameStore.set(localStorage.getItem('username') || '');
   void refreshEventScope();
-  if (!networkPolicyTimer) networkPolicyTimer = setInterval(() => { void refreshEventScope(); }, 30000);
-
-  socket = io({
-    path: '/socket.io/',
-    auth: { token, scope: window.location.pathname.startsWith('/wallboard') ? 'legacy' : 'lan' },
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 2000,
-    timeout: 10000,
-  });
-
-  socket.on('connect', () => {
-    connectionState.set(true);
-  });
-
-  socket.on('disconnect', () => {
-    connectionState.set(false);
-  });
-
+  networkPolicyTimer = setInterval(() => { void refreshEventScope(); }, 30000);
+  socket = io({ path: '/socket.io/', auth: { token, scope: 'lan' }, reconnection: true, reconnectionAttempts: 5, reconnectionDelay: 2000, timeout: 10000 });
+  socket.on('connect', () => { connectionState.set(true); if (!get(isHistoricalMode)) beginSnapshot(); });
+  socket.on('disconnect', () => connectionState.set(false));
+  // A server snapshot replaces prior scope data, including after reconnect/policy refresh.
   socket.on('initial_data', (data: any[]) => {
-    // Only set initial data if not in historical mode
-    isHistoricalMode.subscribe(historical => {
-      if (!historical) {
-        // Merge mock data for demonstration
-        const combined = [...data];
-        const enriched = combined.map(enrichEventWithCVE);
-        eventsStore.set(isWallboard() ? enriched.slice(0, 1000) : mergeAlerts(get(eventsStore), enriched));
-        if (isWallboard() && typeof localStorage !== 'undefined') {
-          localStorage.setItem('cachedEvents', JSON.stringify(enriched));
-        }
-      }
-    })();
+    if (get(isHistoricalMode)) return;
+    eventsStore.set(mergeAlerts(data.map(enrichEventWithCVE), pendingUpdates));
+    pendingUpdates = []; snapshotPending = false; initialDataLoaded.set(true);
   });
-
-  socket.on('system_health', (data: any) => {
-    systemHealthStore.set(data);
-  });
-  socket.on('attack_stats', (data: any) => { if (!get(isHistoricalMode)) attackStatsStore.set(data); });
-  socket.on('dashboard_data', (data: any) => { if (!get(isHistoricalMode)) dashboardDataStore.set(data); });
-
+  socket.on('system_health', data => systemHealthStore.set(data));
+  socket.on('attack_stats', data => { if (!get(isHistoricalMode)) attackStatsStore.set(data); });
+  socket.on('dashboard_data', data => { if (!get(isHistoricalMode)) dashboardDataStore.set(data); });
   socket.on('new_attack', (data: any) => {
-    // Ignore real-time updates if in historical mode
-    let isHistorical = false;
-    isHistoricalMode.subscribe(val => isHistorical = val)();
-    
-    if (!isHistorical) {
-      const enriched = enrichEventWithCVE(data);
-      eventsStore.update(events => {
-        const newEvents = isWallboard() ? [enriched, ...events].slice(0, 1000) : mergeAlerts(events, [enriched]);
-        if (isWallboard() && typeof localStorage !== 'undefined') {
-          try {
-            localStorage.setItem('cachedEvents', JSON.stringify(newEvents));
-          } catch (e) {
-            console.warn('localStorage quota exceeded for cachedEvents');
-          }
-        }
-        return newEvents;
-      });
-      if (isWallboard() || isVisibleAlert(enriched)) latestAttackStore.set(enriched);
-    }
+    if (get(isHistoricalMode)) return;
+    const event = enrichEventWithCVE(data);
+    if (snapshotPending) pendingUpdates = mergeAlerts(pendingUpdates, [event]);
+    eventsStore.update(events => mergeAlerts(events, [event]));
+    if (isVisibleAlert(event)) latestAttackStore.set(event);
   });
-
-  socket.on('status_updated', (data: { id: number; status: string }) => {
-    eventsStore.update(events => {
-      const index = events.findIndex(e => e.id === data.id);
-      if (index !== -1) {
-        events[index] = { ...events[index], status: data.status };
-      }
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('cachedEvents', JSON.stringify(events));
-      }
-      return events;
-    });
-  });
-
-  // FIX: รับ connect_error ได้ทุกกรณี (ไม่ใช่แค่ string 'Unauthorized')
-  socket.on('connect_error', (err) => {
-    console.warn('[WS] connect_error:', err.message);
-    // Backend ใช้ disconnect(true) → client จะเห็น error message ว่าง หรือ "xhr poll error"
-    // ให้ logout ถ้าเชื่อมต่อไม่ได้หลังพยายามหลายครั้งแล้ว
-    connectionState.set(false);
-  });
-
-  socket.on('error', (msg: string) => {
-    console.warn('[WS] server error:', msg);
-  });
-
+  socket.on('status_updated', (data: { id: number; status: string }) => eventsStore.update(events => events.map(e => e.id === data.id ? { ...e, status: data.status } : e)));
+  socket.on('connect_error', () => connectionState.set(false));
   socketStore.set(socket);
 }
-
 export function disconnectSocket() {
   historyGeneration++;
-  if (!isWallboard()) { eventsStore.set([]); latestAttackStore.set(null); dashboardDataStore.set(null); attackStatsStore.set(null); }
-  if (networkPolicyTimer) { clearInterval(networkPolicyTimer); networkPolicyTimer = null; }
-  if (socket) {
-    socket.disconnect();
-    socket = null;
-    socketStore.set(null);
-    connectionState.set(false);
-  }
+  beginSnapshot();
+  eventsStore.set([]); latestAttackStore.set(null); dashboardDataStore.set(null); attackStatsStore.set(null);
+  if (networkPolicyTimer) clearInterval(networkPolicyTimer);
+  networkPolicyTimer = null;
+  socket?.disconnect(); socket = null; socketStore.set(null); connectionState.set(false);
 }
-
 export async function fetchHistoricalEvents(dateStr: string) {
-  if (!isWallboard()) {
-    const generation = ++historyGeneration;
-    isHistoricalMode.set(true); selectedDateStore.set(dateStr);
-    eventsStore.set([]); dashboardDataStore.set(null); attackStatsStore.set(null);
-    const headers = { Authorization: 'Bearer ' + localStorage.getItem('token') };
-    const responses = await Promise.all([
-      fetch('/api/attacks/history?date=' + encodeURIComponent(dateStr), { headers }),
-      fetch('/api/attacks/stats?date=' + encodeURIComponent(dateStr), { headers }),
-      fetch('/api/attacks/dashboard?date=' + encodeURIComponent(dateStr), { headers })
-    ]);
-    if (responses.some(response => !response.ok)) throw new Error('Historical alerts unavailable');
-    const [events, stats, dashboard] = await Promise.all(responses.map(response => response.json()));
-    if (generation !== historyGeneration) return;
-    eventsStore.set(mergeAlerts([], events).map(enrichEventWithCVE));
-    attackStatsStore.set(stats); dashboardDataStore.set(dashboard);
-    return;
-  }
-  isHistoricalMode.set(true);
-  selectedDateStore.set(dateStr);
-  
-  try {
-    const res = await fetch(`/api/attacks/history?date=${dateStr}&scope=lan`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      eventsStore.set(data);
-    }
-  } catch (err) {
-    console.error('Failed to fetch historical events:', err);
-  }
+  const generation = ++historyGeneration;
+  isHistoricalMode.set(true); selectedDateStore.set(dateStr);
+  eventsStore.set([]); dashboardDataStore.set(null); attackStatsStore.set(null);
+  const headers = { Authorization: 'Bearer ' + localStorage.getItem('token') };
+  const responses = await Promise.all(['history', 'stats', 'dashboard'].map(path => fetch('/api/attacks/' + path + '?date=' + encodeURIComponent(dateStr), { headers })));
+  if (responses.some(response => !response.ok)) throw new Error('Historical alerts unavailable');
+  const [events, stats, dashboard] = await Promise.all(responses.map(response => response.json()));
+  if (generation !== historyGeneration) return;
+  eventsStore.set(mergeAlerts([], events.map(enrichEventWithCVE))); attackStatsStore.set(stats); dashboardDataStore.set(dashboard);
 }
-
 export function resumeLiveEvents() {
-  isHistoricalMode.set(false);
-  selectedDateStore.set(new Date().toISOString().split('T')[0]);
-  
-  // Try to refetch live data via API, or let the socket's 'initial_data' handle it if we reconnect
-  // An easy way to refresh live data is to disconnect and reconnect the socket
-  disconnectSocket();
-  setTimeout(() => initSocket(), 100);
+  isHistoricalMode.set(false); selectedDateStore.set(bangkokDate()); disconnectSocket(); initSocket();
 }
-
-
-import { derived } from 'svelte/store';
-import { isInternalIP } from './faculties';
-
-export const lanEventsStore = derived([eventsStore, networkPolicyState], ([$events, policy]) =>
-  $events.filter((e) => {
-    if (!policy.loaded) return false;
-    if (!isVisibleAlert(e)) return false;
-    if (e.networkScope?.ruleVersion === policy.version) return e.networkScope.inScope === true;
-    return isInternalIP(e.destIp || '') || isInternalIP(e.ip || '');
-  }).sort((a, b) => {
-    return Number(b.lastSeenMs || b.timestampMs || Date.parse(b.createdAt)) - Number(a.lastSeenMs || a.timestampMs || Date.parse(a.createdAt));
-  })
-);
+export const lanEventsStore = derived([eventsStore, networkPolicyState], ([$events, policy]) => $events.filter(e => {
+  if (!policy.loaded || !isVisibleAlert(e)) return false;
+  return e.networkScope?.ruleVersion === policy.version ? e.networkScope.inScope === true : isInternalIP(e.destIp || '') || isInternalIP(e.ip || '');
+}).sort((a, b) => Number(b.lastSeenMs || b.timestampMs || Date.parse(b.createdAt)) - Number(a.lastSeenMs || a.timestampMs || Date.parse(a.createdAt))));

@@ -5,6 +5,7 @@
   import { reportApi, bangkokInput, reportInputSignature, reportSelectionKey, REPORT_EDIT_FIELDS } from './reportWorkflow';
   import { callKKUAI, type KKUAIMessage } from '../utils/kkuai';
   import LegacyCatalogReportWizard from './LegacyCatalogReportWizard.svelte';
+  import { setReportEditMode, collectReportEdits } from './liveReportEdit';
   
   import { showNotification } from '../../stores/notificationStore';
   import { analyzeCveSimilarity, getSimilarityColor, getSimilarityBg } from './CveSimilarityEngine';
@@ -27,6 +28,11 @@
   let showChatModal = false;
   let isLiveEditMode = false;
   let previewIframe: HTMLIFrameElement;
+  let previewReady = false;
+  let previousPreviewHtml = '';
+  // Keep srcdoc bound to a primitive: other session changes must not reload the iframe.
+  $: previewHtml = session.previewHtml;
+  $: if (previewHtml !== previousPreviewHtml) { previousPreviewHtml = previewHtml; previewReady = false; }
 
   // Search in Step 2
   let ipSearch = '';
@@ -52,7 +58,7 @@
 
   async function loadOptions(offset=0, preserveSelection=true) {
     const rangeKey=JSON.stringify(session.dateRange);
-    const data = await reportApi('options',{...session.dateRange,search:ipSearch,offset,selectedIPs:session.selectedIPs});
+    const data = await reportApi('options',{...session.dateRange,filters:session.filters,search:ipSearch,offset,selectedIPs:session.selectedIPs});
     optionsReportId=session.reportId;optionsRangeKey=rangeKey;
     optionsOffset=offset; optionsHasMore=data.hasMore; incidentOptions=data.incidents;targetOptions=data.targets||[];
     const selected=preserveSelection?session.selectedIPs:[];
@@ -62,31 +68,34 @@
       selectedIPs:preserveSelection?selected:(session.reportType==='incident'?[]:data.ips.map((ip:any)=>ip.ip))}));
     await tick();
     if(!preserveSelection) {
-      const next=await reportApi('options',{...session.dateRange,offset,selectedIPs:session.selectedIPs});
+      const next=await reportApi('options',{...session.dateRange,filters:session.filters,offset,selectedIPs:session.selectedIPs});
       incidentOptions=next.incidents;
       targetOptions=next.targets||[];
     }
   }
 
-  function toggleLiveEdit() {
+  function previewLoaded() {
+    const doc = previewIframe?.contentDocument;
+    previewReady = !!doc?.querySelector('[data-edit-key]');
+    if (doc && previewReady) setReportEditMode(doc, isLiveEditMode);
+  }
+
+  async function toggleLiveEdit() {
     if(isLiveEditMode){syncLiveEditToSession();isLiveEditMode=false;return;}
+    if(!previewReady)return;
     isLiveEditMode=true;
+    await tick();
     const doc=previewIframe?.contentDocument;
-    if(!doc)return;
-    doc.querySelectorAll<HTMLElement>('[data-edit-key]').forEach(el=>{
-      el.dataset.originalText=el.innerText;el.contentEditable='true';
-    });
-    showNotification('Live Edit', 'แก้ข้อความวิเคราะห์ได้ ข้อมูลหลักฐานอ้างจากฐานข้อมูล', 'info');
+    if(!doc || !setReportEditMode(doc,true)) { isLiveEditMode=false; return; }
+    doc.querySelector<HTMLElement>('[contenteditable="plaintext-only"]')?.focus();
   }
 
   function syncLiveEditToSession() {
-    const edits={...session.manualEdits};
-    previewIframe?.contentDocument?.querySelectorAll<HTMLElement>('[data-edit-key]').forEach(el=>{
-      const key=el.dataset.editKey as keyof typeof edits;
-      if(el.innerText!==el.dataset.originalText)edits[key]=el.innerText;
-      el.contentEditable='false';
-    });
-    globalReportStore.update(s=>({...s,manualEdits:edits}));
+    const doc=previewIframe?.contentDocument;
+    if(!doc)return;
+    const {reportTitle,...edits}=collectReportEdits(doc);
+    setReportEditMode(doc,false);
+    globalReportStore.update(s=>({...s,reportTitle:reportTitle===undefined?s.reportTitle:reportTitle,manualEdits:{...s.manualEdits,...edits}}));
   }
 
   onMount(async () => {
@@ -109,7 +118,7 @@
       if(session.currentStep===1){
         if(!session.reportTitle.trim())throw new Error('กรุณาระบุชื่อรายงาน');
         ipSearch='';
-        await loadOptions(0,(optionsReportId===session.reportId&&optionsRangeKey===JSON.stringify(session.dateRange)) || (session.sourcePage==='ai-copilot'&&optionsReportId!==session.reportId));
+        await loadOptions(0,(optionsReportId===session.reportId&&optionsRangeKey===JSON.stringify(session.dateRange)) || (optionsReportId!==session.reportId&&session.selectedIPs.length>0));
       }
       if(session.currentStep===2){
         if(!session.selectedIPs.length)throw new Error('กรุณาเลือก Source IP อย่างน้อย 1 รายการ');
@@ -206,10 +215,11 @@
     cveAnalysisLoading = true;
     globalReportStore.update(s => ({ ...s, cveSimilarityLoading: true, cveSimilarityResults: [] }));
     try {
-      const results = await analyzeCveSimilarity(session.dataset, session.selectedIPs);
+      await generatePreview();
+      const results = await analyzeCveSimilarity(session.dataset, session.selectedIPs, session.snapshotId);
       globalReportStore.update(s => ({ ...s, cveSimilarityResults: results, cveSimilarityLoading: false }));
       await generatePreview(); // Preserve structured edits
-      showNotification('Success', `พบ CVE ที่มีลักษณะคล้าย ${results.length} รายการ`, 'success');
+      showNotification('CVE', results.length ? `บันทึก CVE ที่มีหลักฐานสัมพันธ์และตรวจสอบรหัสแล้ว ${results.length} รายการ` : 'ไม่พบ CVE ที่มีหลักฐานเพียงพอและตรวจสอบรหัสได้', 'info');
     } catch (e: any) {
       console.error(e);
       showNotification('Error', e.message || 'CVE Similarity Analysis ล้มเหลว', 'error');
@@ -233,7 +243,7 @@
     if(!session.snapshotId||snapshotSelectionKey!==key) {
       if(session.snapshotId)showNotification('Report','ขอบเขตเปลี่ยนแล้ว ข้อความเดิมยังอยู่ กรุณาตรวจทานให้ตรง Incident และวันที่ชุดใหม่','info');
       const data=await reportApi('snapshot',{...session.dateRange,reportType:session.reportType,sourcePage:session.sourcePage,
-        selectedIPs:session.selectedIPs,selectedTargetIPs:session.selectedTargetIPs,incidentId:session.selectedIncidentId});
+        selectedIPs:session.selectedIPs,selectedTargetIPs:session.selectedTargetIPs,incidentId:session.selectedIncidentId,filters:session.filters});
       snapshotSelectionKey=key;
       globalReportStore.update(s=>({...s,snapshotId:data.snapshotId,snapshot:data.snapshot,revision:data.revision,
         dataset:data.snapshot.events,aiContext:null,cveSimilarityResults:[],validationResult:null}));
@@ -303,7 +313,7 @@
       }
     } catch (e) {
       console.error(e);
-      showNotification('Error', 'AI Chat Failed', 'error');
+      showNotification('AI', e instanceof Error ? e.message : 'เรียก AI ไม่สำเร็จ กรุณาทดสอบใน Settings > Integrations', 'error');
     } finally {
       aiChatLoading = false;
     }
@@ -587,8 +597,8 @@
           <div class="preview-header">
             <h3>Preview & Validation</h3>
             <div class="preview-actions">
-              <button class="btn {isLiveEditMode ? 'btn-success' : 'btn-outline'}" on:click={toggleLiveEdit}>
-                📝 {isLiveEditMode ? 'Save Edits & Exit Mode' : 'Live Edit Mode'}
+              <button class="btn {isLiveEditMode ? 'btn-success' : 'btn-outline'}" on:click={toggleLiveEdit} disabled={!previewReady || isLoading}>
+                📝 {isLiveEditMode ? 'บันทึกข้อความและออกจากโหมดแก้ไข' : 'แก้ไขข้อความบนรายงาน'}
               </button>
               <button class="btn btn-warning" on:click={runAiValidation} disabled={validationLoading}>
                 {validationLoading ? 'Checking...' : '🤖 AI Check Report'}
@@ -612,7 +622,8 @@
             </div>
           {/if}
 
-          <div class="preview-split">
+          {#if isLiveEditMode}<p class="edit-mode-hint" role="status">คลิกกรอบสีน้ำเงินเพื่อแก้ชื่อรายงานและข้อความวิเคราะห์ แล้วกดบันทึก ข้อมูลหลักฐาน IP และจำนวนเหตุการณ์อ้างจากระบบ</p>{/if}
+          <div class="preview-split" class:live-editing={isLiveEditMode}>
             {#if session.reportType}
               <div class="manual-edit-panel">
                 <h4>Manual Edits</h4>
@@ -641,7 +652,7 @@
               </div>
             {/if}
             <div class="preview-frame-container">
-              <iframe bind:this={previewIframe} title="Preview" srcdoc={session.previewHtml} class="preview-frame"></iframe>
+              <iframe bind:this={previewIframe} title="Preview" srcdoc={previewHtml} sandbox="allow-same-origin" on:load={previewLoaded} class="preview-frame"></iframe>
             </div>
           </div>
 
@@ -669,7 +680,7 @@
                       <td style="padding:8px 12px;font-family:monospace;color:#1e3a8a;font-weight:700;">{cve.cveId}</td>
                       <td style="padding:8px 12px;">
                         <span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:{getSimilarityBg(cve.similarityLevel)};color:{getSimilarityColor(cve.similarityLevel)};">
-                          {cve.similarityLevel.toUpperCase()} ({cve.similarityScore}%)
+                          ตรวจสอบรหัส CVE แล้ว · ความสัมพันธ์ยังไม่ยืนยัน
                         </span>
                       </td>
                       <td style="padding:8px 12px;">
@@ -899,8 +910,10 @@
   .preview-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .preview-split { display: flex; gap: 20px; flex: 1; min-height: 0; }
   .manual-edit-panel { width: 350px; border-right: 1px solid #e2e8f0; padding-right: 20px; overflow-y: auto; display: flex; flex-direction: column; }
-  .preview-frame-container { flex: 1; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #fff; display: flex; }
-  .preview-frame { width: 100%; height: 100%; border: none; flex: 1; }
+  .preview-frame-container { flex: 1; min-width: 0; min-height: 640px; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; background: #edf2f6; display: flex; }
+  .preview-frame { width: 100%; min-height: 640px; height: 100%; border: none; flex: 1; }
+  .live-editing .manual-edit-panel { display: none; }
+  .edit-mode-hint { padding: 12px 16px; border: 1px solid #93c5fd; border-radius: 8px; color: #1e40af; background: #eff6ff; }
   
   .validation-banner { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 0.95rem; }
   .validation-banner.passed { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }

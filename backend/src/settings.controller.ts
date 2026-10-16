@@ -15,7 +15,8 @@ import { Repository } from 'typeorm';
 import { SystemConfig } from './entities/system-config.entity';
 import { AuditService } from './audit.service';
 import axios from 'axios';
-import { safeHttp } from './outbound-http';
+import { safeHttp, safeAiHttp } from './outbound-http';
+import { aiFailure } from './ai.service';
 import { aiApiBase } from './integration-url';
 import { randomBytes } from 'crypto';
 
@@ -99,7 +100,7 @@ export class SettingsController {
     try {
       // For simplicity, we don't stream the proxy, we just wait for the full response and return it
       // so the frontend can still parse it as JSON
-      const response = await safeHttp({ url: apiUrl + '/chat/completions', method: 'POST', data: {
+      const response = await safeAiHttp({ url: apiUrl + '/chat/completions', method: 'POST', data: {
         model: body.model || apiConfig.aiModel || 'typhoon-v2-70b-instruct',
         messages: body.messages,
         max_tokens: body.max_tokens || 2048,
@@ -125,9 +126,10 @@ export class SettingsController {
       return response.data;
     } catch (e: any) {
       const status = e.response?.status;
-      const errMsg = e.response?.data?.error?.message || e.message;
+      const issue = aiFailure(e);
+      const errMsg = issue.message;
       
-      let customErrorMsg = errMsg;
+      let customErrorMsg = `${issue.code}: ${errMsg}`;
       
       // Quota Limit Handling
       if (status === 401 && errMsg.includes('daily limit')) {
@@ -264,26 +266,27 @@ export class SettingsController {
   }
 
   @Post('integrations/test-ai')
-  async testAiIntegration(@Body() body: { aiApiUrl: string, aiKey: string, aiModel: string }, @Req() req: any) {
-    let key = body.aiKey;
-    if (key === '********') {
-        const user = await this.userRepository.findOne({ where: { id: req.user.sub } });
+  async testAiIntegration(@Body() body: { aiApiUrl?: string, aiKey?: string, aiModel?: string }, @Req() req: any) {
+    const user = await this.userRepository.findOne({ where: { id: req.user.sub } });
     if (!user) throw new BadRequestException('User not found');
-        if (user && user.apiConfigJson) {
-            const api = user.apiConfigJson ? JSON.parse(user.apiConfigJson) : {};
-            key = api.aiKey;
-        }
-    }
-
+    let saved: any = {};
+    try { saved = JSON.parse(user.apiConfigJson || '{}'); } catch { throw new BadRequestException('AI_CONFIG_INVALID: กรุณาบันทึกการตั้งค่า AI ใหม่'); }
+    const key = body.aiKey && body.aiKey !== '********' ? body.aiKey : saved.aiKey;
+    if (!key) throw new BadRequestException('AI_NOT_CONFIGURED: กรุณาระบุ AI API key สำหรับบัญชีนี้');
     try {
-      // Use the same normalized URL and provider fallback as the model selector.
-      await this.getAiModels({ aiApiUrl: body.aiApiUrl, aiKey: key }, req);
-      
+      // Test generation itself, not just an accessible model-list endpoint.
+      const response = await safeAiHttp({ url: aiApiBase(body.aiApiUrl || saved.aiApiUrl || 'https://gen.ai.kku.ac.th/api/v1') + '/chat/completions',
+        method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        data: { model: body.aiModel || saved.aiModel || 'typhoon-v2-70b-instruct', messages: [{ role: 'user', content: 'Reply with OK.' }],
+          max_tokens: 32, temperature: 0, stream: false } });
+      if (typeof response.data?.choices?.[0]?.message?.content !== 'string' || !response.data.choices[0].message.content.trim())
+        throw Object.assign(new Error('Empty AI response'), { code: 'AI_EMPTY_RESPONSE' });
       this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'AI', result: 'SUCCESS', username: req.user.username, ipAddress: req.ip });
-      return { success: true };
-    } catch (e: any) {
-      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'AI', result: 'FAILED', username: req.user.username, ipAddress: req.ip, metadata: { error: e.message } });
-      throw new BadRequestException('AI Connection Failed: ' + (e.response?.data?.error?.message || e.message));
+      return { success: true, generationVerified: true };
+    } catch (error) {
+      const issue = aiFailure(error);
+      this.auditService.log({ action: 'TEST_INTEGRATION', resource: 'AI', result: 'FAILED', username: req.user.username, ipAddress: req.ip, metadata: { code: issue.code } });
+      throw new BadRequestException(`${issue.code}: ${issue.message}`);
     }
   }
 

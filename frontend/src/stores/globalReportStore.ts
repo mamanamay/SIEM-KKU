@@ -1,4 +1,4 @@
-import { bangkokDay } from "../lib/ReportEngine/reportWorkflow";
+import { reportRangeFromData } from "../lib/ReportEngine/reportWorkflow";
 import { writable } from "svelte/store";
 import type { ReportConfig, ReportDataModel, ExportSession, IpSummary, AiBriefingContext } from "../lib/ReportEngine/types";
 import { getDefaultSelectedFields, deriveIpSummaries, generateReportId, ALL_GROUP_KEYS, deriveFieldsFromGroups } from "../lib/ReportEngine/exportSchemas";
@@ -97,13 +97,13 @@ export function openReportWizard(
 
   globalReportStore.set({
     isOpen: true,
-    snapshotId: "", snapshot: null, selectedIncidentId: null, selectedTargetIPs: [], revision: 0, contentDigest: "", previewSignature: "",
-    reportType: "executive", // default executive; user can change in Step 1 (unless allowExecOnly)
+    snapshotId: "", snapshot: null, selectedIncidentId: filters.incidentId || null, selectedTargetIPs: [], revision: 0, contentDigest: "", previewSignature: "",
+    reportType: filters.incidentId ? "incident" : "executive",
     reportTitle: config.reportTitle,
     reportId,
     reportVersion: "v1.0",
     sourcePage: config.pageType,
-    dateRange: bangkokDay(),
+    dateRange: reportRangeFromData(data, filters),
     language: "th",
     preparedBy: exportedBy,
     reviewedBy: "",

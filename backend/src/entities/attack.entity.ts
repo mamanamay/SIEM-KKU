@@ -6,6 +6,8 @@ import type { eventContext } from '../event-context';
 @Index('IDX_attack_actor_event_time',['ip','alertEligible','timestampMs'])
 @Index('IDX_attack_actor_processed_time',['ip','alertEligible','lastProcessedMs'])
 export class Attack {
+  @Column({ type: 'simple-json', nullable: true }) httpContext: import('../http-context').HttpContext;
+  @Column({ type: 'simple-json', nullable: true }) aiInvestigation: any;
   @Column({type:'bigint',nullable:true})
   lastProcessedMs: number;
   @Column({ default: false })

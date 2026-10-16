@@ -20,6 +20,7 @@
   import { page } from '$app/stores';
   import { initSocket, disconnectSocket, roleStore, connectionState, latestAttackStore, usernameStore } from '../../stores/events';
   import { isVisibleAlert } from '../../lib/utils/alertStream';
+  import { incidentUrl } from '../../lib/utils/incidentLink';
   
   let currentTime = '';
   let timeInterval: any;
@@ -88,7 +89,7 @@
   $: if ($latestAttackStore) {
     // Prevent duplicate triggers if store hasn't actually changed reference (Svelte reactivity quirk)
     const attack = $latestAttackStore;
-    if (!notificationsHistory.find(n => n.id === attack.id) && (attack.severity === 'critical' || attack.severity === 'high')) {
+    if (isVisibleAlert(attack) && incidentUrl(attack) && !notificationsHistory.find(n => String(n.id) === String(attack.id)) && (attack.severity === 'critical' || attack.severity === 'high')) {
       notificationsHistory = [attack, ...notificationsHistory];
       unreadCount++;
       
@@ -141,7 +142,7 @@
     if (savedNotifs) {
       try {
         const saved=JSON.parse(savedNotifs);
-        notificationsHistory=Array.isArray(saved)?saved.filter(isVisibleAlert).slice(0,50):[];
+        notificationsHistory=Array.isArray(saved)?saved.filter(n => isVisibleAlert(n) && incidentUrl(n)).slice(0,50):[];
       } catch (e) {}
     }
     if (savedUnread) {
@@ -469,7 +470,7 @@
                 </div>
                 <div class="dropdown-list custom-scrollbar">
                   {#each notificationsHistory as notif}
-                    <a href="/dashboard/investigate?ip={notif.ip}&time={notif.timeStr}" class="dropdown-item {notif.is_blocked_repeat ? 'dropdown-repeat' : ''}" on:click={() => showNotifications = false}>
+                    <a href={incidentUrl(notif) || undefined} class="dropdown-item {notif.is_blocked_repeat ? 'dropdown-repeat' : ''}" on:click={() => showNotifications = false}>
                       <div class="notif-icon {notif.is_blocked_repeat ? 'b-red' : (notif.severity === 'critical' ? 'b-red' : 'b-orange')}">
                         {#if notif.is_blocked_repeat}
                           <i class="ti ti-shield-x"></i>

@@ -4,8 +4,9 @@
   export let event;
 
   $: summary = event?.ai_analysis?.summary || '';
-  $: storyline = event?.ai_analysis?.storyline || '';
-  $: confidence = event?.ai_analysis?.confidence_percentage || 0;
+  $: storyline = event?.aiInvestigation?.analysis || event?.ai_analysis?.storyline || event?.aiAnalysis || '';
+  $: confidence = event?.aiInvestigation?.mode || '';
+  $: aiStatus = event?.aiInvestigation?.aiStatus;
 
   $: renderedStoryline = storyline ? safeHtml(marked.parse(storyline)) : '';
 </script>
@@ -14,11 +15,14 @@
   <div class="cyber-ai-panel">
     <div class="cyber-ai-header">
       <div class="cyber-ai-badge">
-        <i class="ti ti-brain"></i> SOC AI Analyst (ความมั่นใจ {confidence.toFixed(1)}%)
+        <i class="ti ti-brain"></i> SOC Analyst {confidence === 'rule-based' ? '(วิเคราะห์ภายในระบบ)' : confidence === 'ai' ? '(AI ภายนอก)' : '(บทวิเคราะห์เดิม)'}
       </div>
       <div class="glow-line"></div>
     </div>
     <div class="cyber-ai-body">
+      {#if aiStatus}
+        <div class="analysis-status" role="status">ใช้ผลวิเคราะห์ภายในระบบแทน AI ภายนอก: {aiStatus.message} <small>({aiStatus.code})</small></div>
+      {/if}
       {#if summary}
         <div class="summary-box">
           <strong>สรุปเหตุการณ์:</strong> {summary}
@@ -35,12 +39,13 @@
       <span class="cyber-ai-badge idle"><i class="ti ti-sparkles"></i> ผู้ช่วย AI</span>
     </div>
     <div class="cyber-ai-action">
-      <p>ยังไม่มีผลการวิเคราะห์จาก AI สำหรับเหตุการณ์นี้</p>
+      <p>เลือกวิเคราะห์ภายในระบบได้ทันที หรือใช้ AI ภายนอกเมื่อมีการตั้งค่าการเชื่อมต่อ</p>
     </div>
   </div>
 {/if}
 
 <style>
+  .analysis-status { padding: 12px 14px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary); color: var(--text-secondary); line-height: 1.6; }
   .cyber-ai-panel {
     font-family: var(--font-body);
     transition: all 0.3s ease;

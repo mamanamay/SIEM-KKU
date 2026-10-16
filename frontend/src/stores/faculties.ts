@@ -56,8 +56,6 @@ for (const r of records) {
     let code = String(r['Faculty/Dept']).split('—')[0].split('-')[0].trim().toUpperCase();
     if (code === 'MS/KKBS') code = 'MS/KKBS';
     facultyObj = { code, name: String(r['Faculty/Dept']) };
-  } else if (r.Route.startsWith('10.52.') || r.Route.startsWith('10.101.')) {
-    facultyObj = { code: 'ODT', name: 'ODT-สำนักเทคโนโลยีดิจิทัล' };
   }
   
   const maskLong = (0xffffffff << (32 - maskBits)) >>> 0;
@@ -133,7 +131,13 @@ export function isInternalIP(ip: string): boolean {
  * Longest-prefix-match: maps an IP to its faculty/dept from ip_records.json.
  */
 export function getFacultyForIP(ip: string) {
+  if (/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.test(ip)) ip = ip.slice(7);
   if (!isInternalIP(ip)) return null;
+  if (ip.includes(':')) {
+    const record = ipv6Records.filter(r=>matchesIpv6(ip,r.Route)).sort((a,b)=>Number(b.Route.split('/')[1])-Number(a.Route.split('/')[1]))[0];
+    const name = record?.['Faculty/Dept'];
+    return name && !['—','-',''].includes(name.trim()) ? {code:name.split(/[—-]/)[0].trim().toUpperCase(),name} : null;
+  }
 
   const ipLong = ipToLong(ip);
   let bestMatch = null;
@@ -141,7 +145,7 @@ export function getFacultyForIP(ip: string) {
 
   for (const sub of compiledSubnets) {
     if ((ipLong & sub.maskLong) === (sub.subnetLong & sub.maskLong)) {
-      if (sub.faculty && sub.maskBits > maxMask) {
+      if (sub.maskBits > maxMask) {
         bestMatch = sub.faculty;
         maxMask = sub.maskBits;
       }

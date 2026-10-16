@@ -1,6 +1,7 @@
 import { Controller, Post, Body, Request, Res, ConflictException, BadRequestException, HttpException } from '@nestjs/common';
 import type { Response } from 'express';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
+import { CveFinding } from './entities/cve-finding.entity';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -32,7 +33,9 @@ export class IncidentReportController {
   async preview(@Body() body:any,@Request() req:any) {
     const row=await this.query.owned(body.snapshotId,req.user);
     if(body.revision!==row.revision)throw new ConflictException('Report revision changed; reload the preview');
-    const snapshot=JSON.parse(row.snapshotJson),draft=reportDraftInput(body,snapshot,row.actor),revision=row.revision+1;
+    const snapshot=JSON.parse(row.snapshotJson);
+    snapshot.cveFindings=await this.db.getRepository(CveFinding).find({where:{incidentId:In(snapshot.events.map((e:any)=>e.id))},order:{updatedAt:'DESC'},take:10});
+    const draft=reportDraftInput(body,snapshot,row.actor),revision=row.revision+1;
     const html=incidentReportHtml(snapshot,draft,revision);
     if(Buffer.byteLength(html)>512*1024)throw new BadRequestException('Report exceeds HTML budget');
     const contentDigest=createHash('sha256').update(row.snapshotJson).update(JSON.stringify(draft)).update(html).digest('hex');
@@ -105,9 +108,9 @@ export class IncidentReportController {
           sha256Hash,selectedIpCount:snapshot.selectedIPs.length,selectedFieldCount:draft.fields.length,
           filtersJson:JSON.stringify({range:snapshot.range,selectedIPs:snapshot.selectedIPs,incidentId:snapshot.incidentId,
             selectedTargetIPs:snapshot.selectedTargetIPs,
-            selectedFields:draft.fields,selectedSections:draft.sections,includeRawLogs:draft.includeRawLogs,manualEdits:draft.edits,assessment:draft.assessment}),
+             filters:snapshot.filters,cveFindings:draft.cves,selectedFields:draft.fields,selectedSections:draft.sections,includeRawLogs:draft.includeRawLogs,manualEdits:draft.edits,assessment:draft.assessment}),
           revisionHistoryJson:row.revisionHistoryJson,
-          snapshotJson:row.snapshotJson,reviewJson:JSON.stringify(review),contentDigest:row.contentDigest,pageCount});
+           snapshotJson:JSON.stringify({...snapshot,cveFindings:draft.cves}),reviewJson:JSON.stringify(review),contentDigest:row.contentDigest,pageCount});
         await m.getRepository(ExportAudit).save({action:'EXPORT_REPORT',reportId:draft.reportId,reportTitle:draft.title,reportType:snapshot.reportType,
           language:draft.language,fileFormat:format,sourcePage:snapshot.sourcePage,exportedBy:req.user.username,exportedByRole:req.user.role,
           selectedIpCount:snapshot.selectedIPs.length,selectedFieldCount:draft.fields.length,status:'SUCCESS',sha256Hash});

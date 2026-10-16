@@ -2,6 +2,7 @@
 <script lang="ts">
   import { showUiMessage } from '../../../lib/workspace/feedback';
   import { safeHtml } from '$lib/utils/safeHtml';
+  import ExportBtn from '../../../lib/components/ExportBtn.svelte';
   import OrgBadge from '../../../lib/components/OrgBadge.svelte';
   import { lanEventsStore as eventsStore,enrichEventWithCVE } from '../../../stores/events';
   import {page} from '$app/stores';
@@ -10,7 +11,6 @@
   import { formatEventTime } from '../../../lib/formatTime';
   import { onMount,onDestroy } from 'svelte';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
-  import { callKKUAI } from '../../../lib/utils/kkuai';
   import AttackPathGraph from '../../../lib/components/AttackPathGraph.svelte';
   import AiAnalysisBlock from '../../../lib/components/AiAnalysisBlock.svelte';
   import AiEvidenceBlock from '../../../lib/components/AiEvidenceBlock.svelte';
@@ -93,6 +93,7 @@
   }).sort((a, b) => new Date(b.time || b.createdAt).getTime() - new Date(a.time || a.createdAt).getTime());
   
   let selectedEvent: any = null;
+  $: unverifiedCveIds = (selectedEvent?.aiInvestigation?.unverifiedCves || []).map((cve:any)=>cve.cveId).join(', ');
   // Legacy links select only one exact IP/time result after asynchronous data arrives.
   $: if(exactMatchMode&&!linkedId&&!selectedEvent&&filteredEvents.length===1)selectEvent(filteredEvents[0]);
   $: kcPhase = (function(event) {
@@ -109,10 +110,22 @@
     if (event.type === 'Denial of Service (DoS)') return 'Impact';
     return 'Recon';
   })(selectedEvent);
-  function selectEvent(e: any) { 
-    selectedEvent = e; 
-    aiExplanation = e.aiAnalysis || '';
+  let selectionGeneration = 0;
+  let evidenceAbort: AbortController | null = null;
+  async function selectEvent(e: any) {
+    const generation = ++selectionGeneration;
+    evidenceAbort?.abort(); evidenceAbort = new AbortController();
+    selectedEvent = e; aiExplanation = e.aiInvestigation?.analysis || e.aiAnalysis || '';
+    if (e.httpEvidence || !incidentId(e.id)) return;
+    try {
+      const detail = await loadLinkedIncident(String(e.id), 'organization', localStorage.getItem('token') || '', fetch, evidenceAbort.signal);
+      if (generation === selectionGeneration) {
+        selectedEvent = enrichEventWithCVE(detail);
+        aiExplanation = detail.aiInvestigation?.analysis || detail.aiAnalysis || '';
+      }
+    } catch (error: any) { if (error.name !== 'AbortError') console.warn('Incident evidence unavailable:', error.message); }
   }
+  onDestroy(() => { selectionGeneration++; evidenceAbort?.abort(); });
   
   let showDevPopup = false;
   let devPopupTitle = '';
@@ -142,9 +155,10 @@
   let aiGeneratingBrief = false;
   let aiExplanation = '';
   
-  async function generateAiBriefing() {
+  async function generateAiBriefing(mode: 'local' | 'ai' = 'local') {
     if (!selectedEvent) return;
     
+    const analysisIncidentId = selectedEvent.id;
     aiGeneratingBrief = true;
     try {
       const token = localStorage.getItem('token');
@@ -154,25 +168,18 @@
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
         },
-        body: JSON.stringify(selectedEvent)
+        body: JSON.stringify({ incidentId: selectedEvent.id, mode })
       });
       
-      if (!res.ok) throw new Error('API request failed');
       const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `Analysis request failed (${res.status})`);
       
-      // The backend returns { analysis: string, mode: string }
-      // Sometimes it returns raw text if it doesn't wrap it in json? Let's check backend endpoint.
-      // Wait, backend analyze-event returns { analysis, mode } for rule-based, and for AI it returns { analysis: text, mode: 'ai' }.
-      aiExplanation = data.analysis;
-      selectedEvent.ai_analysis = {
-        summary: 'วิเคราะห์จากข้อมูลล่าสุด (On-Demand AI)',
-        storyline: data.analysis,
-        confidence_percentage: data.mode === 'ai' ? 95 : 70
-      };
-      // Force reactivity
-      selectedEvent = { ...selectedEvent };
+      if (String(selectedEvent?.id) === String(analysisIncidentId)) aiExplanation = data.analysis;
+      if (String(selectedEvent?.id) === String(analysisIncidentId)) {
+        selectedEvent = { ...selectedEvent, aiInvestigation: data, aiAnalysis: data.analysis, cveFindings: data.cves };
+      }
     } catch (e: any) {
-      await showUiMessage("AI Workflow Generation failed: " + e.message);
+      await showUiMessage("วิเคราะห์เหตุการณ์ไม่สำเร็จ: " + e.message);
     } finally {
       aiGeneratingBrief = false;
     }
@@ -183,7 +190,10 @@
   
   // Extract deep forensic info from raw detail
   $: forensicData = (() => {
-    if (!selectedEvent || !selectedEvent.detail) return null;
+    if (!selectedEvent) return null;
+    const http = selectedEvent.httpEvidence?.items?.find((item: any) => item.http)?.http || selectedEvent.httpContext;
+    if (http) return { host: http.host, request: http.url || http.uri, method: http.method, status: http.status, bytes: http.bytesSent, userAgent: http.userAgent, outcome: 'Observed HTTP response; impact unverified' };
+    if (!selectedEvent.detail) return null;
     const detail = selectedEvent.detail;
     
     const hostMatch = detail.match(/"host":\s*"([^"]+)"/);
@@ -203,15 +213,15 @@
       let riskColor = 'medium';
       
       if (status >= 200 && status < 300) {
-        outcome = 'Reached Server (Success)';
-        riskLevel = bytes > 1000 ? 'High Risk (Data Transfer)' : 'Medium Risk';
-        riskColor = bytes > 1000 ? 'critical' : 'high';
+        outcome = 'HTTP response observed; compromise unverified';
+        riskLevel = 'ผลกระทบยังไม่ยืนยัน';
+        riskColor = 'medium';
       } else if (status >= 400 && status < 500) {
         outcome = (status === 403 || status === 401) ? 'Blocked / Unauthorized' : 'Failed / Not Found';
-        riskLevel = 'Low Risk (Blocked)';
+        riskLevel = 'ผลกระทบยังไม่ยืนยัน';
         riskColor = 'low';
       } else if (status >= 500) {
-        outcome = 'Server Error (Possible Crash/DoS)';
+        outcome = 'HTTP server error; cause and impact unverified';
         riskLevel = 'High Risk (Impact)';
         riskColor = 'critical';
       }
@@ -266,12 +276,12 @@
     const status = Number(forensic.status) || 0;
     
     if (status >= 200 && status < 300) {
-       outcomeText = `และสามารถเจาะเข้าถึงเป้าหมายได้ (HTTP ${status})`;
-       if (forensic.bytes > 1000) outcomeText += ` พร้อมทั้งมีการดึงข้อมูลออกไปขนาด ${forensic.bytes} Bytes! 🚨`;
+       outcomeText = `ได้รับการตอบกลับจากเซิร์ฟเวอร์ (HTTP ${status}) โดยยังไม่ยืนยันการเจาะสำเร็จ`;
+       if (forensic.bytes > 1000) outcomeText += ` มีข้อมูลตอบกลับ ${forensic.bytes} bytes ซึ่งยังไม่ยืนยันการขโมยข้อมูล`;
     } else if (status >= 400 && status < 500) {
-       outcomeText = `แต่ถูกระบบป้องกันบล็อกหรือปฏิเสธการเข้าถึง (HTTP ${status}) 🛡️`;
+       outcomeText = `ได้รับ HTTP ${status}; เซิร์ฟเวอร์ปฏิเสธคำขอหรือไม่พบทรัพยากร ต้องตรวจ action ของ sensor ประกอบ`;
     } else if (status >= 500) {
-       outcomeText = `ส่งผลให้เซิร์ฟเวอร์ทำงานผิดพลาดหรือล่ม (HTTP ${status}) 🔥`;
+       outcomeText = `ได้รับ HTTP ${status}; ต้องตรวจ log ปลายทางเพื่อยืนยันสาเหตุ`;
     } else {
        outcomeText = `(ไม่มีข้อมูลการตอบกลับจากเซิร์ฟเวอร์)`;
     }
@@ -360,8 +370,8 @@
               <span class="q-type" title={event.type}>{event.type === "UNKNOWN" ? "Suspicious Activity" : (event.type.length > 22 ? event.type.substring(0,22)+"..." : event.type)}</span>
               <span class="q-sev {event.severity}">{event.severity.toUpperCase()}</span>
             </div>
-            <div class="q-ip"><i class="ti ti-network"></i> {event.ip} {#if event.country && event.country !== "Unknown" && event.country !== "UN"}<span style="opacity:0.7; font-size:11px; margin-left:4px;">({event.country})</span>{/if}</div>
-            <div class="q-time">{formatEventTime(event.time || event.createdAt)}</div>
+            <div class="q-ip"><i class="ti ti-network"></i> {event.ip} {#if event.sourceScope === 'organization'}<span title={event.networkContext?.source?.cidr}>{event.sourceOrganization}</span>{:else if event.country && event.country !== "Unknown" && event.country !== "UN"}<span style="opacity:0.7; font-size:11px; margin-left:4px;">({event.country})</span>{/if}</div>
+            <div class="q-time">{formatEventTime(event.lastSeenMs || event.timestampMs || event.time || event.createdAt)}</div>
           </div>
         {/each}
         {#if filteredEvents.length === 0}
@@ -389,8 +399,10 @@
                 {selectedEvent.ip || 'Unknown'}
               </div>
               <div style="font-size:14px; color:#be123c; margin-bottom:6px;">
-                📍 ประเทศ: <strong>{selectedEvent.country && selectedEvent.country !== 'Unknown' ? selectedEvent.country : 'ไม่ระบุ'}</strong>
+                📍 ประเทศ: <strong>{selectedEvent.sourceScope === 'organization' ? 'เครือข่ายภายใน' : selectedEvent.country || 'ไม่ระบุ'}</strong>
               </div>
+              <div>หน่วยงาน: <OrgBadge organization={selectedEvent.sourceOrganization} country={selectedEvent.country} full={true} /></div>
+              <div>ซับเน็ต: {selectedEvent.networkContext?.source?.cidr || 'ไม่มีทะเบียนซับเน็ต'}</div>
               <div style="font-size:13px; color:#9f1239; opacity:0.9; word-break:break-all;">
                 📱 อุปกรณ์: {selectedEvent.agent || forensicData?.userAgent || 'ไม่ระบุ / ตรวจไม่พบ'}
               </div>
@@ -408,11 +420,13 @@
               <div style="font-size:22px; font-weight:bold; font-family:monospace; color:#14532d; margin-bottom:8px;">
                 {selectedEvent.destIp || 'Unknown'}
               </div>
+              <div>หน่วยงาน: <OrgBadge organization={selectedEvent.targetOrganization} full={true} /></div>
+              <div>ซับเน็ต: {selectedEvent.networkContext?.target?.cidr || 'ไม่มีทะเบียนซับเน็ต'}</div>
               <div style="font-size:14px; color:#166534; margin-bottom:6px;">
-                🌐 เซิร์ฟเวอร์: <strong>{selectedEvent.hostname || forensicData?.host || getServerName(selectedEvent.destIp) || 'ไม่ทราบชื่อ'}</strong>
+                🌐 เซิร์ฟเวอร์: <strong>{forensicData?.host || selectedEvent.httpContext?.host || getServerName(selectedEvent.destIp) || 'ไม่มีชื่อเว็บในหลักฐานที่แสดง'}</strong>
               </div>
               <div style="font-size:13px; color:#14532d; opacity:0.9; word-break:break-all;">
-                🔗 ไฟล์/URL: {selectedEvent.url || forensicData?.request || '-'}
+                🔗 ไฟล์/URL: {forensicData?.request || selectedEvent.httpContext?.uri || 'ไม่มี URL ในหลักฐานที่แสดง'}
               </div>
             </div>
           </div>
@@ -424,7 +438,7 @@
               <div style="font-size:16px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:12px; margin-bottom:6px;">
                 {selectedEvent.type}
                 {#if selectedEvent.httpmethod || forensicData?.method}
-                  <span style="padding:4px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text-secondary); font-family:monospace;">Method: {selectedEvent.httpmethod || forensicData.method}</span>
+                  <span style="padding:4px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text-secondary); font-family:monospace;">Method: {selectedEvent.httpmethod || forensicData?.method}</span>
                 {/if}
               </div>
               <div style="font-size:14px; color:var(--text-secondary);">
@@ -482,53 +496,49 @@
           </div>
         </div>
 
-        <!-- 2. AI DEEP DIVE (Optional/Copilot) -->
         <div class="ai-deep-dive" style="border-top:1px dashed var(--border); padding-top:24px;">
-          {#if selectedEvent.ai_analysis}
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-              <h3 class="panel-title" style="margin: 0; color: var(--primary, #8e44ad);"><i class="ti ti-brain"></i> วิเคราะห์เชิงลึกด้วย AI (Deep Analysis Copilot)</h3>
-              <button class="btn-refresh" on:click={generateAiBriefing} disabled={aiGeneratingBrief} style="background: var(--bg-secondary); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; cursor: pointer; color: var(--text-primary); font-weight: bold; font-size: 12px;">
-                <i class="ti ti-refresh {aiGeneratingBrief ? 'ti-spin' : ''}"></i> {aiGeneratingBrief ? 'กำลังวิเคราะห์...' : '🔄 วิเคราะห์ซ้ำ'}
-              </button>
-            </div>
-            {#if aiGeneratingBrief}
-              <div class="chat-bubble ai typing" style="margin-bottom: 24px;">
-                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-              </div>
-            {:else}
-              <AiAnalysisBlock event={selectedEvent} />
-            {/if}
+          <h3 class="panel-title"><i class="ti ti-brain"></i> วิเคราะห์เหตุการณ์เชิงลึก</h3>
+          <div class="analysis-mode-actions">
+            <button class="btn-refresh" on:click={() => generateAiBriefing('local')} disabled={aiGeneratingBrief}>
+              <i class="ti ti-cpu"></i> วิเคราะห์ภายในระบบ
+            </button>
+            <button class="btn-refresh" on:click={() => generateAiBriefing('ai')} disabled={aiGeneratingBrief}>
+              <i class="ti ti-sparkles"></i> วิเคราะห์ด้วย AI ภายนอก
+            </button>
+            <span>การวิเคราะห์ภายในใช้หลักฐานที่บันทึก ไม่ต้องเชื่อมต่อ AI ภายนอก</span>
+          </div>
+          {#if aiGeneratingBrief}
+            <p role="status">กำลังวิเคราะห์เหตุการณ์ กรุณารอสักครู่…</p>
           {:else}
-            <h3 class="panel-title" style="color: var(--primary, #8e44ad);"><i class="ti ti-brain"></i> วิเคราะห์เชิงลึกด้วย AI (Deep Analysis Copilot)</h3>
-            <div class="ai-section" style="margin-bottom: 24px;">
-              <div style="display:flex; justify-content:flex-start; margin-bottom:12px;">
-                <button class="btn-refresh" on:click={generateAiBriefing} disabled={aiGeneratingBrief} style="background: linear-gradient(135deg, #8e44ad, #3b82f6); color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
-                  <i class="ti ti-sparkles {aiGeneratingBrief ? 'ti-spin' : ''}"></i> {aiGeneratingBrief ? 'กำลังให้ AI อ่าน Log...' : 'คลิกเพื่อเจาะลึก Payload ด้วย AI'}
-                </button>
-              </div>
-              <div class="ai-chat-box">
-                {#if aiGeneratingBrief}
-                  <div class="chat-bubble ai typing">
-                    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-                  </div>
-                {:else if aiExplanation}
-                  <div class="chat-bubble ai">
-                    {@html safeHtml(aiExplanation)}
-                  </div>
-                {:else}
-                  <div class="chat-bubble ai text-muted" style="background: var(--bg-secondary, rgba(142, 68, 173, 0.05)); border: 1px dashed var(--border, rgba(142, 68, 173, 0.3)); color: var(--text-secondary);">
-                    ข้อมูลด้านบนเพียงพอต่อการรู้ว่าเกิดอะไรขึ้น แต่หากคุณต้องการทราบว่า "แฮกเกอร์หวังผลอะไร" หรือ "Payload นี้ทำงานอย่างไร" สามารถให้ AI ช่วยวิเคราะห์ได้ครับ
-                  </div>
-                {/if}
-              </div>
-            </div>
+            <AiAnalysisBlock event={selectedEvent} />
           {/if}
         </div>
+
+        <section class="panel">
+          <h3>หลักฐานเว็บไซต์ / HTTP</h3>
+          {#if selectedEvent.httpEvidence}
+            <p>ตัวอย่าง {selectedEvent.httpEvidence.sampled} / {selectedEvent.httpEvidence.total} receipt — เหตุการณ์เดียวอาจมีหลายเว็บไซต์หรือ URL</p>
+            {#each selectedEvent.httpEvidence.items as receipt}
+              {#if receipt.http}
+                <p><code>{receipt.http.method || '-'} {receipt.http.host || '(ไม่มี host)'} {receipt.http.url || receipt.http.uri || '(ไม่มี URI)'}</code> · HTTP {receipt.http.status ?? 'ไม่ระบุ'} · {formatEventTime(receipt.timestampMs)}<br><small><a href="/dashboard/explorer?receiptId={receipt.receiptId}">Receipt: {receipt.receiptId}</a></small></p>
+              {/if}
+            {/each}
+          {:else}<p>กำลังโหลดหลักฐาน หรือไม่มี receipt ที่เปิดอ่านได้</p>{/if}
+          <h3>CVE ที่เชื่อมกับเหตุการณ์</h3>
+          {#if selectedEvent.aiInvestigation?.unverifiedCves?.length}
+            <p role="status">ข้อเสนอ CVE บางรายการยังตรวจสอบกับแหล่งอ้างอิงไม่ได้หรือยังไม่เผยแพร่ จึงไม่ได้บันทึกเป็นความสัมพันธ์ที่ตรวจสอบรหัสแล้ว: {unverifiedCveIds}</p>
+          {/if}
+          {#each selectedEvent.cveFindings || selectedEvent.aiInvestigation?.cves || [] as cve}
+            <p><a href="/dashboard/cve?search={encodeURIComponent(cve.cveId)}&incidentId={selectedEvent.id}">{cve.cveId}</a> — {cve.reason}</p>
+          {:else}<p>ยังไม่มี CVE ที่ตรวจสอบและบันทึกเชื่อมกับเหตุการณ์นี้</p>{/each}
+          <p><small>ความคล้ายของหลักฐานกับ CVE ไม่ยืนยันว่าระบบมีช่องโหว่หรือถูกเจาะสำเร็จ</small></p>
+          <ExportBtn config={{pageType:'soar',reportTitle:'Incident Report',supportedFormats:['pdf','html','csv'],aiEnabled:true,csvEnabled:true,sections:[]}} data={[selectedEvent]} filters={{incidentId:selectedEvent.id}} />
+        </section>
 
         <!-- Raw Data -->
         <div class="raw-data-section" style="border-top:1px dashed var(--border); padding-top:24px;">
           <details>
-            <summary style="font-weight: bold; cursor: pointer; color: var(--text-muted);"><i class="ti ti-code"></i> แสดงข้อมูล Log ดิบ (Raw Log)</summary>
+            <summary style="font-weight: bold; cursor: pointer; color: var(--text-muted);"><i class="ti ti-code"></i> ข้อมูล Incident ที่บันทึก (เปิด receipt เพื่อดู raw log ต้นฉบับ)</summary>
             <div class="raw-evidence-box" style="margin-top: 16px;">
               <div class="re-body font-mono" style="background:#1e1e1e; color:#d4d4d4; padding:16px; white-space: pre-wrap; word-break: break-all; line-height: 1.5; font-size: 11px; border-radius: 8px;">
                 {fullRawLog}
@@ -633,6 +643,8 @@
 </div>
 
 <style>
+  .analysis-mode-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .analysis-mode-actions span { font-size:12px; color:var(--text-secondary); }
   /* Base Layout */
   .soar-layout { display: flex; flex: 1; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--bg-panel); color: var(--text-primary); }
   

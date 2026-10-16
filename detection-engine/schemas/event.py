@@ -19,6 +19,8 @@ class NormalizedEvent(BaseModel):
     action: Optional[str] = None
     
     # HTTP specific
+    host: Optional[str] = None
+    scheme: Optional[str] = None
     http_method: Optional[str] = None
     uri: Optional[str] = None
     http_status: Optional[int] = None

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { lanEventsStore as eventsStore } from '../../../stores/events';
+  import { lanEventsStore as eventsStore, isHistoricalMode, selectedDateStore } from '../../../stores/events';
   import { incidentUrl } from '../../../lib/utils/incidentLink';
   import { formatEventTime } from '../../../lib/formatTime';
   import PageHeader from '../../../lib/components/PageHeader.svelte';
@@ -52,12 +52,12 @@
     if (searchSeverity !== 'all') filtered = filtered.filter(e => e.severity === searchSeverity);
     
     if (dateFrom) {
-      const t = new Date(dateFrom).getTime();
-      filtered = filtered.filter(e => new Date(e.createdAt || e.time || 0).getTime() >= t);
+      const t = Date.parse(dateFrom+'T00:00:00+07:00');
+      filtered = filtered.filter(e => new Date(e.lastSeenMs || e.timestampMs || e.time || e.createdAt || 0).getTime() >= t);
     }
     if (dateTo) {
-      const t = new Date(dateTo + 'T23:59:59').getTime();
-      filtered = filtered.filter(e => new Date(e.createdAt || e.time || 0).getTime() <= t);
+      const t = Date.parse(dateTo+'T23:59:59.999+07:00');
+      filtered = filtered.filter(e => new Date(e.lastSeenMs || e.timestampMs || e.time || e.createdAt || 0).getTime() <= t);
     }
     return filtered.map(e=>({...e,organization:e.sourceOrganization||'Unknown'}));
   })();
@@ -76,7 +76,7 @@
   }
 
   $: exportData = results.map(e => ({
-    Time: formatEventTime(e.time || e.createdAt),
+    Time: formatEventTime(e.lastSeenMs || e.timestampMs || e.time || e.createdAt),
     IP: e.ip,
     Country: e.country || 'Unknown',
     Type: e.type,
@@ -88,6 +88,9 @@
   $: totalPages = Math.ceil(results.length / perPage) || 1;
   $: { if (page > totalPages) page = 1; }
   $: paged = results.slice((page - 1) * perPage, page * perPage);
+  $: reportFilters = {ip:searchIp,type:searchType,country:searchCountry,severity:searchSeverity,
+    ...(dateFrom ? {from:dateFrom+'T00:00'} : $isHistoricalMode ? {from:$selectedDateStore+'T00:00'} : {}),
+    ...(dateTo ? {to:dateTo+'T23:59:59.999'} : $isHistoricalMode ? {to:$selectedDateStore+'T23:59:59.999'} : {})};
 </script>
 
 <svelte:head><title>Threat Hunting - KKUSIEM</title></svelte:head>
@@ -97,7 +100,7 @@
   <!-- Top Filters Panel -->
   <PageHeader title="Threat Hunting" description="ค้นหาเหตุการณ์จาก IP/CIDR ประเภท ประเทศ ระดับความรุนแรง และช่วงเวลา" icon="ti-target">
     <div slot="actions">
-      <ExportBtn config={{ pageType: 'hunting', reportTitle: 'Threat Hunting Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={hasSearched ? results : events} />
+      <ExportBtn config={{ pageType: 'hunting', reportTitle: 'Threat Hunting Report', supportedFormats: ['pdf', 'html', 'csv'], aiEnabled: true, csvEnabled: true, sections: [] }} data={results} filters={reportFilters} />
     </div>
   </PageHeader>
   <div class="filter-panel">
@@ -184,10 +187,13 @@
         <tbody>
           {#each paged as e}
             <tr>
-              <td class="font-mono text-muted">{formatEventTime(e.time || e.createdAt)}</td>
+              <td class="font-mono text-muted">{formatEventTime(e.lastSeenMs || e.timestampMs || e.time || e.createdAt)}</td>
               <td class="font-mono font-bold text-ip">{e.ip}</td>
               <td>
-                <OrgBadge organization={e.organization} country={e.country} />
+                <OrgBadge organization={e.organization} country={e.country} full={true} />
+                <div><small>{e.networkContext?.source?.cidr || 'ไม่มีทะเบียนซับเน็ต'}</small></div>
+                <div><small>→ {e.destIp || 'ไม่ระบุ'} · {e.targetOrganization || 'ไม่ระบุหน่วยงาน'}</small></div>
+                {#if e.httpContext}<div><small>{e.httpContext.host || ''} {e.httpContext.uri || ''}</small></div>{/if}
               </td>
               <td>
                 {e.type}

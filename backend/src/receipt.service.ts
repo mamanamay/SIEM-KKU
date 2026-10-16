@@ -1,3 +1,4 @@
+import { httpContext } from './http-context';
 import { Injectable, BadRequestException, ConflictException, ServiceUnavailableException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, LessThanOrEqual, Repository } from 'typeorm';
@@ -332,16 +333,34 @@ export class ReceiptService {
     const envelope = row.payloadJson ? JSON.parse(row.payloadJson) : null;
     return { id: row.id, source: row.source, status: row.status, disposition: row.disposition,
       origin: envelope?.ingest_origin || classifyLog(envelope?.raw_log ?? envelope ?? row.rawLog).origin,
-      contentExpiredAtMs: row.contentExpiredAtMs, raw: row.rawLog,
+      contentExpiredAtMs: row.contentExpiredAtMs, raw: row.rawLog, rawDigest: row.rawDigest, attackId: row.attackId,
+      sourceIp: row.sourceIp, targetIp: row.targetIp, eventTimestampMs: row.eventTimestampMs,
       normalized: row.normalizedJson ? JSON.parse(row.normalizedJson) : null,
       detection: row.detectionJson ? JSON.parse(row.detectionJson) : null, error: row.error };
   }
 
-  async searchEvents(query: { source?: string; srcIp?: string; dstIp?: string; page?: string; limit?: string }) {
+  async searchEvents(query: { source?: string; srcIp?: string; dstIp?: string; page?: string; limit?: string; from?: string; to?: string; q?: string; httpStatus?: string }) {
     const page = Number(query.page || 1), limit = Number(query.limit || 50);
     if (!Number.isSafeInteger(page) || page < 1 || page > 100000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('Invalid pagination');
     if (query.source && !/^[a-z0-9_-]{1,32}$/i.test(query.source)) throw new BadRequestException('Invalid source');
-    const qb = this.repo.createQueryBuilder('r').select(['r.id', 'r.source', 'r.status', 'r.disposition', 'r.attackId', 'r.receivedAt', 'r.normalizedJson', 'r.error','r.sourceIp','r.targetIp','r.eventTimestampMs','r.contentExpiredAtMs','r.processingMode']);
+    const qb = this.repo.createQueryBuilder('r').select(['r.id', 'r.source', 'r.status', 'r.disposition', 'r.attackId', 'r.receivedAt', 'r.normalizedJson', 'r.error','r.sourceIp','r.targetIp','r.eventTimestampMs','r.contentExpiredAtMs','r.processingMode'])
+      .addSelect('SUBSTR("r"."rawLog",1,16000)', 'rawExcerpt');
+    if (query.from || query.to || query.q || query.httpStatus) {
+      const start = query.from ? Date.parse(query.from) : Date.now() - 86400000;
+      const end = query.to ? Date.parse(query.to) : Date.now();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || end - start > 31 * 86400000) throw new BadRequestException('Select a valid event-time period of at most 31 days');
+      qb.andWhere('r.eventTimestampMs BETWEEN :start AND :end', { start, end });
+    }
+    if (query.q) {
+      if (query.q.length > 128) throw new BadRequestException('Search exceeds 128 characters');
+      const search = '%' + query.q.toLowerCase().replace(/[!%_]/g, '!$&') + '%';
+      qb.andWhere("(LOWER(r.normalizedJson) LIKE :search ESCAPE '!' OR LOWER(r.rawLog) LIKE :search ESCAPE '!' OR LOWER(r.disposition) LIKE :search ESCAPE '!')", { search });
+    }
+    if (query.httpStatus) {
+      if (!/^[1-5]\d{2}$/.test(query.httpStatus)) throw new BadRequestException('Invalid HTTP status');
+      const field = this.dataSource.options.type === 'postgres' ? `CAST(r.normalizedJson AS jsonb)->>'http_status'` : `CAST(json_extract(r.normalizedJson, '$.http_status') AS TEXT)`;
+      qb.andWhere(`${field} = :httpStatus`, { httpStatus: query.httpStatus });
+    }
     if (query.source) qb.andWhere('r.source = :source', { source: query.source });
     for (const [field, parameter] of [['src_ip', 'srcIp'], ['dst_ip', 'dstIp']] as const) {
       if (!query[parameter]) continue;
@@ -349,12 +368,15 @@ export class ReceiptService {
       const expression = field==='src_ip'?'r.sourceIp':'r.targetIp';
       qb.andWhere(expression + ' = :' + parameter, { [parameter]: query[parameter] });
     }
-    const [rows, total] = await qb.orderBy('r.receivedAt', 'DESC').addOrderBy('r.id', 'DESC').skip((page - 1) * limit).take(limit).getManyAndCount();
-    return { page, limit, total, items: rows.map(row => ({ id: row.id, source: row.source,
+    const total = await qb.getCount();
+    const { entities: rows, raw } = await qb.orderBy('r.receivedAt', 'DESC').addOrderBy('r.id', 'DESC').skip((page - 1) * limit).take(limit).getRawAndEntities();
+    return { page, limit, total, items: rows.map((row, index) => ({ id: row.id, source: row.source,
       status: row.status, disposition: row.disposition, attackId: row.attackId, processingMode: row.processingMode,
       sourceIp:row.sourceIp,targetIp:row.targetIp,eventTimestampMs:row.eventTimestampMs,contentExpiredAtMs:row.contentExpiredAtMs,
       receivedAt: row.receivedAt, error: row.error,
-      normalized: row.normalizedJson ? JSON.parse(row.normalizedJson) : null })) };
+      normalized: row.normalizedJson ? JSON.parse(row.normalizedJson) : null,
+      networkContext: row.normalizedJson ? JSON.parse(row.normalizedJson).network_context : null,
+      httpContext: httpContext(row.normalizedJson ? JSON.parse(row.normalizedJson) : {}, raw[index]?.rawExcerpt) })) };
   }
 
   private expiring=false;

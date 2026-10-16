@@ -64,11 +64,11 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     console.log(`[WS] ✅ Client connected: ${client.id}`);
-    client.join(client.handshake.auth?.scope === 'lan' ? 'lan-events' : 'legacy-events');
+    client.join('lan-events');
 
     // ส่งข้อมูลเดิมของวันนี้ทั้งหมดให้ client ที่เพิ่ง connect (จัดเรียงเก่าไปใหม่ เพื่อให้ Frontend นำไปต่อท้ายได้ถูกต้อง)
     try {
-      const rows = client.handshake.auth?.scope === 'lan' ? await this.alerts.latest() : await this.attackRepository.find({ order: { id: 'DESC' }, take: 500 });
+      const rows = await this.alerts.latest();
       this.sendInitialData(client, rows);
       client.emit('attack_stats', await this.alerts.stats());
       client.emit('dashboard_data', await this.alerts.dashboard());
@@ -151,7 +151,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   broadcastAttack(event: any) {
     this.enforceTransportBudgets();
-    this.server.to('legacy-events').emit('new_attack', event);
     if (!this.isDisplayAlert(event)) return;
     const networkScope = this.network.evaluate(event);
     if (networkScope.inScope) this.server.to('lan-events').emit('new_attack', { ...event, networkScope });
@@ -176,10 +175,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   sendInitialData(client: Socket, events: any[]) {
-    client.emit('initial_data', client.handshake.auth?.scope === 'lan' ? events.filter(event=>this.isDisplayAlert(event) && this.network.evaluate(event).inScope).map(event=>({ ...event, networkScope: this.network.evaluate(event) })) : events);
+    client.emit('initial_data', events.filter(event=>this.isDisplayAlert(event) && this.network.evaluate(event).inScope).map(event=>({ ...event, networkScope: this.network.evaluate(event) })));
   }
   @SubscribeMessage('refresh_scope') async refreshScope(client: Socket) {
-    this.sendInitialData(client, client.handshake.auth?.scope === 'lan' ? await this.alerts.latest() : await this.attackRepository.find({ order: { id: 'DESC' }, take: 500 }));
+    this.sendInitialData(client, await this.alerts.latest());
   }
 
   private isDisplayAlert(event:any) {

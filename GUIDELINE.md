@@ -123,11 +123,15 @@ POST ภายนอกใช้ `/api/ingest` และ ingestion credential �
 
 ## รายงานและข้อมูลถาวร
 
+อัปเดต 16 ตุลาคม 2026: Hunting/Deep Incident แสดงหน่วยงานและ CIDR แยกต้นทาง/เป้าหมาย เว็บไซต์อ่านจาก HTTP evidence และเปิด receipt ต้นฉบับได้ Log Explorer ค้น receipt จริงรวมการเข้าเว็บปกติ ส่วน Wallboard ใช้ scope การแจ้งเตือนเดียวกับ Dashboard และแสดงสถานะการโหลดข้อมูล
+
+Export รักษาตัวกรอง IP/ประเภท/ประเทศ/severity และช่วงเวลาจากหน้าต้นทาง ผล CVE จาก AI ต้องมีหลักฐานและตรวจรหัสที่เผยแพร่แล้วก่อนบันทึก เชื่อมประวัติกลับ Incident ได้ การมี CVE similarity ยังไม่ยืนยันช่องโหว่หรือการเจาะสำเร็จ รายละเอียดไฟล์ migration การตั้งค่า และผลทดสอบอยู่ใน [บันทึกการเชื่อมข้อมูล](docs/incident-evidence-cve-report-validation.md)
+
 ใช้ report flow ที่เปิดให้ในหน้าต้นทาง ตรวจข้อมูลที่เลือก preview และชนิดไฟล์ที่ได้จริง ตรวจประวัติรายงานที่ Backend เพิ่มอีกครั้งหากต้องใช้อ้างอิง การล้างไฟล์พัฒนารอบนี้ไม่ได้ลบฐานข้อมูล รายงานของผู้ใช้ `.env` หรือ private certificate ที่ระบบเครื่องนี้ใช้อยู่
 
 ## เอกสารเพิ่มเติม
 
-[README](README.md), [CLAUDE](CLAUDE.md), [DEPLOY](DEPLOY.md) และ [CONTRIBUTING](CONTRIBUTING.md) ปรับตามซอร์สปัจจุบันแล้ว ผลตรวจส่งต่ออยู่ใน [HANDOFF_READINESS](docs/HANDOFF_READINESS.md) เอกสารใน `docs/deployment-history/` เป็นบันทึกย้อนหลัง คำสั่งที่อ้าง `ecs-release`, `.patch`, `deploy.ps1`, `deploy.sh` หรือ helper ที่นำออกแล้วไม่ใช่ขั้นตอนของชุดซอร์สที่ทำความสะอาดนี้
+[README](README.md), [CLAUDE](CLAUDE.md), [DEPLOY](DEPLOY.md) และ [CONTRIBUTING](CONTRIBUTING.md) ปรับตามซอร์สปัจจุบันแล้ว ผลตรวจส่งต่ออยู่ใน [HANDOFF_READINESS](docs/HANDOFF_READINESS.md) เอกสารใน `docs/deployment-history/` เป็นบันทึกย้อนหลัง คำสั่งที่อ้าง `ecs-release`, `.patch` หรือ helper รุ่นเก่าไม่ใช่ขั้นตอนปัจจุบัน ส่วน `deploy.ps1` ที่รากโครงการส่ง source ของ Incident / Report / CVE / Wallboard จำนวน 42 ไฟล์จากโฟลเดอร์หลักผ่าน SCP โดยตรง แล้ว build/up เฉพาะสามบริการ ตาม [DEPLOY](DEPLOY.md)
 
 ## ก่อนส่งซอร์สขึ้น Git ขององค์กร
 

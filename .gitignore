@@ -53,7 +53,8 @@ access.csv
 import_csv.js
 import_nginx.js
 backend/src/app.controller.spec.ts
-backend/test/
+backend/test/*
+!backend/test/incident-pipeline.test.cjs
 backend/*.sqlite
 trash/
 

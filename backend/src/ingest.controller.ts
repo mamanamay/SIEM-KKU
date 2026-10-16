@@ -91,7 +91,7 @@ export class IngestController {
   eventDetail(@Param('id') id: string) { return this.receipts!.eventDetail(id); }
 
   @Get('events') @Roles('admin', 'analyst', 'analyst_l2', 'threat_hunter')
-  events(@Query() query: { source?: string; srcIp?: string; dstIp?: string; page?: string; limit?: string }) {
+    events(@Query() query: { source?: string; srcIp?: string; dstIp?: string; page?: string; limit?: string; from?: string; to?: string; q?: string; httpStatus?: string }) {
     return this.receipts!.searchEvents(query);
   }
 }

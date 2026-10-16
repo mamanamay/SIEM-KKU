@@ -41,7 +41,7 @@ Backend paths ในตารางที่ไม่ได้ขึ้นต้
 
 ใช้ lockfiles และ `npm ci --legacy-peer-deps` อย่าอัปเกรด dependency หลายส่วนพร้อมกันโดยไม่มีเหตุผล ทำ build ทั้ง Backend/Frontend และ `npm --prefix frontend run check` เมื่อแตะ UI/TypeScript พร้อมตรวจผลกระทบของ migration/API ที่เปลี่ยน
 
-ณ วันที่ตรวจ build ผ่านแต่ Frontend check มี 113 errors / 135 warnings ใน 31 ไฟล์ และ build มี warnings เรื่อง Svelte exports/compatibility อย่าปิด strict checking หรืออ้างว่าระบบผ่านทุก check เพียงเพราะ build สำเร็จ ยังไม่มี automated test suite ในชุดที่ทำความสะอาดนี้
+ณ วันที่ตรวจ build ผ่านแต่ Frontend check มี 113 errors / 135 warnings ใน 31 ไฟล์ และ build มี warnings เรื่อง Svelte exports/compatibility อย่าปิด strict checking หรืออ้างว่าระบบผ่านทุก check เพียงเพราะ build สำเร็จ ชุดที่ทำความสะอาดเดิมไม่มี automated test suite; เพิ่ม regression tests สำหรับ Incident/HTTP/CVE/Reports/Wallboard เมื่อ 16 ตุลาคม 2026 แล้ว ดูรายละเอียดและผลล่าสุดใน docs/incident-evidence-cve-report-validation.md
 
 อัปเดตคู่มือและ `.env.example` เมื่อเปลี่ยน behavior/config ไม่ใส่ secrets, real reports, private keys, DB dumps, caches หรือ dependency folders ใน commit ตรวจ `git diff --cached` และ new/untracked runtime files ให้ครบก่อน commit
 

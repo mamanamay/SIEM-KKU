@@ -55,7 +55,7 @@ export async function vettedTarget(value: string, operatorOrigin?: string) {
   if (url.username || url.password || (operatorTarget ? !['https:', 'http:'].includes(url.protocol)
     : url.protocol !== 'https:' || (url.port && url.port !== '443'))) throw new Error('Unsupported outbound URL');
   const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  const allowed = (process.env.OUTBOUND_ALLOWED_HOSTS || 'gen.ai.kku.ac.th,hooks.slack.com,.webhook.office.com,ssonext-api.kku.ac.th')
+  const allowed = (process.env.OUTBOUND_ALLOWED_HOSTS || 'gen.ai.kku.ac.th,hooks.slack.com,.webhook.office.com,ssonext-api.kku.ac.th,cveawg.mitre.org')
     .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
   const ssoHost = configuredSsoHost();
   if (!operatorTarget && hostname !== ssoHost && !allowed.some(h => h.startsWith('.') ? hostname.endsWith(h) && hostname.length > h.length : hostname === h)) throw new Error('Outbound hostname is not allowlisted');
@@ -70,10 +70,20 @@ export async function vettedTarget(value: string, operatorOrigin?: string) {
   return { url, resolved: addresses[0] };
 }
 
-const active = { sso: 0, source: 0, integration: 0 };
+const active = { sso: 0, source: 0, integration: 0, ai: 0 };
 /** DNS is resolved once, vetted, then pinned to the TLS connection. No redirects. */
 export async function safeHttp(config: AxiosRequestConfig & { url: string }, operatorOrigin?: string) {
   const purpose = operatorOrigin ? 'source' : new URL(config.url).hostname === configuredSsoHost() ? 'sso' : 'integration';
+  return safeRequest(config, operatorOrigin, purpose, 15000);
+}
+
+/** AI has its own bounded budget; allow generation without extending log/SSO timeouts. */
+export async function safeAiHttp(config: AxiosRequestConfig & { url: string }) {
+  return safeRequest(config, undefined, 'ai', 45000);
+}
+
+async function safeRequest(config: AxiosRequestConfig & { url: string }, operatorOrigin: string | undefined,
+  purpose: keyof typeof active, timeoutCap: number) {
   if (active[purpose] >= 2) throw new Error('Outbound concurrency budget exhausted');
   active[purpose]++;
   try {
@@ -84,7 +94,7 @@ export async function safeHttp(config: AxiosRequestConfig & { url: string }, ope
     const agent = url.protocol === 'https:' ? new Agent(agentOptions) : new HttpAgent(agentOptions);
     try {
       return await axios.request({ ...config, url: url.toString(), ...(url.protocol === 'https:' ? { httpsAgent: agent } : { httpAgent: agent }), proxy: false,
-        maxRedirects: 0, timeout: Math.min(config.timeout || 15000, 15000),
+        maxRedirects: 0, timeout: Math.min(config.timeout || timeoutCap, timeoutCap),
         maxContentLength: Math.min(config.maxContentLength ?? 2097152, 10485760), maxBodyLength: 2097152 });
     } finally { agent.destroy(); }
   } finally { active[purpose]--; }
